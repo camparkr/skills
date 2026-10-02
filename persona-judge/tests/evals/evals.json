@@ -82,7 +82,7 @@
       ],
       "expectations": [
         "Saved to a file, the report makes 'report.py verify' exit 0 (checked by script)",
-        "The formula is printed with the report's own figures: 'Formula: each check counts 1 or 0 and each rating its points; persona x out of y, instruction writing x out of y, total x out of y.'",
+        "The formula is printed with the report's own numbers: 'Formula: each check counts 1 or 0 and each rating its points; persona x out of y, instruction writing x out of y, total x out of y.'",
         "The stars line 'Stars: x ÷ y × 5 = s, to the nearest half star.' is printed, and s rounds to the stars at the top"
       ]
     },

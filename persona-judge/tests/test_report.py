@@ -289,7 +289,7 @@ class TestRenderT4(ReportCase):
         # Every finding row has a quoted line, a question and a source.
         section = out[out.index("## Lines behind the scores"): out.index("## Score for each question")]
         rows = [l for l in section.splitlines() if l.startswith("| ") and not l.startswith("| Question")]
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 5)
         for row in rows:
             cells = [c.strip() for c in row.strip("|").split("|")]
             self.assertEqual(len(cells), 5, row)

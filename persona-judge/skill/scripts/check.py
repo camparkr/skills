@@ -10,18 +10,24 @@ Each row of the table is run against each file, and one line is printed per row 
 
   row ID, score, place, the line quoted, message      (separated by tabs)
 
-The score is 1 or 0, as the review questions score checks; '-' when the row does not apply to the
-file's kind, or when the field it reads could not be read. The place is path:line for a 0 and the path
-otherwise. With --format json, the same as one JSON array, with every line a row found.
+The score is 1 or 0, as the review questions score checks; '-' when the row does not apply: to the
+file's kind, to a file with no such field or no harness its path names, or to a field it could not
+read. The place is path:line for a 0 and the path otherwise. With --format json, the same as one JSON
+array, with every line a row found.
 
-Adding a row of an existing kind to the table needs no code change. The kinds:
-  line-pattern       0 when a body line matches the pattern and not the unless pattern
-  missing-path       0 when a path the body names, in backticks or a link, exists neither beside the file
-                     nor from the project root
-  field-and-line     0 when the field matches the pattern and a body line matches the unless pattern
-  field-missing      0 when the field is absent or empty
-  repeated-sentence  0 when a sentence of at least min_words words appears twice in the body, or the
-                     description's sentence appears in the body
+Adding a row of an existing kind to the table needs no code change. A row names one of the checks the
+review questions mark *script*; the checks they mark *reading* are the reviewer's. The kinds:
+  line-pattern     0 when a body line matches the pattern and not the unless pattern
+  missing-path     0 when a path the body names, in backticks or a link, exists neither beside the file
+                   nor from the project root
+  field-and-line   0 when the field matches the pattern and a body line matches the unless pattern
+  field-missing    0 when the field is absent or empty
+  harness-default  0 when a body line matches a row of the defaults table named in the data column,
+                   for the file's harness, and not that row's unless pattern; a file whose harness its
+                   path does not name is not checked. A new default is a new row of that table.
+
+The data column names the defaults table: a file beside the check table, or else in references/. Its
+columns: id (HD- and three digits), harness, default, pattern, unless, source.
 
 Exit codes, so a hook or a pre-commit step can call it:
   0 every row scored 1 or did not apply
@@ -44,7 +50,8 @@ import personafile  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_TABLE = os.path.join(HERE, "..", "references", "failures.tsv")
-REVIEW_QUESTIONS = os.path.join(HERE, "..", "references", "review-questions.md")
+REFERENCES = os.path.join(HERE, "..", "references")
+REVIEW_QUESTIONS = os.path.join(REFERENCES, "review-questions.md")
 
 # Exit codes, as the docstring states them (build specification §3c).
 EXIT_CLEAN = 0
@@ -52,8 +59,13 @@ EXIT_ZERO_FOUND = 1
 EXIT_ERROR = 2
 EXIT_NOTHING = 3
 
-COLUMNS = ["id", "question", "kind", "applies_to", "field", "pattern", "unless", "min_words", "source", "message"]
-KINDS = ("line-pattern", "missing-path", "field-and-line", "field-missing", "repeated-sentence")
+COLUMNS = ["id", "question", "kind", "applies_to", "field", "pattern", "unless", "data", "source", "message"]
+KINDS = ("line-pattern", "missing-path", "field-and-line", "field-missing", "harness-default")
+# The defaults table a harness-default row reads (build specification §3d).
+DEFAULTS_COLUMNS = ["id", "harness", "default", "pattern", "unless", "source"]
+DEFAULTS_ID_RE = re.compile(r"^HD-\d{3}$")
+# The harnesses find.py names from a file's path; any other file has no known harness.
+KNOWN_HARNESSES = frozenset(h for _, _, h in find.LOCATIONS)
 APPLIES = ("any", "standing", "delegated")
 ID_RE = re.compile(r"^PJ-\d{3}$")
 # The scale's score for a check, as the review questions give it: 1 when nothing contradicts the
@@ -66,7 +78,6 @@ LINK_PATH = re.compile(r"\]\(([^)\s#]+\.[A-Za-z0-9]{1,5})(?:#[^)]*)?\)")
 # Characters that make a backticked string a pattern or a placeholder rather than a path.
 NOT_A_PATH = re.compile(r"[*?<>{}$|]|://|^mailto:")
 FENCE = re.compile(r"^\s*(```|~~~)")
-SENTENCE = re.compile(r"[^.!?]+[.!?]*")
 
 
 class TableError(Exception):
@@ -74,7 +85,8 @@ class TableError(Exception):
 
 
 def check_titles(path=REVIEW_QUESTIONS):
-    """The titles of the checks in review-questions.md: the bold titles under '## Checks'."""
+    """The checks in review-questions.md as {title: 'script' or 'reading'}, from the bold titles under
+    '## Checks' and the mark after each."""
     try:
         text = open(path, encoding="utf-8").read()
     except OSError as exc:
@@ -82,7 +94,48 @@ def check_titles(path=REVIEW_QUESTIONS):
     m = re.search(r"^## Checks\s*$(.*?)^## ", text, re.MULTILINE | re.DOTALL)
     if not m:
         raise TableError("review-questions.md has no '## Checks' section; the table's questions cannot be checked")
-    return [t.rstrip(".") for t in re.findall(r"^\*\*(.+?)\*\*", m.group(1), re.MULTILINE)]
+    found = re.findall(r"^\*\*(.+?)\*\*(?: \(\*(script|reading)\*\))?", m.group(1), re.MULTILINE)
+    return {t.rstrip("."): mark for t, mark in found}
+
+
+def load_defaults(path, shown):
+    """Read and validate a defaults table; return its rows. Raise TableError naming every fault."""
+    try:
+        with open(path, encoding="utf-8", newline="") as fh:
+            rows = list(csv.reader(fh, delimiter="\t", quoting=csv.QUOTE_NONE))
+    except OSError as exc:
+        raise TableError(f"cannot read the defaults table {shown}: {exc.strerror}; check the data column")
+    if not rows or rows[0] != DEFAULTS_COLUMNS:
+        raise TableError(f"{shown}, line 1: the header must be {', '.join(DEFAULTS_COLUMNS)}, tab-separated")
+    faults, out, seen = [], [], {}
+    for n, cells in enumerate(rows[1:], start=2):
+        if not any(c.strip() for c in cells):
+            continue
+        where = f"{shown}, line {n}"
+        if len(cells) != len(DEFAULTS_COLUMNS):
+            faults.append(f"{where}: {len(cells)} columns; expected {len(DEFAULTS_COLUMNS)}, tab-separated")
+            continue
+        row = dict(zip(DEFAULTS_COLUMNS, cells))
+        if not DEFAULTS_ID_RE.match(row["id"]):
+            faults.append(f"{where}, column id: '{row['id']}'; expected HD- and three digits, such as HD-004")
+        elif row["id"] in seen:
+            faults.append(f"{where}, column id: {row['id']} is already used on line {seen[row['id']]}; expected a unique ID")
+        else:
+            seen[row["id"]] = n
+        if not row["harness"].strip():
+            faults.append(f"{where}, column harness: empty; expected a harness as find.py names it, such as Claude Code")
+        if not row["pattern"]:
+            faults.append(f"{where}, column pattern: empty; a default needs the pattern of a line asking for it")
+        for col in ("pattern", "unless"):
+            if row[col]:
+                try:
+                    re.compile(row[col], re.IGNORECASE)
+                except re.error as exc:
+                    faults.append(f"{where}, column {col}: the regular expression does not compile ({exc})")
+        out.append(row)
+    if faults:
+        raise TableError("\n".join(faults))
+    return out
 
 
 def load_table(path):
@@ -113,10 +166,11 @@ def load_table(path):
             faults.append(f"{where}, column id: {row['id']} is already used on line {seen[row['id']]}; expected a unique ID")
         else:
             seen[row["id"]] = n
-        if row["question"] not in titles:
+        if titles.get(row["question"]) != "script":
+            what = "a reading check, which the reviewer answers" if row["question"] in titles else "not a check"
             faults.append(
-                f"{where}, column question: '{row['question']}'; expected one of the checks in "
-                f"review-questions.md, word for word: {', '.join(titles)}"
+                f"{where}, column question: '{row['question']}' is {what}; expected one of the checks marked "
+                f"script in review-questions.md, word for word: {', '.join(t for t, m in titles.items() if m == 'script')}"
             )
         if row["kind"] not in KINDS:
             faults.append(f"{where}, column kind: '{row['kind']}'; expected one of {', '.join(KINDS)}")
@@ -134,11 +188,20 @@ def load_table(path):
             faults.append(f"{where}, column field: empty; a {row['kind']} row needs a field")
         if row["kind"] == "field-and-line" and not (row["pattern"] and row["unless"]):
             faults.append(f"{where}, columns pattern and unless: a field-and-line row needs both")
-        if row["kind"] == "repeated-sentence":
-            if not row["min_words"].isdigit() or int(row["min_words"]) < 1:
-                faults.append(f"{where}, column min_words: '{row['min_words']}'; expected a whole number above 0")
-        elif row["min_words"]:
-            faults.append(f"{where}, column min_words: '{row['min_words']}'; expected empty for a {row['kind']} row")
+        if row["kind"] == "harness-default":
+            if not row["data"]:
+                faults.append(f"{where}, column data: empty; a harness-default row names its defaults table")
+            else:
+                # Beside the check table first, so a copied pair of tables reads its own copy; then
+                # references/, where the data column says the defaults table lives (specification §3c).
+                beside = os.path.join(os.path.dirname(os.path.abspath(path)), row["data"])
+                data_path = beside if os.path.exists(beside) else os.path.join(REFERENCES, row["data"])
+                try:
+                    row["_defaults"] = load_defaults(data_path, find.posix(row["data"]))
+                except TableError as exc:
+                    faults.append(f"{where}, column data: {exc}")
+        elif row["data"]:
+            faults.append(f"{where}, column data: '{row['data']}'; expected empty for a {row['kind']} row")
         out.append(row)
     if faults:
         raise TableError("\n".join(faults))
@@ -174,24 +237,9 @@ def path_exists(ref, pf, root):
     return os.path.exists(os.path.join(pf.folder, ref)) or os.path.exists(os.path.join(root, ref))
 
 
-def fold(text):
-    """Fold case, Markdown emphasis and runs of space, for comparing sentences."""
-    text = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", text)
-    text = re.sub(r"[*_`]", "", text)
-    return re.sub(r"\s+", " ", text).strip().lower().rstrip(".!?")
-
-
-def sentences(body):
-    """Yield (line number, sentence) for the body, each sentence placed at the line it starts on."""
-    for n, text in body:
-        for m in SENTENCE.finditer(text):
-            s = m.group(0).strip()
-            if s:
-                yield n, s
-
-
-def run_row(row, pf, kind, root):
-    """Run one row on one file; return (score, faults) where faults is a list of (line, quote, note)."""
+def run_row(row, pf, kind, root, harness=None):
+    """Run one row on one file; return (score, faults, note). Each fault is a dict: line, quote, note and,
+    for a field-and-line row, field_line and field_quote, the line where the field is set."""
     if row["applies_to"] not in ("any", kind):
         return None, [], f"applies to {row['applies_to']} files only"
     flags = re.IGNORECASE
@@ -199,13 +247,13 @@ def run_row(row, pf, kind, root):
     if k == "line-pattern":
         pat = re.compile(row["pattern"], flags)
         unless = re.compile(row["unless"], flags) if row["unless"] else None
-        faults = [(n, t, "") for n, t in pf.body if pat.search(t) and not (unless and unless.search(t))]
+        faults = [fault(n, t) for n, t in pf.body if pat.search(t) and not (unless and unless.search(t))]
     elif k == "missing-path":
         faults = []
         for n, t in outside_fences(pf.body):
             missing = [ref for ref in named_paths(t) if not path_exists(ref, pf, root)]
             if missing:
-                faults.append((n, t, f"{', '.join(missing)} does not exist"))
+                faults.append(fault(n, t, f"{', '.join(missing)} does not exist"))
     elif k in ("field-and-line", "field-missing"):
         field = row["field"]
         if field in pf.unparsed:
@@ -213,34 +261,37 @@ def run_row(row, pf, kind, root):
         value = pf.field_text(field)
         if k == "field-missing":
             if value is None:
-                return ZERO, [(None, "-", f"the field {field} is absent or empty")], ""
+                return ZERO, [fault(None, "-", f"the field {field} is absent or empty")], ""
             return ONE, [], ""
         if value is None:
             return None, [], f"the file has no {field} field"
         if not re.search(row["pattern"], value, flags):
             return ONE, [], ""
         unless = re.compile(row["unless"], flags)
-        faults = [(n, t, f"{field}: {value}") for n, t in pf.body if unless.search(t)]
-    elif k == "repeated-sentence":
-        minimum = int(row["min_words"])
-        seen, faults = {}, []
-        for n, s in sentences(pf.body):
-            key = fold(s)
-            if len(key.split()) < minimum:
-                continue
-            if key in seen:
-                faults.append((n, pf.lines[n - 1], f"also on line {seen[key]}"))
-            else:
-                seen[key] = n
-        description = pf.field_text("description")
-        if description:
-            for d in (fold(s) for s in SENTENCE.findall(description)):
-                if len(d.split()) >= minimum and d in seen:
-                    faults.append((seen[d], pf.lines[seen[d] - 1], "repeats the description"))
-        faults.sort(key=lambda f: f[0])
+        at = pf.field_line(field)
+        faults = [
+            dict(fault(n, t, f"{field}: {value}"), field_line=at, field_quote=pf.lines[at - 1].strip() if at else None)
+            for n, t in pf.body if unless.search(t)
+        ]
+    elif k == "harness-default":
+        if harness not in KNOWN_HARNESSES:
+            return None, [], "the file's path names no harness"
+        faults = []
+        for n, t in pf.body:
+            for d in row["_defaults"]:
+                if d["harness"] != harness or not re.search(d["pattern"], t, flags):
+                    continue
+                if d["unless"] and re.search(d["unless"], t, flags):
+                    continue
+                faults.append(fault(n, t, f"{d['id']}, {harness} {d['default']}"))
+                break
     else:  # load_table rejects any other kind
         raise TableError(f"unknown kind {k}")
     return (ZERO if faults else ONE), faults, ""
+
+
+def fault(line, quote, note=""):
+    return {"line": line, "quote": quote.strip() if isinstance(quote, str) else quote, "note": note}
 
 
 def check_files(records, texts, table, kind_override=None, root=None):
@@ -253,21 +304,22 @@ def check_files(records, texts, table, kind_override=None, root=None):
         kind = kind_override or rec["kind"]
         file_root = root or find.project_root(os.getcwd())
         for row in table:
-            score, faults, note = run_row(row, pf, kind, file_root)
+            score, faults, note = run_row(row, pf, kind, file_root, rec.get("harness"))
             base = {
                 "id": row["id"], "path": rec["path"], "kind": kind, "question": row["question"],
                 "source": row["source"], "score": score,
             }
             if score == ZERO:
                 first = faults[0]
-                more = f" (and {len(faults) - 1} more: lines {', '.join(str(f[0]) for f in faults[1:])})" if len(faults) > 1 else ""
+                more = f" (and {len(faults) - 1} more: lines {', '.join(str(f['line']) for f in faults[1:])})" if len(faults) > 1 else ""
                 base.update(
-                    line=first[0], quote=first[1].strip(),
-                    message=(row["message"] + (f": {first[2]}" if first[2] else "")) + more,
-                    lines=[{"line": f[0], "quote": f[1].strip(), "note": f[2]} for f in faults],
+                    line=first["line"], quote=first["quote"],
+                    message=(row["message"] + (f": {first['note']}" if first["note"] else "")) + more,
+                    row_message=row["message"],
+                    lines=faults,
                 )
             else:
-                base.update(line=None, quote=None, message=note or None, lines=[])
+                base.update(line=None, quote=None, message=note or None, row_message=row["message"], lines=[])
             results.append(base)
     return results
 

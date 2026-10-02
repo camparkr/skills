@@ -40,8 +40,9 @@ EXIT_NONE = 3
 STANDING, DELEGATED = "standing", "delegated"
 
 # Known persona file locations, matched against the end of a file's path. Each row: the pattern, the
-# kind, the harness. Rows the specification marks as resting on a vendor page alone were kept only where
-# the installed harness's own code confirmed the path; see the delivery report for those dropped.
+# kind, the harness. '*' matches within one folder or file name and '**' matches any number of folders.
+# Rows the specification marks as resting on a vendor page alone are kept where the page or the installed
+# harness's own code confirmed the path (build specification §3b, round 2).
 LOCATIONS = (
     ("CLAUDE.md", STANDING, "Claude Code"),
     ("CLAUDE.local.md", STANDING, "Claude Code"),
@@ -49,10 +50,14 @@ LOCATIONS = (
     ("GEMINI.md", STANDING, "Gemini CLI"),
     (".claude/output-styles/*.md", STANDING, "Claude Code"),
     (".gemini/system.md", STANDING, "Gemini CLI"),
+    (".github/copilot-instructions.md", STANDING, "GitHub Copilot"),
+    (".github/instructions/**/*.instructions.md", STANDING, "GitHub Copilot"),
     (".cursor/rules/*.mdc", STANDING, "Cursor"),
     (".cursor/rules/*.md", STANDING, "Cursor"),
     (".claude/agents/*.md", DELEGATED, "Claude Code"),
     (".gemini/agents/*.md", DELEGATED, "Gemini CLI"),
+    (".codex/agents/*.toml", DELEGATED, "Codex"),
+    (".github/agents/*.agent.md", DELEGATED, "GitHub Copilot"),
 )
 
 # Never returned from a search: skills stay with skill-judge, and READMEs, indexes and command files are
@@ -68,14 +73,21 @@ def posix(path):
     return path.replace(os.sep, "/")
 
 
+def _parts_match(parts, pparts):
+    """Whether path parts match pattern parts exactly, '**' standing for any number of parts."""
+    if not pparts:
+        return not parts
+    if pparts[0] == "**":
+        return any(_parts_match(parts[i:], pparts[1:]) for i in range(len(parts) + 1))
+    return bool(parts) and fnmatchcase(parts[0], pparts[0]) and _parts_match(parts[1:], pparts[1:])
+
+
 def match_location(path):
     """Return (pattern, kind, harness) for a path, or None. The path's last parts must match the pattern."""
     parts = posix(os.path.abspath(path)).split("/")
     for pattern, kind, harness in LOCATIONS:
         pparts = pattern.split("/")
-        if len(parts) >= len(pparts) and all(
-            fnmatchcase(part, pp) for part, pp in zip(parts[-len(pparts):], pparts)
-        ):
+        if any(_parts_match(parts[i:], pparts) for i in range(len(parts))):
             return pattern, kind, harness
     return None
 

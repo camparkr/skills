@@ -1,0 +1,4 @@
+id	harness	default	pattern	unless	source
+HD-001	Claude Code	loads `CLAUDE.md` every session	\bread\b.{0,40}\bCLAUDE\.md\b		Anthropic, 'How Claude remembers your project': 'Loaded into: Every session' (https://code.claude.com/docs/en/memory, read 1 October 2026)
+HD-002	Codex	applies `AGENTS.md` before the agent starts work	\bread\b.{0,40}\bAGENTS\.md\b		OpenAI, Codex customisation: 'applies before the agent starts work' (https://learn.chatgpt.com/docs/customization/overview, read 1 October 2026)
+HD-003	Gemini CLI	sends `GEMINI.md` with every prompt	\bread\b.{0,40}\bGEMINI\.md\b		Google, 'GEMINI.md': 'with every prompt' (https://geminicli.com/docs/cli/gemini-md/, read 1 October 2026)

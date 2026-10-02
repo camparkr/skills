@@ -61,6 +61,16 @@ class PersonaFile:
             k for k in self.unparsed if k in BOUND_PART_FIELDS and k not in self.frontmatter
         ]
 
+    def field_line(self, name):
+        """The number of the line where a frontmatter or TOML field is set, or None."""
+        key = re.compile(rf"^{re.escape(name)}\s*[:=]")
+        for n, text in enumerate(self.lines, start=1):
+            if key.match(text):
+                return n
+            if self.fmt == "markdown" and n > 1 and text.strip() in ("---", "..."):
+                return None
+        return None
+
     def field_text(self, name):
         """A field's value as one string (lists joined with ', '), or None when absent or empty."""
         if name not in self.frontmatter:

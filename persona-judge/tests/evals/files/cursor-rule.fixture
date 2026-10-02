@@ -1,0 +1,8 @@
+---
+description: House style for TypeScript files
+globs: ["src/**/*.ts"]
+alwaysApply: false
+---
+
+Use named exports in every module.
+Name test files after the module they test.

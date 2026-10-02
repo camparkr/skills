@@ -1,0 +1,15 @@
+---
+name: 'odd one'
+description: >
+  Answers questions about the build
+  when asked about the build.
+tools:
+  - Read
+  - Grep
+permissionMode: default
+hooks:
+  PreToolUse:
+    - matcher: Bash
+---
+
+Answer from the build files only.

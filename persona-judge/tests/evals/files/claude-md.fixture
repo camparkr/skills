@@ -1,0 +1,6 @@
+# Project notes
+
+Run the tests with `make test` before every commit.
+See also `docs/style.md`.
+When you change the public interface, read `docs/api.md` first.
+Rate each change as small, medium or large in the pull request.

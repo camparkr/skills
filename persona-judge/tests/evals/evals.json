@@ -1,0 +1,137 @@
+{
+  "skill_name": "persona-judge",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Can you review the agent instructions in CLAUDE.md and the helper subagent in .claude/agents/helper.md? I want to know how well they're written.",
+      "expected_output": "Two reports, one per file, each header naming the file's kind: CLAUDE.md standing, helper.md delegated (T-1, SI-1).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture"
+      ],
+      "expectations": [
+        "The report on CLAUDE.md has a header line 'Kind: standing'",
+        "The report on .claude/agents/helper.md has a header line 'Kind: delegated'",
+        "Each report's header names its file's harness"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "review .claude/agents/helper.md for me, the subagent keeps ignoring its rules and I don't know why",
+      "expected_output": "One report on helper.md with quoted lines before the total, scores per question and the no-prediction sentence (T-4, SI-4).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture",
+        "tests/evals/files/agents-md.fixture",
+        "tests/evals/files/doc-writer-agent.fixture",
+        "tests/evals/files/cursor-rule.fixture",
+        "tests/evals/files/readme.fixture",
+        "tests/evals/files/changelog.fixture"
+      ],
+      "expectations": [
+        "Every row of 'Lines behind the scores' holds a question, a line number, the line quoted and a source",
+        "Every check in 'Score for each question' shows 1 or 0",
+        "Every rating in 'Score for each question' shows its point with its scale word, such as '3, usually'",
+        "'Lines behind the scores' comes before 'Total'",
+        "The report holds the sentence 'A score does not predict how an agent behaves; the lines above are the review.'",
+        "The report holds a finding quoting line 9, 'Never edit files; report what you find in a list.', under 'Bound parts agree with the prose'",
+        "The output holds no replacement wording for any line and no verdict word (pass, fail, approve, block, severity)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Please review every persona file in this repository and give me the scores.",
+      "expected_output": "A summary and five reports; the project's files are unchanged (T-9, SI-9).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture",
+        "tests/evals/files/agents-md.fixture",
+        "tests/evals/files/doc-writer-agent.fixture",
+        "tests/evals/files/cursor-rule.fixture",
+        "tests/evals/files/readme.fixture",
+        "tests/evals/files/changelog.fixture"
+      ],
+      "expectations": [
+        "The SHA-256 manifest of the project after the run equals the manifest before it, file list included (checked by script: make_fixtures.py compare)",
+        "The output holds only the summary table, each file's header, its findings table, its scores table, its fit section, its total and the closing sentences",
+        "The output offers no replacement wording and compares with no other version of any file"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Score CLAUDE.md against the persona review questions and show me how the total was worked out.",
+      "expected_output": "A report whose printed total follows from its scores table by the stated formula (T-10, SI-10).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture"
+      ],
+      "expectations": [
+        "Saved to a file, the report makes 'report.py verify' exit 0 (checked by script)",
+        "The total is printed with the formula beside it",
+        "Each finding found by a check row cites its rule ID, such as PJ-001, and its source"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Check all the agent instructions in this project, whatever harness they're for, and tell me which ones need the most work.",
+      "expected_output": "A summary of five files, not the README, ordered from the lowest score, each report beneath (T-11, SI-11).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture",
+        "tests/evals/files/agents-md.fixture",
+        "tests/evals/files/doc-writer-agent.fixture",
+        "tests/evals/files/cursor-rule.fixture",
+        "tests/evals/files/readme.fixture",
+        "tests/evals/files/changelog.fixture"
+      ],
+      "expectations": [
+        "The summary lists exactly CLAUDE.md, AGENTS.md, .claude/agents/helper.md, .claude/agents/doc-writer.md and .cursor/rules/style.mdc",
+        "README.md and CHANGELOG.md are not reviewed",
+        "The summary is ordered from the lowest score, ties by path",
+        "Each file's report follows the summary, in the summary's order"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Review only the subagents in .claude/agents/ and nothing else.",
+      "expected_output": "Reports on the two agent files and no others (T-11, SI-11).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture",
+        "tests/evals/files/agents-md.fixture",
+        "tests/evals/files/doc-writer-agent.fixture",
+        "tests/evals/files/cursor-rule.fixture",
+        "tests/evals/files/readme.fixture",
+        "tests/evals/files/changelog.fixture"
+      ],
+      "expectations": [
+        "Exactly two files are reviewed: .claude/agents/doc-writer.md and .claude/agents/helper.md"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "I'm drafting a subagent and haven't saved it yet. Can you review this text?\n\n---\nname: helper\ndescription: Reviews pull requests for style problems.\ntools: Read, Grep, Edit\n---\n\nYou review code for style and report what you find.\n\nNever edit files; report what you find in a list.\nRate each finding high, medium or low.\nIf the scope is unclear, ask.",
+      "expected_output": "One report on the pasted text, labelled <session text> (T-11, SI-11).",
+      "files": [
+        "tests/evals/files/claude-md.fixture",
+        "tests/evals/files/api-doc.fixture",
+        "tests/evals/files/helper-agent.fixture",
+        "tests/evals/files/agents-md.fixture",
+        "tests/evals/files/doc-writer-agent.fixture",
+        "tests/evals/files/cursor-rule.fixture",
+        "tests/evals/files/readme.fixture",
+        "tests/evals/files/changelog.fixture"
+      ],
+      "expectations": [
+        "Exactly one report is given, and its header names '<session text>' as the file",
+        "The header line reads 'Kind: delegated'"
+      ]
+    }
+  ]
+}

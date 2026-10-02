@@ -1,0 +1,82 @@
+[
+  {
+    "query": "can you review the subagent in .claude/agents/db-migrator.md? it keeps running migrations on prod when it's only supposed to draft them",
+    "should_trigger": true
+  },
+  {
+    "query": "Please score our custom agents in .github/agents/ before we roll them out to the rest of the team next week.",
+    "should_trigger": true
+  },
+  {
+    "query": "why does my test-writer subagent ignore the rule about never touching src/? the rule is right there on line 12 of .claude/agents/test-writer.md",
+    "should_trigger": true
+  },
+  {
+    "query": "/persona-judge .gemini/agents/triage.md",
+    "should_trigger": true
+  },
+  {
+    "query": "we have about eight subagents under .claude/agents and nobody has looked at them since march. which ones are worst written?",
+    "should_trigger": true
+  },
+  {
+    "query": "check the agent instructions in .codex/agents/release-notes.toml, it asks me questions every run even in CI where nobody can answer",
+    "should_trigger": true
+  },
+  {
+    "query": "I rewrote the security-reviewer agent's prompt this morning. Before I commit it, can you go through .claude/agents/security-reviewer.md and tell me which lines are weak?",
+    "should_trigger": true
+  },
+  {
+    "query": "is this custom agent any good? pasting it below:\n---\nname: changelog-bot\ndescription: Writes changelogs\ntools: Read, Write, Bash\n---\nYou are a world-class technical writer. Always be concise.",
+    "should_trigger": true
+  },
+  {
+    "query": "rate the personas in this repo out of 5 and show me what's dragging the scores down",
+    "should_trigger": true
+  },
+  {
+    "query": "our docs-writer subagent sometimes edits files it should only read. review .claude/agents/docs-writer.md and tell me whether the tools field and the instructions agree",
+    "should_trigger": true
+  },
+  {
+    "query": "review my SKILL.md in skills/pdf-tools/ and grade it against the skill authoring best practices",
+    "should_trigger": false
+  },
+  {
+    "query": "can you check CLAUDE.md at the repo root? it's grown to 400 lines and I think half of it is out of date",
+    "should_trigger": false
+  },
+  {
+    "query": "lint .claude/settings.json, I want to know if any of the hooks or permissions are unsafe",
+    "should_trigger": false
+  },
+  {
+    "query": "write me a new subagent for reviewing terraform plans, put it in .claude/agents/tf-reviewer.md",
+    "should_trigger": false
+  },
+  {
+    "query": "tidy up AGENTS.md so Codex picks up the build commands properly",
+    "should_trigger": false
+  },
+  {
+    "query": "rewrite the description in .claude/agents/api-tester.md so Claude picks it more often",
+    "should_trigger": false
+  },
+  {
+    "query": "my output style in .claude/output-styles/terse.md makes answers too short, can you loosen it",
+    "should_trigger": false
+  },
+  {
+    "query": "scan the hooks in .claude/hooks/ for leaked API keys before I push this repo public",
+    "should_trigger": false
+  },
+  {
+    "query": "review this pull request's diff for bugs, mainly src/payments/refund.ts",
+    "should_trigger": false
+  },
+  {
+    "query": "convert the subagents in .claude/agents/ to Gemini CLI's agent format so the team can use them in both",
+    "should_trigger": false
+  }
+]

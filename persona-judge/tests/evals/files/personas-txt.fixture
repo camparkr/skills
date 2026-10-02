@@ -1,0 +1,3 @@
+# Personas spread over files: the main file first, then the files that load with it.
+
+personas/reviewer/reviewer.md personas/reviewer/scale.md personas/reviewer/examples.md personas/reviewer/missing.md

@@ -5,6 +5,10 @@ T-L: every file under skill/agents/ and skill/references/ that a model reads is 
      level deep, and SKILL.md tells the subagent to read review-questions.md in full.
 T-C: every such file over 100 lines opens with a contents list.
 T-P: no backslash path in SKILL.md, the reviewer file, the references or the scripts' output.
+T-B: bibliography.md's grounding table and sources keep up with review-questions.md (round-3 brief, item 6).
+
+sample-review.md is being revised for round 3 and is read by none of these checks until its revision lands
+with its hash; each check that would read it says so in a skipped test.
 
 Each check runs on a control built to show it can fail. A check on a prose file that is not yet in place
 is skipped with the reason, so the run says what waits.
@@ -18,6 +22,11 @@ from pathlib import Path
 from support import SKILL, ScratchCase, run
 
 SKILL_MD = SKILL / "SKILL.md"
+REVIEW_QUESTIONS = SKILL / "references" / "review-questions.md"
+BIBLIOGRAPHY = SKILL / "references" / "bibliography.md"
+# The sample report, whose content no test reads until its round-3 revision lands (the round-3 delegation).
+SAMPLE = "references/sample-review.md"
+WAITING = "sample-review.md awaits its round-3 revision"
 # The reviewer file's path inside the skill, named once (specification §0).
 REVIEWER = SKILL / "agents" / "reviewer.md"
 
@@ -61,14 +70,15 @@ def person_words(skill_md):
     return PERSON_WORDS.findall(description(skill_md))
 
 
-def model_read_files(skill_dir):
-    """Every .md file under agents/ and references/, relative to the skill folder."""
+def model_read_files(skill_dir, unread=(SAMPLE,)):
+    """Every .md file under agents/ and references/, relative to the skill folder, less any whose content no
+    test reads yet."""
     skill_dir = Path(skill_dir)
     found = []
     for sub in ("agents", "references"):
         if (skill_dir / sub).is_dir():
             found += sorted(p.relative_to(skill_dir).as_posix() for p in (skill_dir / sub).rglob("*.md"))
-    return found
+    return [f for f in found if f not in unread]
 
 
 def links(path):
@@ -84,6 +94,9 @@ def link_faults(skill_dir):
     faults = []
     top = links(skill_dir / "SKILL.md")
     files = model_read_files(skill_dir)
+    # The sample's link is checked; its content is not read until its round-3 revision lands.
+    if (skill_dir / SAMPLE).exists() and SAMPLE not in top:
+        faults.append(f"{SAMPLE} is not linked from SKILL.md")
     for rel in files:
         if rel not in top:
             faults.append(f"{rel} is not linked from SKILL.md")
@@ -121,6 +134,56 @@ def backslash_faults(paths):
     return faults
 
 
+def question_titles(text):
+    """The bold question titles of review-questions.md, under its two sections' Checks and Ratings."""
+    titles = []
+    for heading in ("Persona questions", "Instruction-writing questions"):
+        m = re.search(rf"^## {heading}\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+        if m:
+            titles += [t.rstrip(".") for t in re.findall(r"^\*\*(.+?)\*\*", m.group(1), re.MULTILINE)]
+    return titles
+
+
+def section_text(text, heading):
+    m = re.search(rf"^## {heading}\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    return m.group(1) if m else ""
+
+
+def table_rows(text):
+    """The cells of each body row of every Markdown table in text, header and rule rows left out."""
+    rows, previous = [], ""
+    for line in text.splitlines():
+        if line.startswith("|") and not re.match(r"^\|[\s|:-]+\|$", line):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if previous.startswith("|"):
+                rows.append(cells)
+        previous = line if line.startswith("|") else ""
+    return rows
+
+
+def drift_faults(questions_text, bibliography_text):
+    """T-B: return a list of faults; empty when the bibliography keeps up with the review questions."""
+    faults = []
+    grounding = table_rows(section_text(bibliography_text, "Grounding"))
+    sources_text = section_text(bibliography_text, "Sources")
+    keys = {row[0] for row in table_rows(sources_text)}
+    grounded = [row[0] for row in grounding]
+    for title in question_titles(questions_text):
+        count = grounded.count(title)
+        if count == 0:
+            faults.append(f"'{title}' is missing from the grounding table")
+        elif count > 1:
+            faults.append(f"'{title}' appears {count} times in the grounding table")
+    for row in grounding:
+        for key in (k.strip() for k in row[3].split(",")):
+            if key and key != "none" and key not in keys:
+                faults.append(f"'{row[0]}': source key {key} has no row in the Sources tables")
+    for url in re.findall(r"<(https?://[^>\s]+)>", questions_text):
+        if url not in sources_text:
+            faults.append(f"{url}, cited in review-questions.md, is missing from the Sources tables")
+    return faults
+
+
 def need(path):
     if not Path(path).exists():
         raise unittest.SkipTest(f"{Path(path).relative_to(SKILL.parent)} is not yet in place; this check waits for it")
@@ -143,6 +206,9 @@ class TestLinksT_L(ScratchCase):
         need(SKILL_MD)
         self.assertEqual(link_faults(SKILL), [])
 
+    def test_sample_content(self):
+        self.skipTest(WAITING)
+
     def test_control(self):
         skill = self.tmp / "skill"
         (skill / "references").mkdir(parents=True)
@@ -162,6 +228,9 @@ class TestContentsT_C(ScratchCase):
     def test_reviewer_file_present(self):
         need(REVIEWER)
 
+    def test_sample(self):
+        self.skipTest(WAITING)
+
     def test_control(self):
         skill = self.tmp / "skill"
         (skill / "references").mkdir(parents=True)
@@ -171,7 +240,10 @@ class TestContentsT_C(ScratchCase):
 
 class TestPathsT_P(ScratchCase):
     def test_real_prose(self):
-        files = [p for p in [SKILL_MD, REVIEWER, *sorted((SKILL / "references").glob("*.md"))] if p.exists()]
+        files = [
+            p for p in [SKILL_MD, REVIEWER, *sorted((SKILL / "references").glob("*.md"))]
+            if p.exists() and p.name != "sample-review.md"
+        ]
         self.assertTrue(files)
         self.assertEqual(backslash_faults(files), [])
 
@@ -181,10 +253,56 @@ class TestPathsT_P(ScratchCase):
             self.assertEqual(proc.returncode, 0, script)
             self.assertEqual(BACKSLASH_PATH.findall(proc.stdout), [], script)
 
+    def test_sample(self):
+        self.skipTest(WAITING)
+
     def test_control(self):
         f = self.tmp / "x.md"
         f.write_text("Run `scripts\\check.py` first.\n")
         self.assertEqual(backslash_faults([f]), ["x.md:1: scripts\\check.py"])
+
+
+class TestBibliographyT_B(ScratchCase):
+    """T-B: the bibliography drift test, on the frozen files and on three controls, one per fault."""
+
+    def setUp(self):
+        super().setUp()
+        self.questions = REVIEW_QUESTIONS.read_text(encoding="utf-8")
+        self.bibliography = BIBLIOGRAPHY.read_text(encoding="utf-8")
+
+    def copy(self, name, text):
+        """Plant a fault in a scratch copy, so no reference file is touched."""
+        path = self.tmp / name
+        path.write_text(text, encoding="utf-8")
+        return path.read_text(encoding="utf-8")
+
+    def test_real_files(self):
+        self.assertEqual(len(question_titles(self.questions)), 33)
+        self.assertEqual(drift_faults(self.questions, self.bibliography), [])
+
+    def test_control_title_missing_or_twice(self):
+        lines = self.bibliography.splitlines()
+        one_job = next(l for l in lines if l.startswith("| One job |"))
+        reasons = next(l for l in lines if l.startswith("| Reasons given |"))
+        planted = "\n".join(
+            l for l in lines if l != one_job
+        ).replace(reasons, reasons + "\n" + reasons)
+        faults = drift_faults(self.questions, self.copy("bibliography.md", planted))
+        self.assertIn("'One job' is missing from the grounding table", faults)
+        self.assertIn("'Reasons given' appears 2 times in the grounding table", faults)
+
+    def test_control_key_without_a_source(self):
+        planted = self.bibliography.replace("| AN2, AN3 |", "| AN2, AN9 |", 1)
+        self.assertNotEqual(planted, self.bibliography)
+        faults = drift_faults(self.questions, self.copy("bibliography.md", planted))
+        self.assertEqual(faults, ["'Bound parts agree with the prose': source key AN9 has no row in the Sources tables"])
+
+    def test_control_url_missing(self):
+        planted = self.questions + "\nAlso: <https://example.com/not-in-the-bibliography>.\n"
+        faults = drift_faults(self.copy("review-questions.md", planted), self.bibliography)
+        self.assertEqual(
+            faults, ["https://example.com/not-in-the-bibliography, cited in review-questions.md, is missing from the Sources tables"]
+        )
 
 
 if __name__ == "__main__":

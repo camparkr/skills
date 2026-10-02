@@ -1,4 +1,5 @@
-"""Tests for check.py, the true/false checks run from a table (SI-2, SI-10)."""
+"""Tests for check.py, the true/false checks run from a table (SI-2, SI-10), to the round-3 table: a harness
+column, and rows for 'Declares its tools', 'Plain emphasis' and 'No placeholders'."""
 
 import hashlib
 import json
@@ -12,6 +13,7 @@ ALL_ONE, SOME_ZERO, ERROR, NOTHING = 0, 1, 2, 3
 
 TABLE = REFERENCES / "failures.tsv"
 DEFAULTS = REFERENCES / "harness-defaults.tsv"
+HEADER = ["id", "question", "kind", "applies_to", "harness", "field", "pattern", "unless", "data", "source", "message"]
 
 
 def scores(proc):
@@ -19,8 +21,18 @@ def scores(proc):
     return {(r["id"], r["path"]): r["score"] for r in json.loads(proc.stdout)}
 
 
+def row_for(proc, rid, path=None):
+    return [r for r in json.loads(proc.stdout) if r["id"] == rid and (path is None or r["path"] == path)][0]
+
+
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def table_row(*cells):
+    """A table row of eleven tab-separated cells."""
+    assert len(cells) == len(HEADER), cells
+    return "\t".join(cells)
 
 
 class TestT2(ScratchCase):
@@ -31,9 +43,7 @@ class TestT2(ScratchCase):
         proc = run("check.py", cwd=proj)
         self.assertEqual(proc.returncode, SOME_ZERO, proc.stdout + proc.stderr)
         line = [l for l in proc.stdout.splitlines() if l.startswith("PJ-001\t")][0]
-        self.assertEqual(
-            line.split("\t")[:3], ["PJ-001", "0", ".claude/agents/checker.md:7"]
-        )
+        self.assertEqual(line.split("\t")[:3], ["PJ-001", "0", ".claude/agents/checker.md:7"])
         self.assertIn("notes/missing.md", line)
 
     def test_clean_file(self):
@@ -48,10 +58,10 @@ class TestT2(ScratchCase):
         table = self.tmp / "failures.tsv"
         shutil.copy(TABLE, table)
         with table.open("a", encoding="utf-8") as fh:
-            fh.write(
-                "PJ-900\tNo time-sensitive statements\tline-pattern\tany\t\tbecause it is uncommon\t\t\t"
-                "test row\tthe phrase planted for T-2\n"
-            )
+            fh.write(table_row(
+                "PJ-900", "No time-sensitive statements", "line-pattern", "any", "", "", "because it is uncommon",
+                "", "", "test row", "the phrase planted for T-2",
+            ) + "\n")
         proc = run("check.py", "--table", table, "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, SOME_ZERO, proc.stdout + proc.stderr)
         self.assertEqual(scores(proc)[("PJ-900", ".claude/agents/checker.md")], 0)
@@ -72,12 +82,10 @@ class TestT2(ScratchCase):
             )
         proc = run("check.py", "--table", folder / "failures.tsv", "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, SOME_ZERO, proc.stdout + proc.stderr)
-        row = [r for r in json.loads(proc.stdout) if r["id"] == "PJ-005"][0]
-        self.assertEqual(row["score"], 0)
-        self.assertEqual(row["line"], 7)
+        row = row_for(proc, "PJ-005")
+        self.assertEqual((row["score"], row["line"]), (0, 7))
         self.assertIn("HD-900", row["message"])
         self.assertEqual({p.name: sha(p) for p in SCRIPTS.glob("*.py")}, before)
-        # The same project with the seed table: PJ-005 scores 1.
         seed = run("check.py", "--format", "json", cwd=proj)
         self.assertEqual(scores(seed)[("PJ-005", ".claude/agents/checker.md")], 1)
 
@@ -88,20 +96,22 @@ class TestSeedRows(ScratchCase):
         proc = run("check.py", "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, SOME_ZERO, proc.stderr)
         got = scores(proc)
-        # CLAUDE.md: 'See also `docs/style.md`.' names a missing path and gives no trigger.
-        self.assertEqual(got[("PJ-001", "CLAUDE.md")], 0)
-        self.assertEqual(got[("PJ-002", "CLAUDE.md")], 0)
         # helper.md: tools include Edit; the prose says never edit files.
         self.assertEqual(got[("PJ-003", ".claude/agents/helper.md")], 0)
-        # doc-writer.md: no row finds anything.
-        for rid in ("PJ-001", "PJ-002", "PJ-003", "PJ-005", "PJ-006", "PJ-007"):
+        # doc-writer.md: no row finds anything; the Gemini CLI and Copilot rows do not apply to it.
+        for rid in ("PJ-001", "PJ-002", "PJ-003", "PJ-005", "PJ-006", "PJ-007", "PJ-008", "PJ-011", "PJ-012"):
             self.assertEqual(got[(rid, ".claude/agents/doc-writer.md")], 1, rid)
-        # A file with no tools field: PJ-003 does not apply.
-        self.assertIsNone(got[("PJ-003", "CLAUDE.md")])
+        for rid in ("PJ-009", "PJ-010"):
+            self.assertIsNone(got[(rid, ".claude/agents/doc-writer.md")], rid)
+        # triage.agent.md: a Copilot custom agent with no tools field.
+        self.assertEqual(got[("PJ-010", ".github/agents/triage.agent.md")], 0)
+        self.assertIsNone(got[("PJ-003", ".github/agents/triage.agent.md")])
         # A harness with no row in harness-defaults.tsv: nothing contradicts the check.
-        self.assertEqual(got[("PJ-005", ".cursor/rules/style.mdc")], 1)
-        # 'Nothing said twice' is a reading check now; no row reads it.
-        self.assertNotIn(("PJ-004", "AGENTS.md"), got)
+        self.assertEqual(got[("PJ-005", ".github/agents/triage.agent.md")], 1)
+        # The files set aside are not checked.
+        for path in ("CLAUDE.md", "AGENTS.md", "README.md", ".claude/output-styles/terse.md"):
+            self.assertNotIn(("PJ-001", path), got)
+        self.assertNotIn(("PJ-004", ".claude/agents/helper.md"), got)
 
     def test_time_and_harness_defaults(self):
         """PJ-005, PJ-006 and PJ-007 on the lines the review questions give as examples."""
@@ -119,7 +129,6 @@ class TestSeedRows(ScratchCase):
         """Likeness fixture: 'before you start', 'until the user replies', 'by name' and 'the API' score 1."""
         proj = self.project("time-likeness")
         proc = run("check.py", "--format", "json", cwd=proj)
-        self.assertEqual(proc.returncode, ALL_ONE, proc.stdout + proc.stderr)
         got = scores(proc)
         for rid in ("PJ-005", "PJ-006", "PJ-007"):
             self.assertEqual(got[(rid, ".claude/agents/planner.md")], 1, rid)
@@ -127,44 +136,119 @@ class TestSeedRows(ScratchCase):
     def test_codex_default(self):
         """HD-002: a Codex agent file asking the agent to read AGENTS.md."""
         proj = self.project("codex-defaults")
-        proc = run("check.py", "--format", "json", cwd=proj)
-        row = [r for r in json.loads(proc.stdout) if r["id"] == "PJ-005"][0]
+        row = row_for(run("check.py", "--format", "json", cwd=proj), "PJ-005")
         self.assertEqual((row["score"], row["line"]), (0, 4))
         self.assertIn("HD-002", row["message"])
 
+    def test_declares_its_tools(self):
+        """PJ-008 to PJ-010: a delegated persona with no tools field, each in its own harness; none for Codex."""
+        proj = self.project("declares-tools")
+        proc = run("check.py", "--format", "json", cwd=proj)
+        self.assertEqual(proc.returncode, SOME_ZERO, proc.stderr)
+        got = scores(proc)
+        self.assertEqual(got[("PJ-008", ".claude/agents/planner.md")], 0)
+        self.assertEqual(got[("PJ-009", ".gemini/agents/summariser.md")], 0)
+        self.assertEqual(got[("PJ-010", ".github/agents/triage.agent.md")], 0)
+        self.assertEqual(got[("PJ-008", ".claude/agents/doc-writer.md")], 1)
+        # Each row applies to its own harness only.
+        self.assertIsNone(got[("PJ-009", ".claude/agents/planner.md")])
+        self.assertIsNone(got[("PJ-008", ".github/agents/triage.agent.md")])
+        # A Codex custom agent is not scored on 'Declares its tools' (A-27).
+        for rid in ("PJ-008", "PJ-009", "PJ-010"):
+            self.assertIsNone(got[(rid, ".codex/agents/reviewer.toml")], rid)
+        # A 0 quotes the line that names the agent, since the missing field has no line of its own.
+        row = row_for(proc, "PJ-008", ".claude/agents/planner.md")
+        self.assertEqual((row["line"], row["quote"]), (2, "name: planner"))
+        self.assertIn("tools", row["message"])
+
+    def test_declares_its_tools_standing(self):
+        """A standing persona is not scored on 'Declares its tools'."""
+        proj = self.project("standing")
+        got = scores(run("check.py", "notes/release.md", "--format", "json", cwd=proj))
+        for rid in ("PJ-008", "PJ-009", "PJ-010"):
+            self.assertIsNone(got[(rid, "notes/release.md")], rid)
+
+    def test_plain_emphasis_and_placeholders(self):
+        """PJ-011 and PJ-012 on the review questions' examples; a fenced block is an example, not an instruction."""
+        proj = self.project("emphasis")
+        proc = run("check.py", "--format", "json", cwd=proj)
+        self.assertEqual(proc.returncode, SOME_ZERO, proc.stderr)
+        emphasis = row_for(proc, "PJ-011")
+        self.assertEqual((emphasis["score"], [l["line"] for l in emphasis["lines"]]), (0, [7]))
+        self.assertEqual(emphasis["quote"], "CRITICAL: You MUST run the tests.")
+        placeholders = row_for(proc, "PJ-012")
+        self.assertEqual((placeholders["score"], [l["line"] for l in placeholders["lines"]]), (0, [8, 9, 10]))
+
+    def test_plain_emphasis_likeness(self):
+        """Likeness fixture: 'critical' and 'must' in lower case, a todo list and a bracketed link score 1."""
+        proj = self.project("emphasis-likeness")
+        proc = run("check.py", "--format", "json", cwd=proj)
+        self.assertEqual(proc.returncode, ALL_ONE, proc.stdout + proc.stderr)
+        got = scores(proc)
+        for rid in ("PJ-011", "PJ-012"):
+            self.assertEqual(got[(rid, ".claude/agents/tester.md")], 1, rid)
+
+    def test_spread_over_files(self):
+        """T-13: a listed persona's files are checked with it, under the persona's kind and harness."""
+        proj = self.project("si13")
+        proc = run("check.py", "--format", "json", cwd=proj)
+        paths = {r["path"] for r in json.loads(proc.stdout)}
+        self.assertEqual(
+            paths,
+            {
+                ".claude/agents/stylist.md",
+                "personas/reviewer/reviewer.md",
+                "personas/reviewer/scale.md",
+                "personas/reviewer/examples.md",
+            },
+        )
+        self.assertIn("personas/reviewer/missing.md", proc.stderr)
+
     def test_text_line_quotes_the_line(self):
-        proj = self.project("si11")
-        proc = run("check.py", "CLAUDE.md", cwd=proj)
-        line = [l for l in proc.stdout.splitlines() if l.startswith("PJ-002\t")][0]
-        self.assertEqual(line.split("\t")[:4], ["PJ-002", "0", "CLAUDE.md:4", "'See also `docs/style.md`.'"])
+        proj = self.project("time-defaults")
+        proc = run("check.py", ".claude/agents/planner.md", cwd=proj)
+        line = [l for l in proc.stdout.splitlines() if l.startswith("PJ-006\t")][0]
+        self.assertEqual(
+            line.split("\t")[:4],
+            ["PJ-006", "0", ".claude/agents/planner.md:7", "'Keep the old changelog format until August.'"],
+        )
 
     def test_exit_zero(self):
-        proj = self.project("si2-planted")
-        proc = run("check.py", "--exit-zero", cwd=proj)
+        proc = run("check.py", "--exit-zero", cwd=self.project("si2-planted"))
         self.assertEqual(proc.returncode, ALL_ONE)
         self.assertIn("PJ-001\t0\t", proc.stdout)
 
     def test_kind_override(self):
-        proj = self.project("si11")
-        proc = run("check.py", "CLAUDE.md", "--kind", "delegated", "--format", "json", cwd=proj)
+        """--kind standing makes a delegated file standing, so 'Declares its tools' no longer applies."""
+        proj = self.project("time-defaults")
+        proc = run("check.py", "--kind", "standing", "--format", "json", cwd=proj)
         self.assertIn(proc.returncode, (ALL_ONE, SOME_ZERO), proc.stderr)
-        self.assertEqual({r["kind"] for r in json.loads(proc.stdout)}, {"delegated"})
+        self.assertEqual({r["delegated"] for r in json.loads(proc.stdout)}, {False})
+        self.assertIsNone(scores(proc)[("PJ-008", ".claude/agents/planner.md")])
 
     def test_session_text(self):
         text = (make_fixtures.FILES / "si2-planted.fixture").read_text()
         proc = run("check.py", "-", stdin=text, cwd=self.tmp)
         self.assertEqual(proc.returncode, SOME_ZERO, proc.stderr)
         self.assertIn("<session text>:7", proc.stdout)
-        # Session text names no harness, so PJ-005 does not apply to it.
-        line = [l for l in proc.stdout.splitlines() if l.startswith("PJ-005\t")][0]
-        self.assertEqual(line.split("\t")[1], "-")
+        # Session text names no harness, so neither PJ-005 nor the 'Declares its tools' rows apply to it.
+        for rid in ("PJ-005", "PJ-008", "PJ-009", "PJ-010"):
+            line = [l for l in proc.stdout.splitlines() if l.startswith(rid + "\t")][0]
+            self.assertEqual(line.split("\t")[1], "-", rid)
+
+    def test_named_set_aside_file(self):
+        """A named CLAUDE.md is set aside, so there is nothing to check: exit 3, with the reason."""
+        proc = run("check.py", "CLAUDE.md", cwd=self.project("si11"))
+        self.assertEqual(proc.returncode, NOTHING)
+        self.assertIn("CLAUDE.md is set aside", proc.stderr)
+        self.assertIn("project instructions", proc.stderr)
 
 
 class TestT10Determinism(ScratchCase):
     def test_two_runs_byte_identical(self):
         proj = self.project("si11")
-        first = run("check.py", "CLAUDE.md", cwd=proj)
-        second = run("check.py", "CLAUDE.md", cwd=proj)
+        first = run("check.py", ".claude/agents/helper.md", cwd=proj)
+        second = run("check.py", ".claude/agents/helper.md", cwd=proj)
         self.assertEqual(first.stdout, second.stdout)
         self.assertEqual(first.returncode, second.returncode)
         self.assertTrue(first.stdout)
@@ -181,98 +265,111 @@ class TestT9ChangesNothing(ScratchCase):
 
 
 class TestRejects(ScratchCase):
-    def bad_table(self, row):
+    def bad_table(self, *rows):
         table = self.tmp / "bad.tsv"
-        header = TABLE.read_text(encoding="utf-8").splitlines()[0]
-        table.write_text(header + "\n" + row + "\n", encoding="utf-8")
+        table.write_text("\t".join(HEADER) + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
         return table
+
+    def checked(self, table):
+        return run("check.py", "--table", table, cwd=self.project("si2-clean"))
 
     def test_empty_project(self):
         """Empty fixture: nothing to check, exit 3."""
-        proc = run("check.py", cwd=self.project("empty"))
-        self.assertEqual(proc.returncode, NOTHING)
+        self.assertEqual(run("check.py", cwd=self.project("empty")).returncode, NOTHING)
 
     def test_empty_file(self):
         """Empty fixture: an empty persona file, exit 3."""
-        proc = run("check.py", "CLAUDE.md", cwd=self.project("empty-file"))
+        proc = run("check.py", ".claude/agents/blank.md", cwd=self.project("empty-file"))
         self.assertEqual(proc.returncode, NOTHING)
         self.assertIn("empty", proc.stderr)
 
     def test_empty_session_text(self):
-        proc = run("check.py", "-", stdin="")
-        self.assertEqual(proc.returncode, NOTHING)
+        self.assertEqual(run("check.py", "-", stdin="").returncode, NOTHING)
 
     def test_likeness_project(self):
         """Likeness fixture: a project of look-alikes holds nothing to check."""
-        proc = run("check.py", cwd=self.project("likeness"))
-        self.assertEqual(proc.returncode, NOTHING)
+        self.assertEqual(run("check.py", cwd=self.project("likeness")).returncode, NOTHING)
+
+    def test_old_header(self):
+        """Round 2's ten-column header, with no harness column, is a table error naming line 1."""
+        table = self.tmp / "old.tsv"
+        table.write_text(
+            "id\tquestion\tkind\tapplies_to\tfield\tpattern\tunless\tdata\tsource\tmessage\n", encoding="utf-8"
+        )
+        proc = self.checked(table)
+        self.assertEqual(proc.returncode, ERROR)
+        self.assertIn("line 1", proc.stderr)
+        self.assertIn("harness", proc.stderr)
 
     def test_unknown_question(self):
-        table = self.bad_table("PJ-001\tPointers carry triggers\tmissing-path\tany\t\t\t\t\ts\tm")
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-001", "Pointers carry triggers", "missing-path", "any", "", "", "", "", "", "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("line 2", proc.stderr)
         self.assertIn("question", proc.stderr)
 
     def test_reading_check_is_a_table_error(self):
         """A row may name only a check marked script; 'Nothing said twice' is a reading check."""
-        table = self.bad_table("PJ-001\tNothing said twice\tline-pattern\tany\t\tx\t\t\ts\tm")
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-001", "Nothing said twice", "line-pattern", "any", "", "", "x", "", "", "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("line 2", proc.stderr)
         self.assertIn("script", proc.stderr)
 
-    def test_unknown_kind(self):
-        table = self.bad_table("PJ-001\tNo time-sensitive statements\tword-count\tany\t\t\t\t\ts\tm")
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
-        self.assertEqual(proc.returncode, ERROR)
-        self.assertIn("line 2", proc.stderr)
-        self.assertIn("kind", proc.stderr)
+    def test_new_script_checks_are_accepted(self):
+        """The three checks marked script in round 3 may each have a row."""
+        proc = self.checked(self.bad_table(
+            table_row("PJ-901", "Declares its tools", "field-missing", "delegated", "Claude Code", "tools", "", "", "", "s", "m"),
+            table_row("PJ-902", "Plain emphasis", "line-pattern", "any", "", "", "x", "", "", "s", "m"),
+            table_row("PJ-903", "No placeholders", "line-pattern", "any", "", "", "x", "", "", "s", "m"),
+        ))
+        self.assertNotEqual(proc.returncode, ERROR, proc.stderr)
 
-    def test_withdrawn_kind(self):
-        """Round 1's repeated-sentence kind is withdrawn with its row."""
-        table = self.bad_table("PJ-001\tNo time-sensitive statements\trepeated-sentence\tany\t\t\t\t\ts\tm")
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+    def test_unknown_harness(self):
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-001", "Declares its tools", "field-missing", "delegated", "Copilot", "tools", "", "", "", "s", "m")))
+        self.assertEqual(proc.returncode, ERROR)
+        self.assertIn("line 2, column harness", proc.stderr)
+
+    def test_unknown_kind(self):
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-001", "No time-sensitive statements", "word-count", "any", "", "", "", "", "", "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("kind", proc.stderr)
 
     def test_bad_id_and_duplicate(self):
-        table = self.bad_table(
-            "PJ-1\tNo time-sensitive statements\tline-pattern\tany\t\tx\t\t\ts\tm\n"
-            "PJ-002\tNo time-sensitive statements\tline-pattern\tany\t\tx\t\t\ts\tm\n"
-            "PJ-002\tNo time-sensitive statements\tline-pattern\tany\t\ty\t\t\ts\tm"
-        )
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(
+            table_row("PJ-1", "No time-sensitive statements", "line-pattern", "any", "", "", "x", "", "", "s", "m"),
+            table_row("PJ-002", "No time-sensitive statements", "line-pattern", "any", "", "", "x", "", "", "s", "m"),
+            table_row("PJ-002", "No time-sensitive statements", "line-pattern", "any", "", "", "y", "", "", "s", "m"),
+        ))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("line 2", proc.stderr)
         self.assertIn("line 4", proc.stderr)
 
     def test_bad_pattern(self):
-        table = self.bad_table("PJ-001\tNo time-sensitive statements\tline-pattern\tany\t\t(unclosed\t\t\ts\tm")
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-001", "No time-sensitive statements", "line-pattern", "any", "", "", "(unclosed", "", "", "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("pattern", proc.stderr)
 
     def test_harness_default_without_data(self):
-        table = self.bad_table("PJ-005\tLeaves the harness's work to the harness\tharness-default\tany\t\t\t\t\ts\tm")
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-005", "Leaves the harness's work to the harness", "harness-default", "any", "", "", "", "", "", "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
-        self.assertIn("line 2", proc.stderr)
         self.assertIn("data", proc.stderr)
 
     def test_data_on_another_kind(self):
-        table = self.bad_table(
-            "PJ-006\tNo time-sensitive statements\tline-pattern\tany\t\tx\t\tharness-defaults.tsv\ts\tm"
-        )
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-006", "No time-sensitive statements", "line-pattern", "any", "", "", "x", "", "harness-defaults.tsv",
+            "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("data", proc.stderr)
 
     def test_missing_data_table(self):
-        table = self.bad_table(
-            "PJ-005\tLeaves the harness's work to the harness\tharness-default\tany\t\t\t\tno-such.tsv\ts\tm"
-        )
-        proc = run("check.py", "--table", table, cwd=self.project("si1"))
+        proc = self.checked(self.bad_table(table_row(
+            "PJ-005", "Leaves the harness's work to the harness", "harness-default", "any", "", "", "", "",
+            "no-such.tsv", "s", "m")))
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("column data", proc.stderr)
         self.assertIn("no-such.tsv", proc.stderr)
@@ -286,15 +383,14 @@ class TestRejects(ScratchCase):
         (folder / "harness-defaults.tsv").write_text(
             text + "HD-9\tClaude Code\tsomething\t(unclosed\t\tsource\n", encoding="utf-8"
         )
-        proc = run("check.py", "--table", folder / "failures.tsv", cwd=self.project("si1"))
+        proc = self.checked(folder / "failures.tsv")
         self.assertEqual(proc.returncode, ERROR)
         self.assertIn("harness-defaults.tsv, line 5", proc.stderr)
         self.assertIn("column id", proc.stderr)
         self.assertIn("column pattern", proc.stderr)
 
     def test_unknown_kind_option(self):
-        proc = run("check.py", "--kind", "ambient", cwd=self.project("si1"))
-        self.assertEqual(proc.returncode, ERROR)
+        self.assertEqual(run("check.py", "--kind", "ambient", cwd=self.project("si1")).returncode, ERROR)
 
     def test_unreadable_path(self):
         proc = run("check.py", "missing.md", cwd=self.project("si1"))
@@ -304,26 +400,37 @@ class TestRejects(ScratchCase):
 
 class TestSeedTable(unittest.TestCase):
     def test_seed_rows(self):
-        """Round 2's rows: PJ-004 withdrawn and its ID not reused; new rows from PJ-005."""
+        """Round 3's rows: PJ-004 withdrawn and its ID not reused; PJ-008 to PJ-012 added, each naming its harness."""
         lines = TABLE.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(
-            lines[0].split("\t"),
-            ["id", "question", "kind", "applies_to", "field", "pattern", "unless", "data", "source", "message"],
-        )
+        self.assertEqual(lines[0].split("\t"), HEADER)
         rows = [l.split("\t") for l in lines[1:]]
-        self.assertEqual([r[0] for r in rows], ["PJ-001", "PJ-002", "PJ-003", "PJ-005", "PJ-006", "PJ-007"])
         self.assertEqual(
-            [(r[1], r[2]) for r in rows],
+            [(r[0], r[1], r[2], r[3], r[4]) for r in rows],
             [
-                ("Pointers carry their triggers", "missing-path"),
-                ("Pointers carry their triggers", "line-pattern"),
-                ("Bound parts agree with the prose", "field-and-line"),
-                ("Leaves the harness's work to the harness", "harness-default"),
-                ("No time-sensitive statements", "line-pattern"),
-                ("No time-sensitive statements", "line-pattern"),
+                ("PJ-001", "Pointers carry their triggers", "missing-path", "any", ""),
+                ("PJ-002", "Pointers carry their triggers", "line-pattern", "any", ""),
+                ("PJ-003", "Bound parts agree with the prose", "field-and-line", "any", ""),
+                ("PJ-005", "Leaves the harness's work to the harness", "harness-default", "any", ""),
+                ("PJ-006", "No time-sensitive statements", "line-pattern", "any", ""),
+                ("PJ-007", "No time-sensitive statements", "line-pattern", "any", ""),
+                ("PJ-008", "Declares its tools", "field-missing", "delegated", "Claude Code"),
+                ("PJ-009", "Declares its tools", "field-missing", "delegated", "Gemini CLI"),
+                ("PJ-010", "Declares its tools", "field-missing", "delegated", "GitHub Copilot"),
+                ("PJ-011", "Plain emphasis", "line-pattern", "any", ""),
+                ("PJ-012", "No placeholders", "line-pattern", "any", ""),
             ],
         )
-        self.assertEqual(rows[3][7], "harness-defaults.tsv")
+        by_id = {r[0]: dict(zip(HEADER, r)) for r in rows}
+        self.assertEqual(by_id["PJ-005"]["data"], "harness-defaults.tsv")
+        for rid in ("PJ-008", "PJ-009", "PJ-010"):
+            self.assertEqual(by_id[rid]["field"], "tools")
+        self.assertEqual(
+            by_id["PJ-011"]["pattern"], r"(?-i:\b(CRITICAL|IMPORTANT|MUST|NEVER|ALWAYS|REQUIRED|WARNING)\b)"
+        )
+        self.assertEqual(
+            by_id["PJ-012"]["pattern"],
+            r"(?-i:\b(TODO|TBD|FIXME|XXX)\b)|\[(insert|add|your|placeholder)[^\]]*\]|<(insert|your)[^>]*>|\{\{[^}]*\}\}",
+        )
 
     def test_defaults_rows(self):
         lines = DEFAULTS.read_text(encoding="utf-8").splitlines()

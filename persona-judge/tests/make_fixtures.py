@@ -41,64 +41,96 @@ EXIT_USAGE = 2
 
 # Each project maps a path inside the scratch folder to a fixture's stem.
 PROJECTS = {
-    # SI-1 (T-1): one standing file and one delegated file.
+    # SI-1 (T-1), round 3: two dedicated personas, a project instructions file and an output style.
     "si1": {
+        ".claude/agents/helper.md": "helper-agent",
+        ".github/agents/triage.agent.md": "copilot-agent",
         "CLAUDE.md": "claude-md",
         "docs/api.md": "api-doc",
-        ".claude/agents/helper.md": "helper-agent",
+        ".claude/output-styles/terse.md": "output-style",
     },
-    # SI-11 (T-11) and SI-9 (T-9): five persona files, a README and a file
-    # the persona files point to.
+    # SI-11 (T-11) and SI-9 (T-9), round 3: three dedicated personas and four files set aside, beside
+    # files the personas point to.
     "si11": {
         "CLAUDE.md": "claude-md",
-        "docs/api.md": "api-doc",
         "AGENTS.md": "agents-md",
         ".claude/agents/helper.md": "helper-agent",
         ".claude/agents/doc-writer.md": "doc-writer-agent",
-        ".cursor/rules/style.mdc": "cursor-rule",
+        ".github/agents/triage.agent.md": "copilot-agent",
+        ".claude/output-styles/terse.md": "output-style",
         "README.md": "readme",
+        "docs/api.md": "api-doc",
         "CHANGELOG.md": "changelog",
     },
-    # SI-2 (T-2): one file with a path planted that does not exist, and the
-    # same file without it.
+    # SI-13 (T-13): a persona whose body refers to two files that exist, and a persona the project's list
+    # names as three files, with a listed path that does not exist.
+    "si13": {
+        ".claude/agents/stylist.md": "stylist-agent",
+        "docs/house-style.md": "house-style",
+        "docs/terms.md": "terms",
+        "personas/reviewer/reviewer.md": "list-reviewer",
+        "personas/reviewer/scale.md": "list-scale",
+        "personas/reviewer/examples.md": "list-examples",
+        "personas.txt": "personas-txt",
+    },
+    # SI-2 (T-2): one file with a path planted that does not exist, and the same file without it.
     "si2-planted": {".claude/agents/checker.md": "si2-planted"},
     "si2-clean": {".claude/agents/checker.md": "si2-clean"},
-    # The likeness fixture: files that look like persona files and are not.
+    # The likeness fixture: files that look like persona files and are neither reviewed nor set aside.
     "likeness": {
-        "README.md": "readme",
         "index.md": "index-md",
-        "skills/example/SKILL.md": "skill-md",
         ".claude/commands/deploy.md": "command",
+        "docs/api.md": "api-doc",
     },
     # The empty fixtures: a project with no files, and an empty persona file.
     "empty": {},
-    "empty-file": {"CLAUDE.md": "empty"},
+    "empty-file": {".claude/agents/blank.md": "empty"},
     # The shared reader's harder cases.
     "parsing": {
         ".codex/agents/reviewer.toml": "codex-agent",
         "notes/odd.md": "odd-frontmatter",
     },
-    # SI-4 (T-4): the subagent behind sample-review.md's example.
+    # SI-4 (T-4): the subagent behind sample-review.md's example (its round-3 revision awaits).
     "sample": {".claude/agents/code-reviewer.md": "sample-reviewer"},
     # The script checks added in round 2: a request the harness already meets, and statements that go
     # out of date; then a look-alike of each that scores 1.
     "time-defaults": {".claude/agents/planner.md": "planner-agent"},
     "time-likeness": {".claude/agents/planner.md": "planner-likeness"},
     "codex-defaults": {".codex/agents/reviewer.toml": "codex-reads-agents"},
-    # The discovery rows restored in round 2, beside look-alikes that match none of them.
+    # Round 3's script checks: 'Declares its tools' in each harness that has a row, 'Plain emphasis' and
+    # 'No placeholders', then a look-alike that scores 1 on the last two.
+    "declares-tools": {
+        ".claude/agents/planner.md": "planner-agent",
+        ".gemini/agents/summariser.md": "gemini-agent",
+        ".github/agents/triage.agent.md": "copilot-agent",
+        ".codex/agents/reviewer.toml": "codex-agent",
+        ".claude/agents/doc-writer.md": "doc-writer-agent",
+        "CHANGELOG.md": "changelog",
+    },
+    "emphasis": {".claude/agents/tester.md": "emphasis-agent"},
+    # Two rows scoring 0 on one line, PJ-001 and PJ-002, which the report merges into one finding.
+    "pointer": {".claude/agents/pointer.md": "pointer-agent"},
+    "emphasis-likeness": {".claude/agents/tester.md": "emphasis-likeness"},
+    # A named file in no table: a standing persona, which 'Declares its tools' does not apply to.
+    "standing": {"notes/release.md": "notes-standing"},
+    # The discovery rows: the four dedicated locations and the set-aside Copilot and Cursor files, beside
+    # look-alikes that match neither table.
     "github-codex": {
         ".codex/agents/reviewer.toml": "codex-agent",
+        ".gemini/agents/summariser.md": "gemini-agent",
         ".github/copilot-instructions.md": "copilot-instructions",
         ".github/instructions/top.instructions.md": "copilot-path",
         ".github/instructions/frontend/react/hooks.instructions.md": "copilot-path",
         ".github/instructions/notes.md": "changelog",
         ".github/agents/triage.agent.md": "copilot-agent",
         ".github/agents/notes.md": "changelog",
+        ".cursor/rules/style.mdc": "cursor-rule",
+        "skills/example/SKILL.md": "skill-md",
     },
 }
 
 # The project each model-run case in tests/evals/evals.json runs in, by case id.
-EVAL_PROJECT = {1: "si1", 2: "si11", 3: "si11", 4: "si1", 5: "si11", 6: "si11", 7: "si11"}
+EVAL_PROJECT = {1: "si1", 2: "si11", 3: "si11", 4: "si11", 5: "si11", 6: "si11", 7: "si11", 8: "si13", 9: "si13"}
 
 
 def manifest(folder):

@@ -12,6 +12,20 @@ ROOT = HERE.parent
 SKILL = ROOT / "skill"
 SCRIPTS = SKILL / "scripts"
 REFERENCES = SKILL / "references"
+# sample-review.md as landed for round 3 (153 lines); every test that reads its content checks this first.
+SAMPLE = REFERENCES / "sample-review.md"
+SAMPLE_SHA256 = "fbae22589edd829152dcaaecd48b4a4908840dd5288f0992517801f8c4745064"
+
+
+def sample_text():
+    """The sample's text, after checking its hash: a moved sample stops the test instead of being compared."""
+    import hashlib
+
+    data = SAMPLE.read_bytes()
+    got = hashlib.sha256(data).hexdigest()
+    if got != SAMPLE_SHA256:
+        raise AssertionError(f"sample-review.md has moved: SHA-256 {got}, expected {SAMPLE_SHA256}")
+    return data.decode("utf-8")
 
 sys.path.insert(0, str(HERE))
 import make_fixtures  # noqa: E402

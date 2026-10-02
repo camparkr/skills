@@ -7,8 +7,7 @@ T-C: every such file over 100 lines opens with a contents list.
 T-P: no backslash path in SKILL.md, the reviewer file, the references or the scripts' output.
 T-B: bibliography.md's grounding table and sources keep up with review-questions.md (round-3 brief, item 6).
 
-sample-review.md is being revised for round 3 and is read by none of these checks until its revision lands
-with its hash; each check that would read it says so in a skipped test.
+sample-review.md is read only after its SHA-256 matches the hash it landed with (support.SAMPLE_SHA256).
 
 Each check runs on a control built to show it can fail. A check on a prose file that is not yet in place
 is skipped with the reason, so the run says what waits.
@@ -19,14 +18,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import SKILL, ScratchCase, run
+from support import SKILL, ScratchCase, run, sample_text
 
 SKILL_MD = SKILL / "SKILL.md"
 REVIEW_QUESTIONS = SKILL / "references" / "review-questions.md"
 BIBLIOGRAPHY = SKILL / "references" / "bibliography.md"
-# The sample report, whose content no test reads until its round-3 revision lands (the round-3 delegation).
+# The sample report, landed for round 3 and read once its hash is checked.
 SAMPLE = "references/sample-review.md"
-WAITING = "sample-review.md awaits its round-3 revision"
+# Where the sample's contents heading falls (sample-review.md as landed, line 10).
+SAMPLE_CONTENTS_LINE = 10
 # The reviewer file's path inside the skill, named once (specification §0).
 REVIEWER = SKILL / "agents" / "reviewer.md"
 
@@ -70,7 +70,7 @@ def person_words(skill_md):
     return PERSON_WORDS.findall(description(skill_md))
 
 
-def model_read_files(skill_dir, unread=(SAMPLE,)):
+def model_read_files(skill_dir, unread=()):
     """Every .md file under agents/ and references/, relative to the skill folder, less any whose content no
     test reads yet."""
     skill_dir = Path(skill_dir)
@@ -207,7 +207,16 @@ class TestLinksT_L(ScratchCase):
         self.assertEqual(link_faults(SKILL), [])
 
     def test_sample_content(self):
-        self.skipTest(WAITING)
+        """The sample's content: every skill file it links exists, so SKILL.md can link it too (test_real_links
+        checks that once SKILL.md lands)."""
+        sample_text()
+        files = model_read_files(SKILL)
+        named = {Path(f).name: f for f in files}
+        targets = links(SKILL / SAMPLE)
+        linked = [named[t] if t in named else t for t in targets if t in named or t in files]
+        self.assertIn("references/bibliography.md", linked)
+        for rel in linked:
+            self.assertTrue((SKILL / rel).is_file(), rel)
 
     def test_control(self):
         skill = self.tmp / "skill"
@@ -229,7 +238,11 @@ class TestContentsT_C(ScratchCase):
         need(REVIEWER)
 
     def test_sample(self):
-        self.skipTest(WAITING)
+        """T-C on the sample: over 100 lines, with its contents heading at line 10."""
+        lines = sample_text().splitlines()
+        self.assertGreater(len(lines), CONTENTS_THRESHOLD)
+        self.assertRegex(lines[SAMPLE_CONTENTS_LINE - 1], r"^#+\s+Contents\b")
+        self.assertEqual([f for f in contents_faults(SKILL) if f.startswith(SAMPLE)], [])
 
     def test_control(self):
         skill = self.tmp / "skill"
@@ -242,7 +255,7 @@ class TestPathsT_P(ScratchCase):
     def test_real_prose(self):
         files = [
             p for p in [SKILL_MD, REVIEWER, *sorted((SKILL / "references").glob("*.md"))]
-            if p.exists() and p.name != "sample-review.md"
+            if p.exists()
         ]
         self.assertTrue(files)
         self.assertEqual(backslash_faults(files), [])
@@ -254,7 +267,9 @@ class TestPathsT_P(ScratchCase):
             self.assertEqual(BACKSLASH_PATH.findall(proc.stdout), [], script)
 
     def test_sample(self):
-        self.skipTest(WAITING)
+        """T-P on the sample, once its hash is checked."""
+        sample_text()
+        self.assertEqual(backslash_faults([SKILL / SAMPLE]), [])
 
     def test_control(self):
         f = self.tmp / "x.md"

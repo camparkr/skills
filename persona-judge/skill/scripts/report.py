@@ -156,8 +156,6 @@ COLUMN_GAP = 3
 TITLE_WIDTH = max(len(q[0]) for q in QUESTIONS) + COLUMN_GAP
 # Files under 'Files reviewed:' and 'Files left out:' are indented by two spaces.
 FILE_INDENT = "  "
-# A finding's question and note, and its rule and sources, sit under it, indented by three spaces.
-ITEM_INDENT = "   "
 
 SESSION_TEXT = personafile.SESSION_TEXT
 FENCE_OPEN, FENCE_CLOSE = "```text", "```"
@@ -862,7 +860,9 @@ def fit_lines(p):
     fit = p.fit or {}
     out = [FIT_HEADING]
     for k, f in enumerate(fit.get("findings") or [], start=1):
-        out += [f"{k}. {f.get('file') or p.path}, line {f.get('line')}: '{f.get('_text', '')}'", f"{ITEM_INDENT}{sentence(f.get('note', ''))}"]
+        # The note aligns under the item text, past the number and its full stop.
+        indent = " " * len(f"{k}. ")
+        out += [f"{k}. {f.get('file') or p.path}, line {f.get('line')}: '{f.get('_text', '')}'", f"{indent}{sentence(f.get('note', ''))}"]
     if fit.get("statement"):
         out.append(fit["statement"])
     return out

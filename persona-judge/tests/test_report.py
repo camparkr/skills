@@ -9,7 +9,7 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from support import REFERENCES, SCRIPTS, ScratchCase, make_fixtures, run
+from support import REFERENCES, SCRIPTS, ScratchCase, make_fixtures, run, sample_text
 
 # Exit codes report.py promises (specification §3e).
 OK, MISMATCH, REFUSED, NO_SCORE = 0, 1, 2, 3
@@ -21,7 +21,6 @@ EMPTY = "This file is empty; no stars and no total."
 NOTHING_APPLIES = "No question applies to this file; no stars and no total."
 FENCE_OPEN, FENCE_CLOSE = "```text", "```"
 INSTRUCTIONS = "project instructions: context for the agent, not a dedicated persona"
-WAITING = "sample-review.md awaits its round-3 revision"
 VERDICT_WORDS = re.compile(
     r"\b(pass|passes|passed|fail|fails|failed|approve|approved|block|blocked|severity|critical|major|minor)\b",
     re.IGNORECASE,
@@ -731,6 +730,19 @@ class TestRenderT4(ReportCase):
         nine = next(i for i, l in enumerate(lines) if l.startswith("9. "))
         self.assertTrue(lines[nine + 1].startswith("   ") and not lines[nine + 1].startswith("    "), lines[nine + 1])
 
+    def test_two_digit_fit_items_align(self):
+        """From fit finding 10, the note aligns under the item text: four spaces, not three."""
+        fit = [
+            {"file": ".claude/agents/helper.md", "line": 9, "quote": "Never edit files", "note": f"Fit note {k}."}
+            for k in range(1, 11)
+        ]
+        lines = block(self.render([helper_review(fit={"findings": fit})]).stdout)
+        start = lines.index("Fit with neighbouring files, apart from the score")
+        ten = next(i for i in range(start, len(lines)) if lines[i].startswith("10. "))
+        self.assertEqual(lines[ten + 1], "    Fit note 10.")
+        nine = next(i for i in range(start, len(lines)) if lines[i].startswith("9. "))
+        self.assertEqual(lines[nine + 1], "   Fit note 9.")
+
     def test_columns_aligned(self):
         """The check and rating columns start at one place in both sections."""
         lines = block(self.render([helper_review()]).stdout)
@@ -946,14 +958,14 @@ class TestSampleT4(ReportCase):
     --summary. Its root is set to the fixture project at run time."""
 
     def test_sample_renders_line_for_line(self):
-        self.skipTest(WAITING)
+        want = blocks(sample_text())
         record = json.loads(SAMPLE_RECORD.read_text(encoding="utf-8"))
         record["root"] = self.proj.as_posix()
         path = self.tmp / "sample-record.json"
         path.write_text(json.dumps(record), encoding="utf-8")
         proc = run("report.py", "render", "--summary", path)
         self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
-        self.assertEqual(blocks(proc.stdout), blocks((REFERENCES / "sample-review.md").read_text(encoding="utf-8")))
+        self.assertEqual(blocks(proc.stdout), want)
 
 
 class TestSummaryT11(ReportCase):
@@ -1069,8 +1081,10 @@ class TestVerifyT10(ReportCase):
         self.assertEqual(run("report.py", "verify", junk).returncode, REFUSED)
 
     def test_verify_on_the_sample(self):
-        """The sample's own example verifies, once its round-3 revision lands."""
-        self.skipTest(WAITING)
+        """The sample's own example, as sample-review.md prints it, verifies."""
+        sample_text()
+        ok = run("report.py", "verify", REFERENCES / "sample-review.md")
+        self.assertEqual(ok.returncode, OK, ok.stdout + ok.stderr)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,49 @@ BOUND_PART_FIELDS = (
 # The field that holds a Codex agent's prose.
 TOML_PROSE_FIELD = "developer_instructions"
 
+# A path a line names: in backticks, or as a Markdown link's target, ending in a file extension of one to
+# five letters or digits (build specification §3c, the missing-path kind).
+BACKTICK_PATH = re.compile(r"`([^`\s]+\.[A-Za-z0-9]{1,5})`")
+LINK_PATH = re.compile(r"\]\(([^)\s#]+\.[A-Za-z0-9]{1,5})(?:#[^)]*)?\)")
+# Characters that make a backticked string a pattern, a placeholder or an address rather than a path
+# (build specification §3e, adopted from round 1).
+NOT_A_PATH = re.compile(r"[*?<>{}$|]|://|^mailto:")
+# The line that opens or closes a fenced code block; what lies between is an example, not an instruction.
+FENCE = re.compile(r"^\s*(```|~~~)")
+
+
+def named_paths(text):
+    """The paths a line names, in backticks and then as link targets, skipping patterns and placeholders."""
+    found = [m.group(1) for m in BACKTICK_PATH.finditer(text)] + [m.group(1) for m in LINK_PATH.finditer(text)]
+    return [ref for ref in found if not NOT_A_PATH.search(ref)]
+
+
+def outside_fences(body):
+    """The (line number, text) pairs of a body that lie outside fenced code blocks."""
+    inside = False
+    for n, text in body:
+        if FENCE.match(text):
+            inside = not inside
+            continue
+        if not inside:
+            yield n, text
+
+
+def resolve(ref, folder, root):
+    """The absolute path a named path refers to when it exists, from the file's folder or the project root;
+    otherwise None."""
+    ref = ref[2:] if ref.startswith("./") else ref
+    if ref.startswith("~"):
+        candidates = [os.path.expanduser(ref)]
+    elif os.path.isabs(ref):
+        candidates = [ref]
+    else:
+        candidates = [os.path.join(folder, ref), os.path.join(root, ref)]
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.normpath(c)
+    return None
+
 
 class PersonaError(Exception):
     """A file that cannot be read; the message says what to do about it."""

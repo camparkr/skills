@@ -10,18 +10,22 @@ Each row of the table is run against each file, and one line is printed per row 
 
   row ID, score, place, the line quoted, message      (separated by tabs)
 
-The score is 1 or 0, as the review questions score checks; '-' when the row does not apply: to the
-file's kind, to a file with no such field or no harness its path names, or to a field it could not
-read. The place is path:line for a 0 and the path otherwise. With --format json, the same as one JSON
-array, with every line a row found.
+The score is 1 or 0, as the review questions score checks; '-' when the row does not apply: to a standing
+or delegated persona, to another harness than the row's, to a file with no such field or no harness its path
+names, or to a field it could not read. The place is path:line for a 0 and the path otherwise. With
+--format json, the same as one JSON array, with every line a row found.
+
+Files set aside (project instructions, output styles, READMEs and skills) are not checked. A persona the
+project's list names is checked over all its files, each under the persona's kind and harness.
 
 Adding a row of an existing kind to the table needs no code change. A row names one of the checks the
-review questions mark *script*; the checks they mark *reading* are the reviewer's. The kinds:
-  line-pattern     0 when a body line matches the pattern and not the unless pattern
+review questions mark *script*; the checks they mark *reading* are the reviewer's. A row's harness column is
+empty for every harness, or names the one harness it applies to. The kinds:
+  line-pattern     0 when a body line outside fenced code matches the pattern and not the unless pattern
   missing-path     0 when a path the body names, in backticks or a link, exists neither beside the file
                    nor from the project root
   field-and-line   0 when the field matches the pattern and a body line matches the unless pattern
-  field-missing    0 when the field is absent or empty
+  field-missing    0 when the field is absent or empty; the line quoted is the one that names the agent
   harness-default  0 when a body line matches a row of the defaults table named in the data column,
                    for the file's harness, and not that row's unless pattern; a file whose harness its
                    path does not name is not checked. A new default is a new row of that table.
@@ -59,25 +63,21 @@ EXIT_ZERO_FOUND = 1
 EXIT_ERROR = 2
 EXIT_NOTHING = 3
 
-COLUMNS = ["id", "question", "kind", "applies_to", "field", "pattern", "unless", "data", "source", "message"]
+COLUMNS = ["id", "question", "kind", "applies_to", "harness", "field", "pattern", "unless", "data", "source", "message"]
 KINDS = ("line-pattern", "missing-path", "field-and-line", "field-missing", "harness-default")
 # The defaults table a harness-default row reads (build specification §3d).
 DEFAULTS_COLUMNS = ["id", "harness", "default", "pattern", "unless", "source"]
 DEFAULTS_ID_RE = re.compile(r"^HD-\d{3}$")
 # The harnesses find.py names from a file's path; any other file has no known harness.
-KNOWN_HARNESSES = frozenset(h for _, _, h in find.LOCATIONS)
+KNOWN_HARNESSES = frozenset(find.KNOWN_HARNESSES)
 APPLIES = ("any", "standing", "delegated")
 ID_RE = re.compile(r"^PJ-\d{3}$")
 # The scale's score for a check, as the review questions give it: 1 when nothing contradicts the
 # check, 0 when anything does.
 ONE, ZERO = 1, 0
-# A path the body names: in backticks, or as a Markdown link's target, ending in a file extension of
-# one to five letters or digits.
-BACKTICK_PATH = re.compile(r"`([^`\s]+\.[A-Za-z0-9]{1,5})`")
-LINK_PATH = re.compile(r"\]\(([^)\s#]+\.[A-Za-z0-9]{1,5})(?:#[^)]*)?\)")
-# Characters that make a backticked string a pattern or a placeholder rather than a path.
-NOT_A_PATH = re.compile(r"[*?<>{}$|]|://|^mailto:")
-FENCE = re.compile(r"^\s*(```|~~~)")
+# The frontmatter field whose line a field-missing 0 quotes, since a missing field has no line of its own:
+# the line that names the agent.
+NAME_FIELD = "name"
 
 
 class TableError(Exception):
@@ -85,16 +85,18 @@ class TableError(Exception):
 
 
 def check_titles(path=REVIEW_QUESTIONS):
-    """The checks in review-questions.md as {title: 'script' or 'reading'}, from the bold titles under
-    '## Checks' and the mark after each."""
+    """The checks in review-questions.md as {title: 'script' or 'reading'}, from the bold titles under each
+    section's '### Checks' and the mark after each."""
     try:
         text = open(path, encoding="utf-8").read()
     except OSError as exc:
         raise TableError(f"cannot read the review questions at {find.posix(path)}: {exc.strerror}")
-    m = re.search(r"^## Checks\s*$(.*?)^## ", text, re.MULTILINE | re.DOTALL)
-    if not m:
-        raise TableError("review-questions.md has no '## Checks' section; the table's questions cannot be checked")
-    found = re.findall(r"^\*\*(.+?)\*\*(?: \(\*(script|reading)\*\))?", m.group(1), re.MULTILINE)
+    sections = re.findall(r"^### Checks\s*$(.*?)(?=^##)", text, re.MULTILINE | re.DOTALL)
+    if not sections:
+        raise TableError("review-questions.md has no '### Checks' section; the table's questions cannot be checked")
+    found = []
+    for body in sections:
+        found += re.findall(r"^\*\*(.+?)\*\*(?: \(\*(script|reading)\*\))?", body, re.MULTILINE)
     return {t.rstrip("."): mark for t, mark in found}
 
 
@@ -176,6 +178,11 @@ def load_table(path):
             faults.append(f"{where}, column kind: '{row['kind']}'; expected one of {', '.join(KINDS)}")
         if row["applies_to"] not in APPLIES:
             faults.append(f"{where}, column applies_to: '{row['applies_to']}'; expected any, standing or delegated")
+        if row["harness"] and row["harness"] not in KNOWN_HARNESSES:
+            faults.append(
+                f"{where}, column harness: '{row['harness']}'; expected empty, or one harness as find.py names it: "
+                f"{', '.join(sorted(KNOWN_HARNESSES))}"
+            )
         for col in ("pattern", "unless"):
             if row[col]:
                 try:
@@ -208,50 +215,27 @@ def load_table(path):
     return out
 
 
-def outside_fences(body):
-    """Body lines that are not inside a fenced code block."""
-    inside = False
-    for n, text in body:
-        if FENCE.match(text):
-            inside = not inside
-            continue
-        if not inside:
-            yield n, text
-
-
-def named_paths(text):
-    for m in BACKTICK_PATH.finditer(text):
-        yield m.group(1)
-    for m in LINK_PATH.finditer(text):
-        yield m.group(1)
-
-
-def path_exists(ref, pf, root):
-    if NOT_A_PATH.search(ref):
-        return True
-    ref = ref[2:] if ref.startswith("./") else ref
-    if ref.startswith("~"):
-        return os.path.exists(os.path.expanduser(ref))
-    if os.path.isabs(ref):
-        return os.path.exists(ref)
-    return os.path.exists(os.path.join(pf.folder, ref)) or os.path.exists(os.path.join(root, ref))
-
-
-def run_row(row, pf, kind, root, harness=None):
+def run_row(row, pf, delegated, root, harness=None):
     """Run one row on one file; return (score, faults, note). Each fault is a dict: line, quote, note and,
     for a field-and-line row, field_line and field_quote, the line where the field is set."""
+    kind = find.DELEGATED if delegated else find.STANDING
     if row["applies_to"] not in ("any", kind):
-        return None, [], f"applies to {row['applies_to']} files only"
+        return None, [], f"applies to {row['applies_to']} personas only"
+    if row["harness"] and row["harness"] != harness:
+        return None, [], f"applies to {row['harness']} files only"
     flags = re.IGNORECASE
     k = row["kind"]
     if k == "line-pattern":
         pat = re.compile(row["pattern"], flags)
         unless = re.compile(row["unless"], flags) if row["unless"] else None
-        faults = [fault(n, t) for n, t in pf.body if pat.search(t) and not (unless and unless.search(t))]
+        faults = [
+            fault(n, t) for n, t in personafile.outside_fences(pf.body)
+            if pat.search(t) and not (unless and unless.search(t))
+        ]
     elif k == "missing-path":
         faults = []
-        for n, t in outside_fences(pf.body):
-            missing = [ref for ref in named_paths(t) if not path_exists(ref, pf, root)]
+        for n, t in personafile.outside_fences(pf.body):
+            missing = [ref for ref in personafile.named_paths(t) if not personafile.resolve(ref, pf.folder, root)]
             if missing:
                 faults.append(fault(n, t, f"{', '.join(missing)} does not exist"))
     elif k in ("field-and-line", "field-missing"):
@@ -261,7 +245,8 @@ def run_row(row, pf, kind, root, harness=None):
         value = pf.field_text(field)
         if k == "field-missing":
             if value is None:
-                return ZERO, [fault(None, "-", f"the field {field} is absent or empty")], ""
+                at = pf.field_line(NAME_FIELD) or 1
+                return ZERO, [fault(at, pf.lines[at - 1] if pf.lines else "", f"the field {field} is absent or empty")], ""
             return ONE, [], ""
         if value is None:
             return None, [], f"the file has no {field} field"
@@ -294,33 +279,53 @@ def fault(line, quote, note=""):
     return {"line": line, "quote": quote.strip() if isinstance(quote, str) else quote, "note": note}
 
 
+def persona_files(rec, texts):
+    """A persona's files as (path shown, PersonaFile): its main file, then the files its list loads with it."""
+    main = texts.get(rec["path"]) or personafile.read_path(rec.get("_abspath") or rec["path"], rec["path"])
+    out = [(rec["path"], main)]
+    for shown, absolute in zip(rec.get("listed") or [], rec.get("_listed_abs") or []):
+        out.append((shown, personafile.read_path(absolute, shown)))
+    return out
+
+
 def check_files(records, texts, table, kind_override=None, root=None):
-    """Run every row against every file; return a list of result dicts in file order, then row order."""
+    """Run every row against every file of every persona; return a list of result dicts in persona order,
+    then file order, then row order. Files set aside are skipped."""
     results = []
     for rec in records:
-        pf = texts.get(rec["path"]) or personafile.read_path(rec.get("abspath") or rec["path"], rec["path"])
-        if pf.empty:
+        if rec.get("set_aside"):
+            continue
+        files = persona_files(rec, texts)
+        if files[0][1].empty:
             raise EmptyFile(rec["path"])
-        kind = kind_override or rec["kind"]
+        delegated = rec["delegated"] if kind_override is None else kind_override == find.DELEGATED
         file_root = root or find.project_root(os.getcwd())
-        for row in table:
-            score, faults, note = run_row(row, pf, kind, file_root, rec.get("harness"))
-            base = {
-                "id": row["id"], "path": rec["path"], "kind": kind, "question": row["question"],
-                "source": row["source"], "score": score,
-            }
-            if score == ZERO:
-                first = faults[0]
-                more = f" (and {len(faults) - 1} more: lines {', '.join(str(f['line']) for f in faults[1:])})" if len(faults) > 1 else ""
-                base.update(
-                    line=first["line"], quote=first["quote"],
-                    message=(row["message"] + (f": {first['note']}" if first["note"] else "")) + more,
-                    row_message=row["message"],
-                    lines=faults,
-                )
-            else:
-                base.update(line=None, quote=None, message=note or None, row_message=row["message"], lines=[])
-            results.append(base)
+        for shown, pf in files:
+            results += check_one(shown, pf, rec["kind"], delegated, rec.get("harness"), table, file_root)
+    return results
+
+
+def check_one(shown, pf, kind, delegated, harness, table, root):
+    """Run every row against one file, under its persona's kind, delegation and harness."""
+    results = []
+    for row in table:
+        score, faults, note = run_row(row, pf, delegated, root, harness)
+        base = {
+            "id": row["id"], "path": shown, "kind": kind, "delegated": delegated, "question": row["question"],
+            "source": row["source"], "score": score,
+        }
+        if score == ZERO:
+            first = faults[0]
+            more = f" (and {len(faults) - 1} more: lines {', '.join(str(f['line']) for f in faults[1:])})" if len(faults) > 1 else ""
+            base.update(
+                line=first["line"], quote=first["quote"],
+                message=(row["message"] + (f": {first['note']}" if first["note"] else "")) + more,
+                row_message=row["message"],
+                lines=faults,
+            )
+        else:
+            base.update(line=None, quote=None, message=note or None, row_message=row["message"], lines=[])
+        results.append(base)
     return results
 
 
@@ -381,16 +386,15 @@ def main(argv):
     except personafile.PersonaError as exc:
         print(f"check.py: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    if not found.records:
-        what = "the input is empty" if opts["paths"] == ["-"] else "no persona file found"
+    for note in found.notes:
+        print(f"check.py: {note}", file=sys.stderr)
+    if not found.personas:
+        for r in found.set_aside:
+            print(f"check.py: {r['path']} is set aside: {r['set_aside']}", file=sys.stderr)
+        what = "the input is empty" if opts["paths"] == ["-"] else "no persona found"
         print(f"check.py: nothing to check: {what}; name a file or folder to check", file=sys.stderr)
         return EXIT_NOTHING
     cwd = os.getcwd()
-    for rec in found.records:
-        if rec["path"] not in found.texts:
-            rec["abspath"] = rec["path"] if os.path.isabs(rec["path"]) else os.path.join(
-                cwd if opts["paths"] else find.project_root(cwd), rec["path"]
-            )
     try:
         results = check_files(found.records, found.texts, table, opts["kind"], find.project_root(cwd))
     except personafile.PersonaError as exc:

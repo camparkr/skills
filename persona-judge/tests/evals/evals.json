@@ -36,7 +36,7 @@
       ],
       "expectations": [
         "The report's first line is five star places with the number in brackets, such as '★★★☆☆ (3)'; its second is 'Total: x out of y'; its third and fourth are 'Persona: x out of y' and 'Instruction writing: x out of y'",
-        "The report names the files reviewed under 'Files reviewed:' and says what was left out under 'Left out:'",
+        "The report names the files reviewed under 'Files reviewed:' and says what was left out under 'Files left out:'",
         "Every item under 'Lines that lowered the score' names its file and line number, quotes the line, names its question and prints a 'Sources:' line",
         "The checks and ratings are printed under 'Persona' and then 'Instruction writing'; each check shows 'yes 1' or 'no 0', and each rating 'n of 6' with its word, or says it is not scored or not rated",
         "The report holds the sentence 'A score does not predict how the agent will behave. The quoted lines are what to act on.'",
@@ -180,8 +180,8 @@
       ],
       "expectations": [
         "The output asks no question",
-        "The report on .claude/agents/stylist.md lists only that file under 'Files reviewed:', and lists docs/house-style.md and docs/terms.md under 'Left out:', each with a reason",
-        "The report on personas/reviewer/reviewer.md lists reviewer.md, scale.md and examples.md under 'Files reviewed:', and personas/reviewer/missing.md under 'Left out:' with a reason",
+        "The report on .claude/agents/stylist.md lists only that file under 'Files reviewed:', and lists docs/house-style.md and docs/terms.md under 'Files left out:', each with a reason",
+        "The report on personas/reviewer/reviewer.md lists reviewer.md, scale.md and examples.md under 'Files reviewed:', and personas/reviewer/missing.md under 'Files left out:' with a reason",
         "Every finding in either report names its file and line"
       ]
     }

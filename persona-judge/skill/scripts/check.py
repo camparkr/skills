@@ -246,7 +246,7 @@ def run_row(row, pf, delegated, root, harness=None):
         if k == "field-missing":
             if value is None:
                 at = pf.field_line(NAME_FIELD) or 1
-                return ZERO, [fault(at, pf.lines[at - 1] if pf.lines else "", f"the field {field} is absent or empty")], ""
+                return ZERO, [fault(at, pf.lines[at - 1] if pf.lines else "", f"its {field} field is missing or empty")], ""
             return ONE, [], ""
         if value is None:
             return None, [], f"the file has no {field} field"

@@ -122,6 +122,7 @@ class TestSeedRows(ScratchCase):
         self.assertEqual((rows["PJ-005"]["score"], rows["PJ-005"]["line"]), (0, 6))
         self.assertIn("HD-001", rows["PJ-005"]["message"])
         self.assertEqual((rows["PJ-006"]["score"], rows["PJ-006"]["line"]), (0, 7))
+        self.assertEqual(rows["PJ-006"]["message"], "the line stops being true after a date it names")
         self.assertEqual(rows["PJ-007"]["score"], 0)
         self.assertEqual([l["line"] for l in rows["PJ-007"]["lines"]], [8, 9])
 
@@ -159,7 +160,7 @@ class TestSeedRows(ScratchCase):
         # A 0 quotes the line that names the agent, since the missing field has no line of its own.
         row = row_for(proc, "PJ-008", ".claude/agents/planner.md")
         self.assertEqual((row["line"], row["quote"]), (2, "name: planner"))
-        self.assertIn("tools", row["message"])
+        self.assertEqual(row["message"], "the persona declares no tools: its tools field is missing or empty")
 
     def test_declares_its_tools_standing(self):
         """A standing persona is not scored on 'Declares its tools'."""

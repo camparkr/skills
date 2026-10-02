@@ -154,7 +154,7 @@ FORMULA_PLACES = 2
 # Three spaces between the longest question title and its answer, so the answers align in one column.
 COLUMN_GAP = 3
 TITLE_WIDTH = max(len(q[0]) for q in QUESTIONS) + COLUMN_GAP
-# Files under 'Files reviewed:' and 'Left out:' are indented by two spaces.
+# Files under 'Files reviewed:' and 'Files left out:' are indented by two spaces.
 FILE_INDENT = "  "
 # A finding's question and note, and its rule and sources, sit under it, indented by three spaces.
 ITEM_INDENT = "   "
@@ -172,7 +172,7 @@ SET_ASIDE_PREFIX = "Set aside: "
 SET_ASIDE_WORDS = "set aside"
 MAIN_REASON = "the persona's main file"
 FILES_HEADING = "Files reviewed:"
-LEFT_OUT_HEADING = "Left out:"
+LEFT_OUT_HEADING = "Files left out:"
 NO_TOTAL = "no stars and no total"
 NO_ROW_APPLIES = "no row of the check table applies to this file"
 # A question with no sources in the grounding table rests on the reading alone (build specification §3e).
@@ -853,7 +853,9 @@ def item_lines(k, title, f, grounding):
     if f.get("against"):
         where += f", against line {f['against'][0]}: '{f['against'][1]}'"
     rules = f"Rule {', '.join(f['rules'])}. " if f["rules"] else ""
-    return [where, f"{ITEM_INDENT}{title}. {f['note']}", f"{ITEM_INDENT}{rules}{sources_line(grounding.get(title, NO_SOURCES))}"]
+    # The note and sources lines align under the item text, past the number and its full stop.
+    indent = " " * len(f"{k}. ")
+    return [where, f"{indent}{title}. {f['note']}", f"{indent}{rules}{sources_line(grounding.get(title, NO_SOURCES))}"]
 
 
 def fit_lines(p):
@@ -938,7 +940,7 @@ def render(prepared, summary, grounding=None):
         kind_width = max([len(SET_ASIDE_WORDS)] + [len(p.header["kind"]) for p, _, _ in personas]) + COLUMN_GAP
         star_width = len(star_line(Fraction(7, 2))) + COLUMN_GAP
         lines = [
-            f"Summary: {plural(len(personas), 'persona')} reviewed, from the lowest total; "
+            f"Summary: {plural(len(personas), 'persona')} reviewed, lowest total first; "
             f"{plural(len(aside), 'file')} set aside"
         ]
         for p, _, xy in personas:
@@ -1272,7 +1274,7 @@ def main(argv):
         for f in faults:
             print(f, file=stream)
         print(
-            f"{len(faults)} faults. Fix the record and run validate again, at most {MAX_VALIDATE_RERUNS} reruns; "
+            f"{plural(len(faults), 'fault')}. Fix the record and run validate again, at most {MAX_VALIDATE_RERUNS} reruns; "
             f"past that, return these messages and no report.",
             file=stream,
         )

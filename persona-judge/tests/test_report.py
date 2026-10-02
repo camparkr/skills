@@ -7,6 +7,7 @@ import re
 import sys
 import unittest
 from fractions import Fraction
+from pathlib import Path
 
 from support import REFERENCES, SCRIPTS, ScratchCase, make_fixtures, run
 
@@ -612,6 +613,14 @@ class TestSchemaAndValidate(ReportCase):
         _, faults = report.validate(record, check.load_table(check.DEFAULT_TABLE), grounding)
         self.assertTrue(any("'Reasons given'" in f and "bibliography.md" in f for f in faults), faults)
 
+    def test_one_fault_is_singular(self):
+        """validate's count: '1 fault.' for one, plural otherwise."""
+        entry = helper_review()
+        self.answer(entry, "The description says when to choose it")["point"] = 7
+        out = self.faults(entry)
+        self.assertIn("1 fault. Fix the record", out)
+        self.assertNotIn("1 faults.", out)
+
     def test_empty_record(self):
         """Empty fixture: an empty record is refused."""
         path = self.tmp / "empty.json"
@@ -639,7 +648,7 @@ class TestRenderT4(ReportCase):
                 "Review: .claude/agents/helper.md (subagent, Claude Code)",
                 "Files reviewed:",
                 "  .claude/agents/helper.md: the persona's main file",
-                "Left out: none",
+                "Files left out: none",
             ],
         )
         out = "\n".join(lines)
@@ -709,6 +718,19 @@ class TestRenderT4(ReportCase):
         self.assertNotIn(CLEAN, lines)
         self.assertIsNone(VERDICT_WORDS.search(unquoted(out)), VERDICT_WORDS.search(unquoted(out)))
 
+    def test_two_digit_items_align(self):
+        """From finding 10, the note and sources lines align under the item text: four spaces, not three."""
+        answers = helper_answers()
+        answers["Nothing said twice"] = {
+            "score": 0, "findings": [finding(9, "Never edit files", "For the test.", ".claude/agents/helper.md")]
+        }
+        lines = block(self.render([review(".claude/agents/helper.md", answers)]).stdout)
+        start = next(i for i, l in enumerate(lines) if l.startswith("10. "))
+        self.assertTrue(lines[start + 1].startswith("    ") and not lines[start + 1].startswith("     "), lines[start + 1])
+        self.assertTrue(lines[start + 2].startswith("    Sources: "), lines[start + 2])
+        nine = next(i for i, l in enumerate(lines) if l.startswith("9. "))
+        self.assertTrue(lines[nine + 1].startswith("   ") and not lines[nine + 1].startswith("    "), lines[nine + 1])
+
     def test_columns_aligned(self):
         """The check and rating columns start at one place in both sections."""
         lines = block(self.render([helper_review()]).stdout)
@@ -738,7 +760,7 @@ class TestRenderT4(ReportCase):
         out = "\n".join(lines)
         self.assertIn(
             "1. .github/agents/triage.agent.md, line 2: 'name: triage'\n"
-            "   Declares its tools. The persona declares no tools: the field tools is absent or empty.\n"
+            "   Declares its tools. The persona declares no tools: its tools field is missing or empty.\n"
             "   Rule PJ-010. Sources: OA2, GO2, GH2",
             out,
         )
@@ -880,7 +902,7 @@ class TestSpreadOverFilesT13(ReportCase):
                 "  personas/reviewer/reviewer.md: the persona's main file",
                 f"  personas/reviewer/scale.md: {self.LIST_REASON}",
                 f"  personas/reviewer/examples.md: {self.LIST_REASON}",
-                "Left out:",
+                "Files left out:",
                 "  personas/reviewer/missing.md: personas.txt lists it, and it does not exist",
             ],
         )
@@ -896,7 +918,7 @@ class TestSpreadOverFilesT13(ReportCase):
         proc = self.render([entry])
         self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
         lines = block(proc.stdout)
-        start = lines.index("Left out:")
+        start = lines.index("Files left out:")
         self.assertEqual(lines[start + 1: start + 3], [f"  docs/house-style.md: {reason}", f"  docs/terms.md: {reason}"])
         self.assertEqual(lines[lines.index("Files reviewed:") + 1], f"  {stylist}: the persona's main file")
 
@@ -914,11 +936,24 @@ class TestNothingApplies(unittest.TestCase):
         self.assertEqual(text.splitlines()[0], NOTHING_APPLIES)
 
 
+SAMPLE_RECORD = Path(__file__).resolve().parent / "evals" / "sample-record.json"
+
+
 class TestSampleT4(ReportCase):
-    """T-4: the record behind sample-review.md's example renders line for line, once its round-3 revision lands."""
+    """T-4: the record behind sample-review.md's example renders line for line, once its round-3 revision lands.
+
+    The record reviews the SI-11 project's .claude/agents/helper.md, with CLAUDE.md set aside, rendered with
+    --summary. Its root is set to the fixture project at run time."""
 
     def test_sample_renders_line_for_line(self):
         self.skipTest(WAITING)
+        record = json.loads(SAMPLE_RECORD.read_text(encoding="utf-8"))
+        record["root"] = self.proj.as_posix()
+        path = self.tmp / "sample-record.json"
+        path.write_text(json.dumps(record), encoding="utf-8")
+        proc = run("report.py", "render", "--summary", path)
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        self.assertEqual(blocks(proc.stdout), blocks((REFERENCES / "sample-review.md").read_text(encoding="utf-8")))
 
 
 class TestSummaryT11(ReportCase):
@@ -937,7 +972,7 @@ class TestSummaryT11(ReportCase):
         proc = self.render(self.entries(), "--summary")
         self.assertEqual(proc.returncode, OK, proc.stderr)
         first = block(proc.stdout)
-        self.assertEqual(first[0], "Summary: 3 personas reviewed, from the lowest total; 4 files set aside")
+        self.assertEqual(first[0], "Summary: 3 personas reviewed, lowest total first; 4 files set aside")
         rows = [l for l in first[1:] if l.strip()]
         self.assertEqual(
             [r.split()[0] for r in rows],
@@ -975,11 +1010,15 @@ class TestSummaryT11(ReportCase):
         self.assertTrue(rows[0].startswith(".claude/agents/doc-writer.md"), rows)
         self.assertIn("no stars and no total", rows[1])
 
+    def test_summary_singular(self):
+        proc = self.render([helper_review(), set_aside_entry("CLAUDE.md")], "--summary")
+        self.assertEqual(block(proc.stdout)[0], "Summary: 1 persona reviewed, lowest total first; 1 file set aside")
+
     def test_all_set_aside(self):
         """No persona got a score, so render exits 3."""
         proc = self.render([set_aside_entry("CLAUDE.md"), set_aside_entry("README.md")], "--summary")
         self.assertEqual(proc.returncode, NO_SCORE, proc.stderr)
-        self.assertEqual(block(proc.stdout)[0], "Summary: 0 personas reviewed, from the lowest total; 2 files set aside")
+        self.assertEqual(block(proc.stdout)[0], "Summary: 0 personas reviewed, lowest total first; 2 files set aside")
 
 
 class TestVerifyT10(ReportCase):

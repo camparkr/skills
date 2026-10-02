@@ -123,7 +123,7 @@ def backslash_faults(paths):
 
 def need(path):
     if not Path(path).exists():
-        raise unittest.SkipTest(f"{Path(path).relative_to(SKILL.parent)} is not yet in place (Aristophanes's)")
+        raise unittest.SkipTest(f"{Path(path).relative_to(SKILL.parent)} is not yet in place; this check waits for it")
 
 
 class TestDescriptionT_D(ScratchCase):

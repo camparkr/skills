@@ -310,6 +310,7 @@ class TestQuestions(unittest.TestCase):
 
     @staticmethod
     def limit(para):
+        para = " ".join(para.split())  # the file breaks some of these phrases across two lines
         if "Not scored for a standing persona" in para or "Rated for a delegated persona only" in para:
             return "delegated"
         if "Rated where the file opens with an identity" in para:

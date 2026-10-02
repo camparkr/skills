@@ -1,0 +1,5 @@
+id	question	kind	applies_to	field	pattern	unless	min_words	source	message
+PJ-001	Pointers carry their triggers	missing-path	any					review questions, 'Pointers carry their triggers': the record kept while this skill was built	the line names a path that does not exist
+PJ-002	Pointers carry their triggers	line-pattern	any		^\W*see( also)?\b.*\.[a-z0-9]{1,5}\b	\b(when|before|after|if|for|once)\b		review questions, 'Pointers carry their triggers': the record kept while this skill was built	the pointer does not say when to read its file
+PJ-003	Bound parts agree with the prose	field-and-line	any	tools	\b(Edit|Write|MultiEdit|NotebookEdit)\b	\b(never|do not|don't|must not)\b.{0,40}\b(edit|write|modify|change)\b.{0,20}\bfiles?\b		Anthropic, 'Permission rules are enforced by Claude Code, not by the model' (https://code.claude.com/docs/en/permissions, read 1 October 2026)	the tools field permits an editing tool that this line forbids
+PJ-004	Nothing said twice	repeated-sentence	any				6	review questions, 'Nothing said twice': no external source; the reading that a second statement can drift from the first	the sentence is said twice

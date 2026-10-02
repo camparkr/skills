@@ -11,15 +11,15 @@
         "tests/evals/files/helper-agent.fixture"
       ],
       "expectations": [
-        "The report on CLAUDE.md has a header line 'Kind: standing'",
-        "The report on .claude/agents/helper.md has a header line 'Kind: delegated'",
-        "Each report's header names its file's harness"
+        "The report on CLAUDE.md has the header line 'Review: CLAUDE.md (standing persona)'",
+        "The report on .claude/agents/helper.md has the header line 'Review: .claude/agents/helper.md (delegated persona)'",
+        "The standing file's report comes before the delegated file's"
       ]
     },
     {
       "id": 2,
       "prompt": "review .claude/agents/helper.md for me, the subagent keeps ignoring its rules and I don't know why",
-      "expected_output": "One report on helper.md with quoted lines before the total, scores per question and the no-prediction sentence (T-4, SI-4).",
+      "expected_output": "One report on helper.md: the stars and the total first, then the quoted lines, the checks, the ratings and the formula, and the no-prediction sentence (T-4, SI-4).",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/api-doc.fixture",
@@ -31,13 +31,14 @@
         "tests/evals/files/changelog.fixture"
       ],
       "expectations": [
-        "Every row of 'Lines behind the scores' holds a question, a line number, the line quoted and a source",
-        "Every check in 'Score for each question' shows 1 or 0",
-        "Every rating in 'Score for each question' shows its point with its scale word, such as '3, usually'",
-        "'Lines behind the scores' comes before 'Total'",
-        "The report holds the sentence 'A score does not predict how an agent behaves; the lines above are the review.'",
-        "The report holds a finding quoting line 9, 'Never edit files; report what you find in a list.', under 'Bound parts agree with the prose'",
-        "The output holds no replacement wording for any line and no verdict word (pass, fail, approve, block, severity)"
+        "The report's first line is five star places with the number in brackets, such as '★★½☆☆ (2.5)', and its second is 'Total: x out of y'",
+        "Every item under 'Lines that lowered the score' quotes a numbered line and names its question",
+        "Every check under 'Checks' shows 'yes 1' or 'no 0', or says it is not scored",
+        "Every rating under 'Ratings' shows its point as 'n of 6' with its word, such as '3 of 6   about half the time', or says it is not rated",
+        "'Lines that lowered the score' comes before 'Checks', and 'Checks' before 'Ratings' and the formula",
+        "The report holds the sentence 'A score does not predict how the agent will behave. The quoted lines are what to act on.'",
+        "The report holds an item quoting 'tools: Read, Grep, Edit' against line 9, 'Never edit files; report what you find in a list.', under 'Bound parts agree with the prose'",
+        "The output holds no replacement wording for any line and no verdict word (pass, fail, approve, block, severity) outside the quoted lines"
       ]
     },
     {
@@ -56,14 +57,14 @@
       ],
       "expectations": [
         "The SHA-256 manifest of the project after the run equals the manifest before it, file list included (checked by script: make_fixtures.py compare)",
-        "The output holds only the summary table, each file's header, its findings table, its scores table, its fit section, its total and the closing sentences",
+        "The output holds only the summary and, for each file, the stars, the total, the header, the quoted lines, the checks, the ratings, the fit part when neighbours were supplied, the formula and the closing sentences",
         "The output offers no replacement wording and compares with no other version of any file"
       ]
     },
     {
       "id": 4,
       "prompt": "Score CLAUDE.md against the persona review questions and show me how the total was worked out.",
-      "expected_output": "A report whose printed total follows from its scores table by the stated formula (T-10, SI-10).",
+      "expected_output": "A report whose printed total and stars follow from its checks and ratings by the stated formula (T-10, SI-10).",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/api-doc.fixture",
@@ -71,8 +72,8 @@
       ],
       "expectations": [
         "Saved to a file, the report makes 'report.py verify' exit 0 (checked by script)",
-        "The total is printed with the formula beside it",
-        "Each finding found by a check row cites its rule ID, such as PJ-001, and its source"
+        "The formula is printed with the report's own x and y: 'Formula: each check counts 1 or 0 and each rating its points, x out of y.'",
+        "The stars line 'Stars: x ÷ y × 5 = s, to the nearest half star.' is printed, and s rounds to the stars at the top"
       ]
     },
     {
@@ -92,7 +93,7 @@
       "expectations": [
         "The summary lists exactly CLAUDE.md, AGENTS.md, .claude/agents/helper.md, .claude/agents/doc-writer.md and .cursor/rules/style.mdc",
         "README.md and CHANGELOG.md are not reviewed",
-        "The summary is ordered from the lowest score, ties by path",
+        "The summary is ordered from the lowest total as a share (x ÷ y), ties by path",
         "Each file's report follows the summary, in the summary's order"
       ]
     },
@@ -129,8 +130,7 @@
         "tests/evals/files/changelog.fixture"
       ],
       "expectations": [
-        "Exactly one report is given, and its header names '<session text>' as the file",
-        "The header line reads 'Kind: delegated'"
+        "Exactly one report is given, and its header line reads 'Review: <session text> (delegated persona)'"
       ]
     }
   ]

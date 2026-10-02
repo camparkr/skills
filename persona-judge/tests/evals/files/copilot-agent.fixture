@@ -1,0 +1,6 @@
+---
+name: triage
+description: Sorts new issues by area when asked to triage them.
+---
+
+Label each issue with one area.

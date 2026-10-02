@@ -78,6 +78,23 @@ PROJECTS = {
         ".codex/agents/reviewer.toml": "codex-agent",
         "notes/odd.md": "odd-frontmatter",
     },
+    # SI-4 (T-4): the subagent behind sample-review.md's example.
+    "sample": {".claude/agents/code-reviewer.md": "sample-reviewer"},
+    # The script checks added in round 2: a request the harness already meets, and statements that go
+    # out of date; then a look-alike of each that scores 1.
+    "time-defaults": {".claude/agents/planner.md": "planner-agent"},
+    "time-likeness": {".claude/agents/planner.md": "planner-likeness"},
+    "codex-defaults": {".codex/agents/reviewer.toml": "codex-reads-agents"},
+    # The discovery rows restored in round 2, beside look-alikes that match none of them.
+    "github-codex": {
+        ".codex/agents/reviewer.toml": "codex-agent",
+        ".github/copilot-instructions.md": "copilot-instructions",
+        ".github/instructions/top.instructions.md": "copilot-path",
+        ".github/instructions/frontend/react/hooks.instructions.md": "copilot-path",
+        ".github/instructions/notes.md": "changelog",
+        ".github/agents/triage.agent.md": "copilot-agent",
+        ".github/agents/notes.md": "changelog",
+    },
 }
 
 # The project each model-run case in tests/evals/evals.json runs in, by case id.

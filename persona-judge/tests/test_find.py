@@ -85,6 +85,31 @@ class TestFindProject(ScratchCase):
         self.assertEqual(rows(proc), [("notes/odd.md", "delegated")])
         self.assertIn("inferred", json.loads(proc.stdout)[0]["kind_basis"])
 
+    def test_restored_rows(self):
+        """Round 2: the Codex and GitHub Copilot locations, with the path-specific one at any depth."""
+        proj = self.project("github-codex")
+        proc = run("find.py", "--format", "json", cwd=proj)
+        self.assertEqual(proc.returncode, FOUND, proc.stderr)
+        got = [(r["path"], r["kind"], r["harness"]) for r in json.loads(proc.stdout)]
+        self.assertEqual(
+            got,
+            [
+                (".codex/agents/reviewer.toml", "delegated", "Codex"),
+                (".github/agents/triage.agent.md", "delegated", "GitHub Copilot"),
+                (".github/copilot-instructions.md", "standing", "GitHub Copilot"),
+                (".github/instructions/frontend/react/hooks.instructions.md", "standing", "GitHub Copilot"),
+                (".github/instructions/top.instructions.md", "standing", "GitHub Copilot"),
+            ],
+        )
+
+    def test_restored_rows_likeness(self):
+        """Likeness fixture: a .md file beside the Copilot files that does not end as their patterns do."""
+        proj = self.project("github-codex")
+        proc = run("find.py", "--format", "json", cwd=proj)
+        paths = [r["path"] for r in json.loads(proc.stdout)]
+        self.assertNotIn(".github/instructions/notes.md", paths)
+        self.assertNotIn(".github/agents/notes.md", paths)
+
     def test_no_backslash_in_output(self):
         """T-P, the scripts' output: every path uses forward slashes."""
         proj = self.project("si11")

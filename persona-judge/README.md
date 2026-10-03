@@ -30,6 +30,42 @@ behave:
 So *persona-judge* quotes every line that lowered the score: the stars summarise, and the lines show what to act on. The full sources, with the date each was read, are in
 `skill/references/bibliography.md`.
 
+## How the reviewer scores
+
+*Persona-judge* asks 35 questions of each persona: 21 on what a persona must do, and 14 on how any instruction reads.
+
+**Checks and ratings.** A question is a check or a rating, by what it asks.
+- A check scores yes or no, because one instance settles it. Most checks look for a fault: a placeholder, two
+  statements that contradict each other, a reference to a conversation the agent never sees. One instance is the
+  fault, and how many there are adds nothing the quoted lines do not show. The rest look for something a persona must
+  have, such as its list of tools or what it returns: it has it or it does not.
+- A rating gives a point from 0 to 6 where a question applies across many places and the degree matters, such as how
+  many of a file's rules give their reason.
+
+**Which questions apply.** A question that cannot apply to a persona is left out of its total, and the report names it
+with the reason, so the full scale of 111 points is always in view. A persona that is never handed tasks by another
+agent is not asked what its description says about when to choose it, for instance. The scripts decide most of this
+from the file itself, so two reviews of one file leave out the same questions.
+
+**A check and the rating that follows it.** Where a rating measures how well a persona does what a check finds it does,
+the rating applies only when the check is met. A persona that declares no tools loses that check and is not then rated
+on explaining them, so one missing list costs once, not twice.
+
+**Weights.** Three checks count 3 points, not 1, because one instance of each is evidence that the agent may not do
+what the file says:
+- two statements that contradict each other, because the model may follow either;
+- a setting that permits what the prose forbids, because the harness enforces the setting; and
+- a must-always rule left to prose with no hook or setting behind it, because a rule left to prose binds weakly.
+
+Each weight rests on vendor guidance or a published study, cited in `skill/references/bibliography.md`. Research on
+scoring finds equal weights a sound default, and different weights defensible only where their reason is stated, so the
+report also gives the total at equal weights. Two other faults that can break an agent, a pointer to a file with no word
+on when to read it and a reliance on context the agent never sees, count 1 until a study measures their effect.
+
+**Measured against the vendors' own definitions.** Anthropic, OpenAI, Google and GitHub each describe what a persona
+has: its own instructions, tools, permissions and context, a description that decides when it is chosen, and a result
+it returns. The bibliography maps each of these to the questions that ask about it.
+
 ## Scoring well
 
 A persona file holds instruction: prose the model reads and decides whether to follow, with nothing to enforce it. It

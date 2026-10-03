@@ -12,9 +12,10 @@ ROOT = HERE.parent
 SKILL = ROOT / "skill"
 SCRIPTS = SKILL / "scripts"
 REFERENCES = SKILL / "references"
-# sample-review.md as landed for round 3 (153 lines); every test that reads its content checks this first.
+# sample-review.md with its blocks regenerated for round 4 (162 lines); every test that reads its content checks
+# this first.
 SAMPLE = REFERENCES / "sample-review.md"
-SAMPLE_SHA256 = "fbae22589edd829152dcaaecd48b4a4908840dd5288f0992517801f8c4745064"
+SAMPLE_SHA256 = "69fd8ca0e87ad1cdc68f7522fa888ae8afbe1ea232dcfa4f2c8801e4f2190a92"
 
 
 def sample_text():

@@ -18,8 +18,9 @@ names, or to a field it could not read. The place is path:line for a 0 and the p
 Every kind reads the body through one mask: fenced code, Markdown block quotes and quoted spans (from an
 opening ' or " to its closing mark, over the paragraph) become spaces, so quoted examples are not the file's
 own instruction and every line keeps its number. A pointer is a path, in backticks or as a link target, with a
-/ or a file extension, in a sentence that tells the agent to read it (read, open, load, see, consult, follow,
-refer or look, in any form); a list item takes the verbs of the line ending in a colon that introduces it.
+/ or a file extension, in a sentence that tells the agent to read it: a base form of read, open, load, see,
+consult, follow, refer or look, first in the sentence or after its opening clause, or after 'you', a modal or
+'please'; a list item counts when the line ending in a colon that introduces it does.
 
 Files set aside (project instructions, output styles, READMEs and skills) are not checked. A persona the
 project's list names is checked over all its files, each under the persona's kind and harness.

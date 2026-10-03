@@ -152,13 +152,33 @@ def masked_body(pf):
     return list(zip([n for n, _ in pf.body], lines))
 
 
-# A sentence tells the agent to read a path when it holds one of these verbs, in any form (specification §3c).
-READ_VERBS = re.compile(
-    r"\b(read|reads|reading|open|opens|opened|opening|load|loads|loaded|loading|see|sees|seen|seeing|saw|"
-    r"consult|consults|consulted|consulting|follow|follows|followed|following|refer|refers|referred|referring|"
-    r"look|looks|looked|looking)\b",
+# A sentence tells the agent to read a path only when a read verb in it is addressed to the agent as an instruction
+# (specification §3c, Sophos, 3 October 2026, option 2). The verbs, in their base form only.
+BASE_VERBS = ("read", "open", "load", "see", "consult", "follow", "refer", "look")
+# After 'you have' or "you've", the past participle counts instead.
+PARTICIPLES = ("read", "opened", "loaded", "seen", "consulted", "followed", "referred", "looked")
+# At most one of these may stand before a verb that opens a sentence or follows its opening clause.
+LEADING_WORDS = ("always", "first", "then", "also", "next", "now", "only")
+# A sentence that opens with one of these has an opening clause, ended by its first comma.
+CLAUSE_OPENERS = ("before", "after", "when", "whenever", "once", "if", "until", "while", "as soon as")
+# The modals that may stand between 'you' and the verb.
+MODALS = ("must", "should", "can", "may", "will", "do", "need to", "have to", "ought to")
+
+_SENTENCE_MARKER = re.compile(r"^([-*+]|\d+\.)\s+")
+_EMPHASIS = "*_"
+_LEADING = re.compile(r"^(?:" + "|".join(LEADING_WORDS) + r")\b,?\s*", re.IGNORECASE)
+_OPENER = re.compile(r"^(?:" + "|".join(o.replace(" ", r"\s+") for o in CLAUSE_OPENERS) + r")\b", re.IGNORECASE)
+_FIRST_VERB = re.compile(r"^(?:" + "|".join(BASE_VERBS) + r")(?![\w'’-])", re.IGNORECASE)
+_AFTER_YOU = re.compile(
+    r"\b(?:please|you(?:\s+(?:" + "|".join(m.replace(" ", r"\s+") for m in MODALS) + r"))?)\s+(?:"
+    + "|".join(BASE_VERBS) + r")(?![\w'’-])",
     re.IGNORECASE,
 )
+_AFTER_YOU_HAVE = re.compile(
+    r"\b(?:you\s+have|you[’']ve)\s+(?:" + "|".join(PARTICIPLES) + r")(?![\w'’-])", re.IGNORECASE
+)
+
+
 BACKTICKED = re.compile(r"`([^`\n]+)`")
 LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
 # A path holds a / or ends in a file extension of one to five letters or digits.
@@ -180,9 +200,24 @@ def sentences(text):
     return out
 
 
-def _has_read_verb(text):
-    """Whether text holds a read verb outside backticks and link targets."""
-    return bool(READ_VERBS.search(LINK_TARGET.sub(" ", BACKTICKED.sub(" ", text))))
+def _verb_first(text):
+    """Whether text starts with a base read verb, after emphasis marks and at most one leading word."""
+    text = text.lstrip().lstrip(_EMPHASIS).lstrip()
+    text = _LEADING.sub("", text, count=1).lstrip(_EMPHASIS).lstrip()
+    return bool(_FIRST_VERB.match(text))
+
+
+def addressed(sentence):
+    """Whether a sentence tells the agent to read: a base read verb first in it, first after its opening clause,
+    or after 'you', a modal or 'please' (a participle after 'you have'). Backticked text and link targets are
+    read as names, not words."""
+    text = LINK_TARGET.sub("]", BACKTICKED.sub("CODE", sentence)).strip()
+    text = _SENTENCE_MARKER.sub("", text, count=1).lstrip(_EMPHASIS).lstrip()
+    if _verb_first(text):
+        return True
+    if _OPENER.match(text) and "," in text and _verb_first(text.split(",", 1)[1]):
+        return True
+    return bool(_AFTER_YOU.search(text) or _AFTER_YOU_HAVE.search(text))
 
 
 def _paths_in(text):
@@ -199,9 +234,9 @@ def _paths_in(text):
 
 
 def pointers(pf):
-    """(line number, path) for each pointer in the body: a path in a sentence that tells the agent to read it,
-    read with the mask applied. A list item also takes the verbs of the line ending in a colon that introduces
-    its list."""
+    """(line number, path) for each pointer in the body: a path in a sentence that tells the agent to read it, as
+    addressed() reads it, with the mask applied. A list item also counts when the line ending in a colon that
+    introduces its list counts."""
     masked = masked_body(pf)
     lines = [t for _, t in masked]
     numbers = [n for n, _ in masked]
@@ -225,10 +260,10 @@ def pointers(pf):
                 intro = paras[para_of[j]]
                 intro_text = "\n".join(lines[i] for i in intro)
                 last = sentences(intro_text)[-1]
-                introduced = _has_read_verb(intro_text[last[0]:last[1]])
+                introduced = addressed(intro_text[last[0]:last[1]])
         for start, end in sentences(text):
             sentence = text[start:end]
-            if not (introduced or _has_read_verb(sentence)):
+            if not (introduced or addressed(sentence)):
                 continue
             for offset, ref in _paths_in(sentence):
                 at = start + offset

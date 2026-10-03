@@ -27,13 +27,16 @@ file in it. '-' reads standard input as one file, labelled <session text>.
 
 Each persona's kind is its location's (subagent or custom agent, with the harness), or 'persona'. It is
 delegated when its location says so, or, elsewhere, when its frontmatter holds both name and description;
-standing otherwise, and its basis says the kind was inferred. Each persona also lists the files its body names
+standing otherwise, and its basis says the kind was inferred. Session text is never delegated.
+
+Each persona's three branches are printed for the record: delegated (with 'folder' or 'front matter'), the
+harness its path names, and the settings it holds, the fields review-questions.md's settings row names. Each persona also lists the files its body names
 that exist (candidates, which may load with it) and the files the list loads with it.
 
 Output, one line per file, separated by tabs: for a persona, its path, kind, harness ('-' for none), delegated
 or standing and the basis, then indented lines for the files the list loads with it, listed paths that do not
 exist and candidates; for a file set aside, its path, 'set aside' and the reason. With --format json, one JSON
-array of objects with path, kind, harness, delegated, kind_basis, candidates, listed and list_missing, or, for a
+array of objects with path, kind, harness, delegated, settings, kind_basis, candidates, listed and list_missing, or, for a
 file set aside, set_aside with its reason.
 
 Exit codes: 0 one or more personas; 2 a usage error, an unreadable path or an unreadable list; 3 no persona
@@ -48,6 +51,7 @@ from fnmatch import fnmatchcase
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import personafile  # noqa: E402
+import questions  # noqa: E402
 
 # Exit codes, as the docstring states them (build specification §3b).
 EXIT_FOUND = 0
@@ -178,11 +182,32 @@ def same(a, b):
     return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
 
 
+# How the delegated branch was read, printed beside its answer (build specification §3b, round 4).
+BY_FOLDER, BY_FRONT_MATTER = "folder", "front matter"
+
+
 def infer_delegated(pf):
     """Whether a persona outside the dedicated locations is delegated, from its frontmatter (A-5)."""
     if pf.frontmatter.get("name") and pf.frontmatter.get("description"):
         return True, "inferred: its frontmatter holds name and description"
     return False, "inferred: its frontmatter does not hold both name and description"
+
+
+def settings_held(pf):
+    """The settings branch: the fields the file holds that grant or restrict what the agent can do, in the order
+    review-questions.md's settings row names them (read at run time, never written here)."""
+    fields = questions.load_cached().settings_fields
+    return [f for f in fields if f in pf.unparsed or pf.field_text(f) is not None]
+
+
+def branch_text(rec):
+    """The three branches as find.py and check.py print them."""
+    if rec["delegated"]:
+        delegated = f"delegated yes ({rec.get('_delegated_basis') or BY_FRONT_MATTER})"
+    else:
+        delegated = "delegated no"
+    settings = ", ".join(rec.get("settings") or []) or "none"
+    return f"{delegated}; harness {rec.get('harness') or 'none'}; settings {settings}"
 
 
 class Listing:
@@ -270,16 +295,18 @@ def classify(path, shown, base, root, listing):
     loc = match_dedicated(path)
     if loc:
         pattern, kind, harness = loc
-        delegated, basis = True, f"its path matches {pattern}"
+        delegated, basis, by = True, f"its path matches {pattern}", BY_FOLDER
     else:
         kind, harness = PERSONA, None
         delegated, basis = infer_delegated(pf)
+        by = BY_FRONT_MATTER
     extras = entry["extras"] if entry else []
     if entry:
         basis = f"{listing.name}, line {entry['line']} lists it; " + basis
     skip = {os.path.realpath(e) for e in extras}
     return {
         "path": shown, "kind": kind, "harness": harness, "delegated": delegated, "kind_basis": basis,
+        "settings": settings_held(pf), "_delegated_basis": by if delegated else None,
         "candidates": candidates(pf, path, root, base, skip),
         "listed": [display(e, base) for e in extras],
         "list_missing": [{"path": rel, "line": n} for rel, n in (entry["missing"] if entry else [])],
@@ -288,12 +315,15 @@ def classify(path, shown, base, root, listing):
     }
 
 
+# Session text is never delegated: nothing chooses it (build specification §3b, round 4).
+SESSION_BASIS = "session text: nothing chooses it, so it is not delegated"
+
+
 def record_for_text(pf):
-    """The record for text read from standard input: a persona, its kind inferred."""
-    delegated, basis = infer_delegated(pf)
+    """The record for text read from standard input: a persona that is not delegated."""
     return {
-        "path": pf.path, "kind": PERSONA, "harness": None, "delegated": delegated, "kind_basis": basis,
-        "candidates": [], "listed": [], "list_missing": [],
+        "path": pf.path, "kind": PERSONA, "harness": None, "delegated": False, "kind_basis": SESSION_BASIS,
+        "settings": settings_held(pf), "candidates": [], "listed": [], "list_missing": [],
     }
 
 
@@ -391,6 +421,7 @@ def text_lines(found, list_name):
             out.append("\t".join((r["path"], "set aside", r["set_aside"])))
             continue
         out.append("\t".join((r["path"], r["kind"], r["harness"] or "-", DELEGATED if r["delegated"] else STANDING, r["kind_basis"])))
+        out.append(f"  branches: {branch_text(r)}")
         out += [f"  loads with it: {p} ({list_name})" for p in r["listed"]]
         out += [f"  missing from the list: {m['path']} ({list_name}, line {m['line']})" for m in r["list_missing"]]
         out += [f"  may load: {c['path']} (line {c['line']})" for c in r["candidates"]]
@@ -433,6 +464,9 @@ def main(argv):
     try:
         found = search(paths, list_path=list_path)
     except personafile.PersonaError as exc:
+        print(f"find.py: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except questions.ContractError as exc:
         print(f"find.py: {exc}", file=sys.stderr)
         return EXIT_USAGE
     for note in found.notes:

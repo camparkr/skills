@@ -11,6 +11,9 @@ Usage:
 
 '-' in place of a file reads standard input.
 
+Every question, weight, scale and count comes from review-questions.md, read at run time by questions.py; this
+script holds none. A file that breaks the questions' markup contract stops it with exit 2, naming the line.
+
 The reviewer writes its answers as a review record, one JSON file in the system's temporary folder and never
 inside the reviewed project. 'validate' reads the files the record names, the review questions, the check table
 and the bibliography's grounding table, and lists each fault with the file, the question, the finding's number,
@@ -18,26 +21,30 @@ the field, what is wrong and the fix. Fix the record and run 'validate' again un
 reruns; past that the fault is in the review, not the record, so return the last messages and no report. Then
 run 'render', which validates again before it prints anything, and delete the record.
 
-'A dedicated persona' is answered first. A file scoring 0 on it is set aside, with the line behind it, and
-answers nothing else. A file find.py sets aside (project instructions, an output style, a README or a skill)
-is given as set_aside, with no answers. A persona spread over files names the files that load with it, each
-with its reason, and the files left out, each with its reason; every finding names its file and line.
+The root question, the first check of review-questions.md, is answered first. A file scoring 0 on it is set
+aside, with the line behind it, and answers nothing else. A file find.py sets aside is given as set_aside, with
+no answers. Each persona gives its three branches as find.py prints them, which validate checks against the
+files. A question does not apply only for a reason review-questions.md's tables give: a branch at no, a harness
+exception, a following rating whose check scored 0, or a content test whose subject the file does not hold. Mark
+such a question with does_not_apply and that reason, or leave it out where the branches, the rows or the
+exception decide it; answer every question that applies. For a content-test question, give the subject line that
+holds what it tests for, or mark it as not applying.
 
-The script, not the reviewer, sets each check marked script from check.py's rows on every file of the
-persona, sets each frequency rating's point from its places, computes the subtotals, the total and the stars,
-prints each finding's sources from the bibliography's grounding table and prints the report, so the total
-follows from the findings. The formula, from the review questions: each check counts its 1 or 0 and each
-rating its point, from 0 to 6; each section, persona and instruction writing, has a subtotal 'x out of y', 1
-for each check scored and 6 for each rating given; the two subtotals add to the total; the stars are x divided
-by y, times 5, rounded to the nearest half star, a half rounding up. A question not scored or not rated leaves
-both x and y.
+The script, not the reviewer, sets each check marked script from check.py's rows on every file of the persona (a
+script check that applies and that no row reaches scores 1), sets each frequency rating's point from its places,
+computes the subtotals, the total, the total at equal weights and the stars, prints each finding's sources from the
+bibliography's grounding table and prints the report. The formula, from the review questions: each check counts
+its weight or 0, and each rating its point; the points possible are every check's weight and every rating scale's
+top point; a question that does not apply leaves both x and y; each section's subtotal is x out of y; the two add
+to the total; the stars are x divided by y, times 5, rounded to the nearest half star, a half rounding up.
 
 The report is plain lines in a fenced text block, in this order: the stars, as five places with the number in
-brackets, such as ★★★½☆ (3.5); the total; the two subtotals; the persona, its kind and the files reviewed and
-left out; the lines that lowered the score, each with its file, line, question, note, rule and sources; the
-persona questions and then the instruction-writing questions, each check as 'yes 1' or 'no 0' and each rating
-as its point out of 6 with its word; the fit with neighbouring files, when the record gives it; the formula;
-and the closing lines. A file set aside prints its path, 'set aside' and the reason, and nothing else.
+brackets, such as ★★★½☆ (3.5); the total, with the points possible and those that do not apply; each section's
+subtotal; the persona, its kind, its branches and the files reviewed and left out; the questions that do not apply,
+each with its reason; the lines that lowered the score, each with its file, line, question, note, rule and
+sources; each section's checks as 'yes' with the weight or 'no 0' and its ratings as their point with the word;
+the fit with neighbouring files, when the record gives it; the formula with the weights; the total at equal
+weights; the stars line; and the closing lines. A file set aside prints its path, 'set aside' and the reason.
 
 Exit codes:
   validate  0 the record is sound; 2 it is not, with one message per fault
@@ -45,6 +52,7 @@ Exit codes:
             empty, set aside or no question applied to it
   verify    0 every printed subtotal, total and star line matches its checks and ratings; 1 one or more do
             not, each named; 2 the report cannot be parsed
+  any       2 review-questions.md breaks its markup contract, naming the line
 This script changes no file.
 """
 
@@ -59,6 +67,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check  # noqa: E402
 import find  # noqa: E402
 import personafile  # noqa: E402
+import questions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REFERENCES = os.path.join(HERE, "..", "references")
@@ -74,87 +83,21 @@ EXIT_NO_SCORE = 3
 # Past three reruns of validate, a fault is in the review, not the record (build specification §3e).
 MAX_VALIDATE_RERUNS = 3
 
-# The question kinds: checks marked script or reading, and ratings on the frequency or quality scale.
-SCRIPT, READING, FREQUENCY, QUALITY = "script", "reading", "frequency", "quality"
-CHECK_KINDS = (SCRIPT, READING)
-# The two sections of review-questions.md, each with its subtotal (review questions, 'Score').
-PERSONA, WRITING = "persona", "instruction writing"
-SECTIONS = (PERSONA, WRITING)
-SECTION_HEADINGS = {PERSONA: "Persona", WRITING: "Instruction writing"}
-# Where a question applies, as review-questions.md limits it: to a delegated persona only; where the file
-# opens with an identity; not to a file with no settings; not to a file that asks for no particular form.
-DELEGATED_ONLY, IDENTITY, SETTINGS, FORM = "delegated", "identity", "settings", "form"
+SCRIPT, READING, RATING = questions.SCRIPT, questions.READING, questions.RATING
+CHECK_KINDS = questions.CHECK_KINDS
+# How a check, weighed as 1, counts in the total at equal weights (review questions, 'Weights').
+EQUAL_WEIGHT = 1
 
-# The thirty-three questions of review-questions.md, in its order: (title, section, kind, limit). A test reads
-# review-questions.md and fails if this and the file disagree; at run time, validate refuses every record
-# while they disagree.
-QUESTIONS = (
-    ("A dedicated persona", PERSONA, READING, None),
-    ("Pointers carry their triggers", PERSONA, SCRIPT, None),
-    ("Bound parts agree with the prose", PERSONA, SCRIPT, SETTINGS),
-    ("Leaves the harness's work to the harness", PERSONA, SCRIPT, None),
-    ("Enforceable rules enforced", PERSONA, READING, None),
-    ("No procedure for one kind of task", PERSONA, READING, None),
-    ("No facts the project already holds", PERSONA, READING, None),
-    ("No pressure from consequences", PERSONA, READING, None),
-    ("One job", PERSONA, READING, DELEGATED_ONLY),
-    ("Declares its tools", PERSONA, SCRIPT, DELEGATED_ONLY),
-    ("States its output", PERSONA, READING, DELEGATED_ONLY),
-    ("Boundaries in three tiers", PERSONA, READING, None),
-    ("Rules held in the persona", PERSONA, FREQUENCY, None),
-    ("Directions for when nobody answers", PERSONA, FREQUENCY, None),
-    ("Rules used in every act come first", PERSONA, FREQUENCY, None),
-    ("Tools explained", PERSONA, FREQUENCY, None),
-    ("Commands given exactly", PERSONA, FREQUENCY, None),
-    ("The description says when to choose it", PERSONA, QUALITY, DELEGATED_ONLY),
-    ("An identity that does the work", PERSONA, QUALITY, IDENTITY),
-    ("No time-sensitive statements", WRITING, SCRIPT, None),
-    ("Consistent with itself", WRITING, READING, None),
-    ("Nothing said twice", WRITING, READING, None),
-    ("Leaves known things unsaid", WRITING, READING, None),
-    ("Plain emphasis", WRITING, SCRIPT, None),
-    ("No placeholders", WRITING, SCRIPT, None),
-    ("Shows an example", WRITING, READING, FORM),
-    ("Terms defined where they are used", WRITING, FREQUENCY, None),
-    ("Answers defined, edge cases included", WRITING, FREQUENCY, None),
-    ("Its own criteria met", WRITING, FREQUENCY, None),
-    ("Instructions an observer can check", WRITING, FREQUENCY, None),
-    ("What to do, not what to avoid", WRITING, FREQUENCY, None),
-    ("Reasons given", WRITING, FREQUENCY, None),
-    ("Each instruction stands alone", WRITING, FREQUENCY, None),
-)
-BY_TITLE = {q[0]: q for q in QUESTIONS}
-ORDER = {q[0]: i for i, q in enumerate(QUESTIONS)}
-# Answered first; a 0 sets the file aside (review questions, 'A dedicated persona').
-DEDICATED = "A dedicated persona"
-
-# A check counts 1 or 0; a rating counts its point, from 0 to 6, and adds 6 to the points possible
-# (review questions, 'Score').
-CHECK_POINTS = 1
-TOP_POINT = 6
-# The scales' words by point (review questions, 'Checks and ratings': Brown's seven-point scales).
-FREQUENCY_WORDS = {
-    6: "always", 5: "almost always", 4: "usually", 3: "about half the time", 2: "seldom", 1: "almost never", 0: "never",
-}
-QUALITY_WORDS = {
-    6: "exceptional", 5: "excellent", 4: "very good", 3: "good", 2: "fair", 1: "poor", 0: "very poor",
-}
-# The frequency bands, as the review questions give them: 5 is over 80%, below 100%; 4 is over 60%, up
-# to 80%; 3 is 40% to 60%, both included; 2 is 20%, below 40%; 1 is more than none, below 20%.
-OVER_FOR_5 = Fraction(80, 100)
-OVER_FOR_4 = Fraction(60, 100)
-FROM_FOR_3 = Fraction(40, 100)
-FROM_FOR_2 = Fraction(20, 100)
 # Stars: x divided by y, times 5, to the nearest half star (review questions, 'Score'), printed as five
 # places: U+2605 for a full star, U+00BD for a half and U+2606 for an empty place.
 STAR_PLACES = 5
 FULL_STAR, HALF_STAR, EMPTY_STAR = "★", "½", "☆"
-# The formula line shows x / y * 5 to two places (build specification §3e, item 8).
+# The formula line shows x / y * 5 to two places (build specification §3e, item 9).
 FORMULA_PLACES = 2
 # Three spaces between the longest question title and its answer, so the answers align in one column.
 COLUMN_GAP = 3
-TITLE_WIDTH = max(len(q[0]) for q in QUESTIONS) + COLUMN_GAP
-# Files under 'Files reviewed:' and 'Files left out:' are indented by two spaces.
+# Files under 'Files reviewed:' and 'Files left out:', and the questions under 'Do not apply:', are indented by
+# two spaces.
 FILE_INDENT = "  "
 
 SESSION_TEXT = personafile.SESSION_TEXT
@@ -171,35 +114,21 @@ SET_ASIDE_WORDS = "set aside"
 MAIN_REASON = "the persona's main file"
 FILES_HEADING = "Files reviewed:"
 LEFT_OUT_HEADING = "Files left out:"
+DO_NOT_APPLY_HEADING = "Do not apply:"
+DO_NOT_APPLY_NONE = "Do not apply: none."
+DOES_NOT_APPLY = "does not apply"
+BRANCHES_PREFIX = "Branches: "
 NO_TOTAL = "no stars and no total"
-NO_ROW_APPLIES = "no row of the check table applies to this file"
 # A question with no sources in the grounding table rests on the reading alone (build specification §3e).
 NO_SOURCES = "none"
 NO_SOURCES_LINE = "Sources: none, reading alone"
+# The record's key for a question that does not apply, and the keys round 3 used, now refused.
+DNA_KEY = "does_not_apply"
+OLD_KEYS = ("not_scored", "not_rated")
 
 
 # ---------------------------------------------------------------------------------------------------
 # The formula
-
-
-def frequency_point(meeting, counted):
-    """The frequency scale's point for meeting places out of counted places."""
-    if counted <= 0:
-        raise ValueError("a rating with no places is not rated")
-    share = Fraction(meeting, counted)
-    if share == 1:
-        return 6
-    if share == 0:
-        return 0
-    if share > OVER_FOR_5:
-        return 5
-    if share > OVER_FOR_4:
-        return 4
-    if share >= FROM_FOR_3:
-        return 3
-    if share >= FROM_FOR_2:
-        return 2
-    return 1
 
 
 def stars(x, y):
@@ -222,76 +151,25 @@ def two_places(value):
     return f"{n // scale}.{n % scale:0{FORMULA_PLACES}d}"
 
 
-def words_for(kind):
-    return FREQUENCY_WORDS if kind == FREQUENCY else QUALITY_WORDS
-
-
 def plural(n, word):
     return f"{n} {word}" if n == 1 else f"{n} {word}s"
 
 
+def and_list(names):
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def weights_phrase(qs):
+    """The weighted checks as the formula names them, such as 'A, B and C weigh 3', read from the file."""
+    groups = {}
+    for title in qs.weighted_checks():
+        groups.setdefault(qs.by_title[title].weight, []).append(title)
+    parts = [f"{and_list(t)} {'weighs' if len(t) == 1 else 'weigh'} {w}" for w, t in sorted(groups.items())]
+    return "; ".join(parts) + ", every other check 1" if parts else "every check 1"
+
+
 # ---------------------------------------------------------------------------------------------------
-# The review questions and the bibliography
-
-
-def limit_of(para):
-    """Where a question applies, from the words review-questions.md uses for it, read across line breaks."""
-    para = " ".join(para.split())
-    if "Not scored for a standing persona" in para or "Rated for a delegated persona only" in para:
-        return DELEGATED_ONLY
-    if "Rated where the file opens with an identity" in para:
-        return IDENTITY
-    if "Not scored for a file with no settings" in para:
-        return SETTINGS
-    if "Not scored for a file that asks for no particular form" in para:
-        return FORM
-    return None
-
-
-def file_questions(path=REVIEW_QUESTIONS):
-    """review-questions.md's questions in its order: (title, section, kind, limit)."""
-    text = open(path, encoding="utf-8").read()
-    flags = re.MULTILINE | re.DOTALL
-    out = []
-    for heading, section in (("Persona questions", PERSONA), ("Instruction-writing questions", WRITING)):
-        body = re.search(rf"^## {heading}\s*$(.*?)(?=^## |\Z)", text, flags)
-        if not body:
-            raise ValueError(f"review-questions.md has no '## {heading}' section")
-        checks = re.search(r"^### Checks\s*$(.*?)(?=^### |\Z)", body.group(1), flags)
-        ratings = re.search(r"^### Ratings\s*$(.*)", body.group(1), flags)
-        if not checks or not ratings:
-            raise ValueError(f"review-questions.md's '{heading}' has no '### Checks' or '### Ratings'")
-        for para in re.split(r"\n\s*\n", checks.group(1)):
-            m = re.match(r"\*\*(.+?)\*\* \(\*(script|reading)\*\)", para.strip())
-            if m:
-                out.append((m.group(1).rstrip("."), section, m.group(2), limit_of(para)))
-        for para in re.split(r"\n\s*\n", ratings.group(1)):
-            m = re.match(r"\*\*(.+?)\*\*", para.strip())
-            if m:
-                kind = QUALITY if "*Exceptional:*" in para else FREQUENCY
-                out.append((m.group(1).rstrip("."), section, kind, limit_of(para)))
-    return out
-
-
-def disagreement(questions):
-    """A message when review-questions.md's questions and QUESTIONS disagree, or None."""
-    ours = list(QUESTIONS)
-    if questions == ours:
-        return None
-    titles, our_titles = [q[0] for q in questions], [q[0] for q in ours]
-    missing = [t for t in titles if t not in our_titles]
-    extra = [t for t in our_titles if t not in titles]
-    detail = []
-    if missing:
-        detail.append(f"in the file and not in report.py: {', '.join(missing)}")
-    if extra:
-        detail.append(f"in report.py and not in the file: {', '.join(extra)}")
-    if not detail:
-        detail.append("the same titles in another order, section, kind or limit")
-    return (
-        "review-questions.md and report.py's questions disagree (" + "; ".join(detail) + "); "
-        "no record can be scored until report.py follows the file"
-    )
+# The bibliography
 
 
 def load_grounding(path=BIBLIOGRAPHY):
@@ -352,15 +230,16 @@ def kind_label(header):
 class Prepared:
     """One persona of a record, validated: its header, its files, its answers and the findings it lists."""
 
-    def __init__(self, path):
+    def __init__(self, path, qs=None):
         self.path = path
+        self.qs = qs or questions.load_cached()
         self.header = {}
         self.files = {}  # shown path -> PersonaFile, the main file first
         self.reviewed = [(path, MAIN_REASON)]  # (path, reason)
         self.left_out = []  # (path, reason)
         self.empty = False
         self.set_aside = None  # {"reason": ...} from find.py, or {"finding": ...} from the reviewer
-        self.answers = []  # one per question, in QUESTIONS order
+        self.answers = []  # one per question, in the file's order
         self.items = []  # (question title, finding), in the order the report lists them
         self.fit = None
 
@@ -472,8 +351,33 @@ def named_files(entry, key, p, faults, must_exist, root):
     return out
 
 
-def validate(record, table, grounding):
+def branches_of(header):
+    """The three branches a header gives, as a record states them."""
+    return {"delegated": bool(header["delegated"]), "harness": header.get("harness"), "settings": list(header.get("settings") or [])}
+
+
+def check_branches(p, entry, faults):
+    """The record's branches must match those find.py reads from the files."""
+    given = entry.get("branches")
+    want = branches_of(p.header)
+    if not isinstance(given, dict):
+        faults.append(
+            f"{p.path}, branches: missing; copy them from find.py: {find.branch_text(p.header)}"
+        )
+        return
+    got = {"delegated": given.get("delegated"), "harness": given.get("harness"),
+           "settings": sorted(given.get("settings") or [])}
+    if got != dict(want, settings=sorted(want["settings"])):
+        faults.append(
+            f"{p.path}, branches: the record gives delegated {given.get('delegated')}, harness {given.get('harness')}, "
+            f"settings {', '.join(given.get('settings') or []) or 'none'}; find.py reads {find.branch_text(p.header)}; "
+            f"copy the branches from find.py"
+        )
+
+
+def validate(record, table, grounding, qs=None):
     """Validate a record; return (list of Prepared, list of fault messages)."""
+    qs = qs or questions.load_cached()
     faults = []
     root = record.get("root") or os.getcwd()
     top = find.project_root(root)
@@ -492,7 +396,7 @@ def validate(record, table, grounding):
             faults.append(f"{path}, path: reviewed twice in one record; give each file once")
             continue
         seen_paths.add(path)
-        p = Prepared(path)
+        p = Prepared(path, qs)
         try:
             if path == SESSION_TEXT:
                 if not isinstance(entry.get("text"), str):
@@ -519,7 +423,7 @@ def validate(record, table, grounding):
             continue
         if entry.get("set_aside"):
             faults.append(
-                f"{path}, set_aside: find.py does not set this file aside; answer '{DEDICATED}' first, and set the "
+                f"{path}, set_aside: find.py does not set this file aside; answer '{qs.root}' first, and set the "
                 f"file aside only by scoring it 0 with the line behind it"
             )
             continue
@@ -540,122 +444,194 @@ def validate(record, table, grounding):
         p.fit = entry.get("fit")
         p.header["bound_parts"] = [b for f in p.files.values() for b in f.bound_parts]
         prepared.append(p)
-        questions = entry.get("questions") or []
-        if not isinstance(questions, list):
+        answers_given = entry.get("questions") or []
+        if not isinstance(answers_given, list):
             faults.append(f"{path}, questions: give a list with one answer per question")
             continue
         if pf.empty:
             p.empty = True
-            if any(isinstance(q, dict) and not_answered(q) is None for q in questions):
+            if any(isinstance(q, dict) and DNA_KEY not in q for q in answers_given):
                 faults.append(f"{path}, questions: the file is empty; give no score and no rating")
             continue
         answers = {}
-        for qi, q in enumerate(questions, start=1):
+        for qi, q in enumerate(answers_given, start=1):
             if not isinstance(q, dict):
                 faults.append(f"{path}, question {qi}: not an object; give the question and its answer")
                 continue
             title = q.get("question")
-            if title not in BY_TITLE:
+            if title not in qs.by_title:
                 faults.append(
                     f"{path}, '{title}', question: is not a question in review-questions.md; "
-                    f"use one of its bold titles word for word, without the full stop"
+                    f"use one of its bold titles word for word"
                 )
                 continue
             if title in answers:
                 faults.append(f"{path}, '{title}', question: answered twice; answer each question once")
                 continue
+            old = [k for k in OLD_KEYS if k in q]
+            if old:
+                faults.append(
+                    f"{path}, '{title}', {old[0]}: refused; a question that does not apply is marked {DNA_KEY} with a "
+                    f"reason review-questions.md gives, and every other question is answered"
+                )
+                continue
             answers[title] = q
-        if not dedicated_answer(p, answers, faults):
+        if not root_answer(p, answers, faults):
             continue
+        check_branches(p, entry, faults)
         rows = []
         for shown, f in p.files.items():
             rows += check.check_one(shown, f, p.header["kind"], p.header["delegated"], p.header.get("harness"), table, top)
         resolved = {}
-        for title, section, kind, limit in QUESTIONS:
-            q = answers.get(title)
-            if q is None and kind != SCRIPT:
-                faults.append(f"{path}, '{title}', question: missing; answer it, or mark it not scored or not rated with the reason")
-                continue
-            if title not in grounding:
+        # Checks first, so a rating that follows a check can read its score.
+        for q in sorted(qs.questions, key=lambda q: q.kind == RATING):
+            if q.title not in grounding:
                 faults.append(
-                    f"{path}, '{title}', question: bibliography.md's grounding table does not hold it, so its "
+                    f"{path}, '{q.title}', question: bibliography.md's grounding table does not hold it, so its "
                     f"sources cannot be printed; the grounding table needs a row for it"
                 )
-            own_rows = [r for r in rows if r["question"] == title]
-            resolved[title] = resolve(p, title, section, kind, limit, q, own_rows, faults)
-        p.answers = [resolved[q[0]] for q in QUESTIONS if q[0] in resolved]
+            own_rows = [r for r in rows if r["question"] == q.title]
+            resolved[q.title] = resolve(p, q, answers.get(q.title), own_rows, resolved, faults)
+        p.answers = [resolved[q.title] for q in qs.questions]
+        order = {q.title: i for i, q in enumerate(qs.questions)}
         file_rank = {name: i for i, name in enumerate([path] + sorted(n for n in p.files if n != path))}
         p.items = sorted(
             ((a["title"], f) for a in p.answers for f in a["findings"]),
-            key=lambda t: (ORDER[t[0]], file_rank[t[1]["file"]], t[1]["line"]),
+            key=lambda t: (order[t[0]], file_rank[t[1]["file"]], t[1]["line"]),
         )
         if p.fit is not None:
             check_fit(p, root, faults)
     return prepared, faults
 
 
-def dedicated_answer(p, answers, faults):
-    """'A dedicated persona', answered first. Return True when the review goes on to the other questions;
-    False when the record is faulty or the file is set aside on a 0."""
-    q = answers.get(DEDICATED)
+def root_answer(p, answers, faults):
+    """The root question, answered first. Return True when the review goes on to the other questions; False when
+    the record is faulty or the file is set aside on a 0."""
+    root = p.qs.root
+    q = answers.get(root)
     if q is None:
-        faults.append(f"{p.path}, '{DEDICATED}', question: missing; answer it first, before every other question")
+        faults.append(f"{p.path}, '{root}', question: missing; answer it first, before every other question")
         return False
     score = q.get("score")
     if isinstance(score, bool) or score not in (0, 1):
-        faults.append(f"{p.path}, '{DEDICATED}', score: '{score}'; a check scores 1 or 0")
+        faults.append(f"{p.path}, '{root}', score: '{score}'; a check scores 1 or 0")
         return False
     if score == 1:
         return True
-    others = [t for t in answers if t != DEDICATED]
+    others = [t for t in answers if t != root]
     if others or p.left_out or len(p.files) > 1 or p.fit is not None:
         faults.append(
-            f"{p.path}, '{DEDICATED}': scored 0, so the file is set aside and carries no other answer; "
+            f"{p.path}, '{root}': scored 0, so the file is set aside and carries no other answer; "
             f"remove the other answers ({', '.join(others) or 'its files and fit'})"
         )
     given = q.get("findings") or []
     if not given:
-        faults.append(f"{p.path}, '{DEDICATED}', findings: a check at 0 quotes the line behind it; add a finding")
+        faults.append(f"{p.path}, '{root}', findings: a check at 0 quotes the line behind it; add a finding")
         return False
-    got = finding(p, DEDICATED, "finding 1", given[0], faults)
+    got = finding(p, root, "finding 1", given[0], faults)
     if got:
         p.set_aside = {"finding": got}
     return False
 
 
-def not_answered(q):
-    """The reason a question is not scored or not rated, or None; either key is read for either."""
-    for key in ("not_scored", "not_rated"):
-        if key in q:
-            return q[key] if isinstance(q[key], str) else ""
+def removed_by(p, title):
+    """The reason a branch or a harness exception gives for a question not applying, or None."""
+    qs = p.qs
+    no = {"delegated": not p.header["delegated"], "harness": not p.header.get("harness"),
+          "settings": not p.header.get("settings")}
+    for key, branch in qs.branches.items():
+        if no[key] and title in branch.removes:
+            return branch.reason
+    for question, harness, reason, _ in qs.exceptions:
+        if question == title and p.header.get("harness") == harness:
+            return reason
     return None
 
 
-def resolve(p, title, section, kind, limit, q, rows, faults):
+def applies(p, title, resolved):
+    """('removed', reason) when the branches, an exception or a following check decide the question does not
+    apply; ('content', reason) when its content test decides; ('applies', None) otherwise."""
+    qs = p.qs
+    reason = removed_by(p, title)
+    if reason:
+        return "removed", reason
+    if title in qs.following:
+        check_title, follow_reason = qs.following[title]
+        followed = resolved.get(check_title)
+        if followed and not followed.get(DNA_KEY) and followed.get("point") is not None:
+            return ("removed", follow_reason) if followed["point"] == 0 else ("applies", None)
+    if title in qs.content_tests:
+        return "content", qs.content_tests[title][1]
+    return "applies", None
+
+
+def resolve(p, q, answer, rows, resolved, faults):
     """Validate one answer and return what the report prints for it."""
-    path = p.path
-    out = {"title": title, "section": section, "type": kind, "point": None, "findings": [], "not_rated": None}
-    reason = not_answered(q) if q is not None else None
-    if kind == SCRIPT:
-        return resolve_script(p, out, q, reason, rows, faults)
-    if reason is not None:
-        if not reason.strip():
-            faults.append(f"{path}, '{title}', not_rated: give the reason it is not scored or not rated")
-        out["not_rated"] = reason or "not given"
+    path, title, qs = p.path, q.title, p.qs
+    out = {"title": title, "section": q.section, "type": q.kind, "scale": q.scale, "weight": q.weight,
+           "point": None, "findings": [], DNA_KEY: None}
+    how, reason = applies(p, title, resolved)
+    given_dna = answer.get(DNA_KEY) if answer is not None else None
+    if how == "removed":
+        if answer is not None and given_dna is None:
+            faults.append(
+                f"{path}, '{title}', question: does not apply here ({reason}); remove the answer, or mark it "
+                f"{DNA_KEY} with that reason"
+            )
+        elif given_dna is not None and given_dna != reason:
+            faults.append(
+                f"{path}, '{title}', {DNA_KEY}: '{given_dna}', but review-questions.md gives '{reason}' here; "
+                f"give that reason"
+            )
+        out[DNA_KEY] = reason
         return out
-    if limit == DELEGATED_ONLY and not p.header["delegated"]:
-        what = "scored" if kind in CHECK_KINDS else "rated"
+    if how == "content":
+        if answer is None:
+            faults.append(
+                f"{path}, '{title}', question: missing; give the subject line that holds what it tests for and "
+                f"answer it, or mark it {DNA_KEY} with '{reason}'"
+            )
+            return out
+        if given_dna is not None:
+            if answer.get("subject"):
+                faults.append(
+                    f"{path}, '{title}', subject: the record quotes a line that holds what the question tests for, "
+                    f"so it applies; answer it, or remove the subject"
+                )
+            elif given_dna != reason:
+                faults.append(
+                    f"{path}, '{title}', {DNA_KEY}: '{given_dna}' is not a reason the branches, the rows or the "
+                    f"content test allow here; the content test's reason is '{reason}'"
+                )
+            out[DNA_KEY] = reason
+            return out
+        subject = answer.get("subject")
+        if not isinstance(subject, dict):
+            faults.append(
+                f"{path}, '{title}', subject: missing; quote the line that holds what the question tests for, or "
+                f"mark it {DNA_KEY} with '{reason}'"
+            )
+        else:
+            got_file = file_of(p, f"{path}, '{title}', subject", subject, faults)
+            if got_file:
+                quoted_line(got_file[1], got_file[0], f"{path}, '{title}', subject", subject, faults)
+    elif given_dna is not None:
         faults.append(
-            f"{path}, '{title}', {'score' if kind in CHECK_KINDS else 'scale'}: a standing persona is not {what} on "
-            f"this question; mark it not {what} with the reason"
+            f"{path}, '{title}', {DNA_KEY}: '{given_dna}' is not a reason the branches, the rows or the content test "
+            f"allow here; the question applies, so answer it"
         )
         return out
-    if kind == READING:
-        score = q.get("score")
+    if q.kind == SCRIPT:
+        return resolve_script(p, out, answer, rows, faults)
+    if answer is None:
+        faults.append(f"{path}, '{title}', question: missing; it applies, so answer it")
+        return out
+    if q.kind == READING:
+        score = answer.get("score")
         if isinstance(score, bool) or not isinstance(score, int) or score not in (0, 1):
             faults.append(f"{path}, '{title}', score: '{score}'; a check scores 1 or 0")
             return out
-        given = q.get("findings") or []
+        given = answer.get("findings") or []
         if score == 1 and given:
             faults.append(f"{path}, '{title}', findings: a check at 1 has no findings; remove them or score 0")
         if score == 0 and not given:
@@ -666,16 +642,14 @@ def resolve(p, title, section, kind, limit, q, rows, faults):
                 out["findings"].append(got)
         out["point"] = score
         return out
-    if q.get("scale") != kind:
-        faults.append(f"{path}, '{title}', scale: '{q.get('scale')}'; this question is rated on the {kind} scale")
+    scale = qs.scales[q.scale]
+    if answer.get("scale") != q.scale:
+        faults.append(f"{path}, '{title}', scale: '{answer.get('scale')}'; this question is rated on the {q.scale} scale")
         return out
-    if kind == FREQUENCY:
-        places = q.get("places")
+    if scale.bands:
+        places = answer.get("places")
         if not isinstance(places, list) or not places:
-            faults.append(
-                f"{path}, '{title}', places: none listed; list every place the question applies to, "
-                f"or mark it not rated when there is none"
-            )
+            faults.append(f"{path}, '{title}', places: none listed; list every place the question applies to")
             return out
         meeting = 0
         for k, place in enumerate(places, start=1):
@@ -692,15 +666,14 @@ def resolve(p, title, section, kind, limit, q, rows, faults):
             got = finding(p, title, f"place {k}", place, faults)
             if got:
                 out["findings"].append(got)
-        out["places"], out["meeting"] = len(places), meeting
-        out["point"] = frequency_point(meeting, len(places))
+        out["point"] = scale.point(meeting, len(places))
         return out
-    point = q.get("point")
-    if isinstance(point, bool) or not isinstance(point, int) or not 0 <= point <= TOP_POINT:
-        faults.append(f"{path}, '{title}', point: '{point}'; give a whole number from 0 to {TOP_POINT}")
+    point = answer.get("point")
+    if isinstance(point, bool) or not isinstance(point, int) or point not in scale.words:
+        faults.append(f"{path}, '{title}', point: '{point}'; give a whole number from {min(scale.words)} to {scale.top}")
         return out
-    given = q.get("findings") or []
-    if point < TOP_POINT and not given:
+    given = answer.get("findings") or []
+    if point < scale.top and not given:
         faults.append(f"{path}, '{title}', findings: a rating below its top point lists its lines; quote them")
     for k, f in enumerate(given, start=1):
         got = finding(p, title, f"finding {k}", f, faults)
@@ -710,46 +683,32 @@ def resolve(p, title, section, kind, limit, q, rows, faults):
     return out
 
 
-def resolve_script(p, out, q, reason, rows, faults):
-    """A check marked script takes its score from check.py's rows alone, on every file of the persona
-    (build specification §3d)."""
+def resolve_script(p, out, answer, rows, faults):
+    """A check marked script takes its score from check.py's rows alone, on every file of the persona; one that
+    applies and that no row reaches scores 1, since nothing contradicts it (build specification §3d, §3e)."""
     path, title = p.path, out["title"]
     scored = [r for r in rows if r["score"] is not None]
     zero = [r for r in scored if r["score"] == check.ZERO]
-    rows_score = None if not scored else (0 if zero else 1)
-    if q is not None:
-        if reason is not None and rows_score is not None:
+    rows_score = 0 if zero else 1
+    if answer is not None:
+        score = answer.get("score")
+        if isinstance(score, bool) or not isinstance(score, int) or score not in (0, 1):
+            faults.append(f"{path}, '{title}', score: '{score}'; a check scores 1 or 0")
+        elif score != rows_score:
+            r = zero[0] if zero else (scored[0] if scored else None)
+            by = f"check.py row {r['id']} scored {r['score']}" + (f" at {r['path']}, line {r['line']}" if zero else "") if r \
+                else "no row of the check table reaches it, so it scores 1"
             faults.append(
-                f"{path}, '{title}', not_scored: check.py's rows score it {rows_score}; a script check takes its "
-                f"score from its rows; give score {rows_score} or leave the question out"
+                f"{path}, '{title}', score: scored {score}, but {by}; a script check takes its rows' score; give "
+                f"{rows_score} or leave the question out"
             )
-        if reason is None:
-            score = q.get("score")
-            if isinstance(score, bool) or not isinstance(score, int) or score not in (0, 1):
-                faults.append(f"{path}, '{title}', score: '{score}'; a check scores 1 or 0")
-            elif rows_score is None:
-                faults.append(
-                    f"{path}, '{title}', score: {score}, but {NO_ROW_APPLIES}, so it is not scored; "
-                    f"mark it not scored or leave the question out"
-                )
-            elif score != rows_score:
-                r = zero[0] if zero else scored[0]
-                at = f" at {r['path']}, line {r['line']}" if zero else ""
-                faults.append(
-                    f"{path}, '{title}', score: scored {score}, but check.py row {r['id']} scored {r['score']}{at}; "
-                    f"a script check takes its rows' score; give {rows_score} or leave the question out"
-                )
-        given = q.get("findings") or []
+        given = answer.get("findings") or []
         if given and rows_score != 0:
             faults.append(f"{path}, '{title}', findings: a check at 1 has no findings; remove them")
         for k, f in enumerate(given, start=1):
             got = finding(p, title, f"finding {k}", f, faults)
             if got:
                 out["findings"].append(got)
-    if rows_score is None:
-        notes = [r["message"] for r in rows if r.get("message")]
-        out["not_rated"] = notes[0] if notes else NO_ROW_APPLIES
-        return out
     for r in zero:
         for hit in r["lines"]:
             add_row_finding(p, out, r, hit)
@@ -805,20 +764,36 @@ def check_fit(p, root, faults):
 # Rendering
 
 
-def totals(p):
-    """{section: (x, y)} and the total (x, y) for a persona: the points given and the points possible."""
-    by_section = {s: (0, 0) for s in SECTIONS}
+def answer_points(qs, a, equal=False):
+    """(points given, points possible) for one answer, or None when it does not apply or has no point."""
+    if a.get(DNA_KEY) or a.get("point") is None:
+        return None
+    if a["type"] in CHECK_KINDS:
+        weight = EQUAL_WEIGHT if equal else qs.by_title[a["title"]].weight
+        return a["point"] * weight, weight
+    return a["point"], qs.scales[qs.by_title[a["title"]].scale].top
+
+
+def totals(p, equal=False):
+    """{section: (x, y)}, the total (x, y), and the points of the questions that do not apply."""
+    qs = p.qs
+    by_section = {s: (0, 0) for s in qs.sections}
+    not_applying = 0
     for a in p.answers:
-        if a.get("point") is None:
+        got = answer_points(qs, a, equal)
+        if got is None:
+            if a.get(DNA_KEY):
+                not_applying += qs.points(a["title"]) if not equal else (
+                    EQUAL_WEIGHT if a["type"] in CHECK_KINDS else qs.points(a["title"]))
             continue
         x, y = by_section[a["section"]]
-        by_section[a["section"]] = (x + a["point"], y + (CHECK_POINTS if a["type"] in CHECK_KINDS else TOP_POINT))
+        by_section[a["section"]] = (x + got[0], y + got[1])
     total = (sum(x for x, _ in by_section.values()), sum(y for _, y in by_section.values()))
-    return by_section, total
+    return by_section, total, not_applying
 
 
 def review_lines(p):
-    out = [f"Review: {p.path} ({kind_label(p.header)})", FILES_HEADING]
+    out = [f"Review: {p.path} ({kind_label(p.header)})", BRANCHES_PREFIX + find.branch_text(p.header), FILES_HEADING]
     out += [f"{FILE_INDENT}{name}: {reason}" for name, reason in p.reviewed]
     if p.left_out:
         out += [LEFT_OUT_HEADING] + [f"{FILE_INDENT}{name}: {reason}" for name, reason in p.left_out]
@@ -827,22 +802,31 @@ def review_lines(p):
     return out
 
 
-def answer_value(a):
-    if a.get("point") is None:
-        word = "not scored" if a["type"] in CHECK_KINDS else "not rated"
-        return f"{word}{' ' * COLUMN_GAP}{sentence(a.get('not_rated') or NO_ROW_APPLIES)}"
+def do_not_apply_lines(p):
+    listed = [(a["title"], a[DNA_KEY]) for a in p.answers if a.get(DNA_KEY)]
+    if not listed:
+        return [DO_NOT_APPLY_NONE]
+    return [DO_NOT_APPLY_HEADING] + [f"{FILE_INDENT}{t}: {r}" for t, r in listed]
+
+
+def answer_value(qs, a):
+    if a.get(DNA_KEY) or a.get("point") is None:
+        return DOES_NOT_APPLY
     if a["type"] in CHECK_KINDS:
-        return "yes 1" if a["point"] == 1 else "no  0"
-    return f"{a['point']} of {TOP_POINT}{' ' * COLUMN_GAP}{words_for(a['type'])[a['point']]}"
+        return f"yes {qs.by_title[a['title']].weight}" if a["point"] == 1 else "no  0"
+    scale = qs.scales[qs.by_title[a["title"]].scale]
+    return f"{a['point']} of {scale.top}{' ' * COLUMN_GAP}{scale.words[a['point']]}"
 
 
 def answer_lines(p):
+    qs = p.qs
+    width = max(len(q.title) for q in qs.questions) + COLUMN_GAP
     out = []
-    for section in SECTIONS:
+    for section in qs.sections:
         if out:
             out.append("")
-        out.append(SECTION_HEADINGS[section])
-        out += [f"{a['title']:<{TITLE_WIDTH}}{answer_value(a)}" for a in p.answers if a["section"] == section]
+        out.append(section)
+        out += [f"{a['title']:<{width}}{answer_value(qs, a)}" for a in p.answers if a["section"] == section]
     return out
 
 
@@ -873,12 +857,8 @@ def set_aside_lines(p, grounding):
     if "reason" in p.set_aside:
         return [head, sentence(p.set_aside["reason"])]
     f = p.set_aside["finding"]
-    return [
-        head,
-        f"{DEDICATED}. {f['note']}",
-        f"{f['file']}, line {f['line']}: '{f['text']}'",
-        sources_line(grounding.get(DEDICATED, NO_SOURCES)),
-    ]
+    root = p.qs.root
+    return [head, f"{root}. {f['note']}", f"{f['file']}, line {f['line']}: '{f['text']}'", sources_line(grounding.get(root, NO_SOURCES))]
 
 
 def set_aside_reason(p):
@@ -888,19 +868,33 @@ def set_aside_reason(p):
     return f"not a dedicated persona: {p.set_aside['finding']['note'].rstrip('.')}"
 
 
+def total_line(qs, x, y, not_applying):
+    return f"Total: {x} out of {y} ({qs.possible} possible, less {not_applying} that do not apply)"
+
+
+def formula_line(qs, by_section, x, y):
+    parts = ", ".join(f"{s.lower()} {by_section[s][0]} out of {by_section[s][1]}" for s in qs.sections)
+    return (
+        f"Formula: each check counts its weight or 0, and each rating its points; {weights_phrase(qs)}; {parts}, "
+        f"total {x} out of {y}."
+    )
+
+
 def render_one(p, grounding=None):
     """One file's report, without its fence; return (text, (x, y) or None)."""
     grounding = grounding or {}
+    qs = p.qs
     if p.set_aside:
         return "\n".join(set_aside_lines(p, grounding)), None
     if p.empty:
         return "\n".join([EMPTY_LINE, ""] + review_lines(p)), None
-    by_section, (x, y) = totals(p)
+    by_section, (x, y), not_applying = totals(p)
     if y == 0:
         return "\n".join([NOTHING_APPLIES, ""] + review_lines(p) + [""] + answer_lines(p)), None
-    out = [star_line(stars(x, y)), f"Total: {x} out of {y}"]
-    out += [f"{SECTION_HEADINGS[s]}: {by_section[s][0]} out of {by_section[s][1]}" for s in SECTIONS]
-    out += [""] + review_lines(p) + ["", LINES_HEADING]
+    _, (ex, ey), _ = totals(p, equal=True)
+    out = [star_line(stars(x, y)), total_line(qs, x, y, not_applying)]
+    out += [f"{s}: {by_section[s][0]} out of {by_section[s][1]}" for s in qs.sections]
+    out += [""] + review_lines(p) + [""] + do_not_apply_lines(p) + ["", LINES_HEADING]
     if p.items:
         for k, (title, f) in enumerate(p.items, start=1):
             out += item_lines(k, title, f, grounding)
@@ -909,10 +903,9 @@ def render_one(p, grounding=None):
     out += [""] + answer_lines(p) + [""]
     if p.fit is not None:
         out += fit_lines(p) + [""]
-    (px, py), (wx, wy) = by_section[PERSONA], by_section[WRITING]
     out += [
-        f"Formula: each check counts 1 or 0 and each rating its points; persona {px} out of {py}, "
-        f"instruction writing {wx} out of {wy}, total {x} out of {y}.",
+        formula_line(qs, by_section, x, y),
+        f"At equal weights: {ex} out of {ey}.",
         f"Stars: {x} ÷ {y} × {STAR_PLACES} = {two_places(Fraction(x * STAR_PLACES, y))}, to the nearest half star.",
         NO_PREDICTION,
     ]
@@ -958,14 +951,10 @@ def render(prepared, summary, grounding=None):
 
 
 STAR_RE = re.compile(rf"^[{FULL_STAR}{HALF_STAR}{EMPTY_STAR}]{{{STAR_PLACES}}} \(\d+(?:\.5)?\)$")
-TOTAL_RE = re.compile(r"^Total: (\d+) out of (\d+)$")
-SUBTOTAL_RE = {s: re.compile(rf"^{SECTION_HEADINGS[s]}: (\d+) out of (\d+)$") for s in SECTIONS}
+TOTAL_RE = re.compile(r"^Total: (\d+) out of (\d+) \((\d+) possible, less (\d+) that do not apply\)$")
 REVIEW_RE = re.compile(r"^Review: (.+) \(([^()]+)\)$")
-FORMULA_RE = re.compile(
-    r"^Formula: .*; persona (\d+) out of (\d+), instruction writing (\d+) out of (\d+), total (\d+) out of (\d+)\.$"
-)
+EQUAL_RE = re.compile(r"^At equal weights: (\d+) out of (\d+)\.$")
 STARS_FORMULA_RE = re.compile(r"^Stars: (\d+) ÷ (\d+) × 5 = (\d+\.\d+), to the nearest half star\.$")
-RATING_RE = re.compile(rf"^(\d) of {TOP_POINT}\b")
 
 
 def blocks_of(text):
@@ -973,41 +962,76 @@ def blocks_of(text):
     return [b.splitlines() for b in found] if found else [text.splitlines()]
 
 
-def recompute(lines, section):
-    """(x, y) from a report's lines under one section heading, or None when they cannot be read."""
+def read_rows(qs, lines, section, messages, path):
+    """The answers printed under one section heading: [(title, value)], or None when they cannot be read."""
     try:
-        start = lines.index(SECTION_HEADINGS[section])
+        start = lines.index(section)
     except ValueError:
         return None
-    x = y = 0
+    titles = sorted((q.title for q in qs.questions if q.section == section), key=len, reverse=True)
+    out = []
     for line in lines[start + 1:]:
         if not line.strip():
             break
-        q = next((q for q in QUESTIONS if line.startswith(q[0] + " ")), None)
-        if q is None:
+        title = next((t for t in titles if line.startswith(t + " ")), None)
+        if title is None:
             return None
-        value = line[len(q[0]):].strip()
-        if value.startswith(("not scored", "not rated")):
+        out.append((title, line[len(title):].strip()))
+    return out
+
+
+def recompute(qs, rows, equal=False):
+    """(x, y, the titles printed as not applying) from a section's rows, or None when a value cannot be read.
+    A check printed 'yes N' must carry its weight from the file."""
+    x = y = 0
+    dna = []
+    for title, value in rows:
+        q = qs.by_title[title]
+        if value == DOES_NOT_APPLY:
+            dna.append(title)
             continue
-        if q[2] in CHECK_KINDS:
-            if re.fullmatch(r"yes +1", value):
-                x, y = x + 1, y + CHECK_POINTS
-            elif re.fullmatch(r"no +0", value):
-                y += CHECK_POINTS
-            else:
+        if q.kind in CHECK_KINDS:
+            m = re.fullmatch(r"(yes|no) +(\d+)", value)
+            if not m or (m.group(1) == "yes" and int(m.group(2)) != q.weight) or (m.group(1) == "no" and m.group(2) != "0"):
                 return None
+            weight = EQUAL_WEIGHT if equal else q.weight
+            x, y = x + (weight if m.group(1) == "yes" else 0), y + weight
         else:
-            m = RATING_RE.match(value)
-            if not m:
+            m = re.match(r"^(\d+) of (\d+)\b", value)
+            scale = qs.scales[q.scale]
+            if not m or int(m.group(2)) != scale.top:
                 return None
-            x, y = x + int(m.group(1)), y + TOP_POINT
-    return x, y
+            x, y = x + int(m.group(1)), y + scale.top
+    return x, y, dna
 
 
-def verify(text):
+def listed_not_applying(lines):
+    """The titles under 'Do not apply:', or None when the block is missing."""
+    for i, line in enumerate(lines):
+        if line == DO_NOT_APPLY_NONE:
+            return []
+        if line == DO_NOT_APPLY_HEADING:
+            out = []
+            for item in lines[i + 1:]:
+                if not item.startswith(FILE_INDENT):
+                    break
+                out.append(item[len(FILE_INDENT):].rsplit(": ", 1)[0] if ": " in item else item.strip())
+            return out
+    return None
+
+
+def verify(text, qs=None):
     """Return (exit code, messages)."""
+    qs = qs or questions.load_cached()
     messages, mismatch, computed, reports = [], False, {}, 0
     summary_rows = []
+    sections = qs.sections
+
+    def differ(message):
+        nonlocal mismatch
+        mismatch = True
+        messages.append(message)
+
     for lines in blocks_of(text):
         lines = [l.rstrip() for l in lines]
         if not lines:
@@ -1028,46 +1052,56 @@ def verify(text):
             continue
         reports += 1
         total = TOTAL_RE.match(lines[1]) if len(lines) > 1 else None
-        subtotals = {s: SUBTOTAL_RE[s].match(lines[2 + i]) if len(lines) > 2 + i else None for i, s in enumerate(SECTIONS)}
-        parts = {s: recompute(lines, s) for s in SECTIONS}
-        if not review or not total or not all(subtotals.values()) or not all(parts.values()):
+        subtotal_lines = lines[2: 2 + len(sections)]
+        subtotals = [re.match(rf"^{re.escape(s)}: (\d+) out of (\d+)$", l) for s, l in zip(sections, subtotal_lines)]
+        rows = {s: read_rows(qs, lines, s, messages, None) for s in sections}
+        if not review or not total or len(subtotals) != len(sections) or not all(subtotals) or not all(r is not None for r in rows.values()):
             return EXIT_REFUSED, ["a report has no review line, no total, no subtotals or unreadable checks and ratings; it cannot be checked"]
         path = review.group(1)
+        parts = {s: recompute(qs, rows[s]) for s in sections}
+        equal = {s: recompute(qs, rows[s], equal=True) for s in sections}
+        if not all(parts.values()):
+            differ(f"{path}: a check prints a weight other than the one review-questions.md gives it, or a rating's top point differs")
+            continue
         x, y = sum(v[0] for v in parts.values()), sum(v[1] for v in parts.values())
+        ex, ey = sum(v[0] for v in equal.values()), sum(v[1] for v in equal.values())
+        dna = [t for s in sections for t in parts[s][2]]
+        not_applying = sum(qs.points(t) for t in dna)
+        computed[path] = (review.group(2), (x, y))
+        listed = listed_not_applying(lines)
+        if listed is None:
+            return EXIT_REFUSED, [f"{path}: the report has no 'Do not apply' line; it cannot be checked"]
+        if sorted(listed) != sorted(dna):
+            differ(
+                f"{path}: 'Do not apply' lists {', '.join(listed) or 'none'}, but the rows print as not applying "
+                f"{', '.join(dna) or 'none'}"
+            )
+        for s, sm, line in zip(sections, subtotals, subtotal_lines):
+            sx, sy = parts[s][0], parts[s][1]
+            if (int(sm.group(1)), int(sm.group(2))) != (sx, sy):
+                differ(f"{path}: prints '{line}', but its {s.lower()} rows give {sx} out of {sy}")
+        want_total = total_line(qs, x, y, not_applying)
+        if lines[1] != want_total:
+            differ(f"{path}: prints '{lines[1]}', but its checks and ratings give '{want_total[len('Total: '):]}'")
         if not y:
             return EXIT_REFUSED, [f"{path}: its checks and ratings give no points possible; it cannot be checked"]
-        computed[path] = (review.group(2), (x, y))
-        for i, s in enumerate(SECTIONS):
-            got = (int(subtotals[s].group(1)), int(subtotals[s].group(2)))
-            if got != parts[s]:
-                mismatch = True
-                messages.append(
-                    f"{path}: prints '{lines[2 + i]}', but its {SECTION_HEADINGS[s].lower()} checks and ratings give "
-                    f"{parts[s][0]} out of {parts[s][1]}"
-                )
         want_stars = star_line(stars(x, y))
-        if (int(total.group(1)), int(total.group(2))) != (x, y):
-            mismatch = True
-            messages.append(f"{path}: prints '{lines[1]}', but its checks and ratings give {x} out of {y}")
         if lines[0] != want_stars:
-            mismatch = True
-            messages.append(f"{path}: prints the stars '{lines[0]}', but its checks and ratings give '{want_stars}'")
-        formula = next((FORMULA_RE.match(l) for l in lines if FORMULA_RE.match(l)), None)
-        want = (parts[PERSONA] + parts[WRITING] + (x, y))
-        if formula and tuple(int(g) for g in formula.groups()) != want:
-            mismatch = True
-            messages.append(
-                f"{path}: the formula line prints persona {formula.group(1)} out of {formula.group(2)}, instruction "
-                f"writing {formula.group(3)} out of {formula.group(4)}, total {formula.group(5)} out of "
-                f"{formula.group(6)}, but its checks and ratings give persona {want[0]} out of {want[1]}, "
-                f"instruction writing {want[2]} out of {want[3]}, total {x} out of {y}"
-            )
+            differ(f"{path}: prints the stars '{lines[0]}', but its checks and ratings give '{want_stars}'")
+        formula = next((l for l in lines if l.startswith("Formula: ")), None)
+        want_formula = formula_line(qs, {s: parts[s][:2] for s in sections}, x, y)
+        if formula is not None and formula != want_formula:
+            differ(f"{path}: the formula line prints '{formula}', but its checks and ratings give '{want_formula}'")
+        eq = next((EQUAL_RE.match(l) for l in lines if EQUAL_RE.match(l)), None)
+        if eq is None:
+            differ(f"{path}: the report gives no total at equal weights; its rows give {ex} out of {ey}")
+        elif (int(eq.group(1)), int(eq.group(2))) != (ex, ey):
+            differ(f"{path}: prints 'At equal weights: {eq.group(1)} out of {eq.group(2)}.', but at equal weights its rows give {ex} out of {ey}")
         sf = next((STARS_FORMULA_RE.match(l) for l in lines if STARS_FORMULA_RE.match(l)), None)
         if sf:
             want_sf = (str(x), str(y), two_places(Fraction(x * STAR_PLACES, y)))
             if sf.groups() != want_sf:
-                mismatch = True
-                messages.append(
+                differ(
                     f"{path}: the stars line prints {sf.group(1)} ÷ {sf.group(2)} × 5 = {sf.group(3)}, "
                     f"but its checks and ratings give {want_sf[0]} ÷ {want_sf[1]} × 5 = {want_sf[2]}"
                 )
@@ -1082,8 +1116,7 @@ def verify(text):
         want = f"{kind} {NO_TOTAL}" if xy is None else f"{kind} {star_line(stars(*xy))} {xy[0]} out of {xy[1]}"
         rest = row[len(path):]
         if " ".join(rest.split()) != " ".join(want.split()):
-            mismatch = True
-            messages.append(f"summary, {path}: prints '{rest.strip()}', but its report gives '{want}'")
+            differ(f"summary, {path}: prints '{rest.strip()}', but its report gives '{want}'")
     if not mismatch:
         messages.append(f"every printed subtotal, total and star line matches its checks and ratings: {reports} reports")
     return (EXIT_MISMATCH if mismatch else EXIT_OK), messages
@@ -1091,7 +1124,6 @@ def verify(text):
 
 # ---------------------------------------------------------------------------------------------------
 # Schema
-
 
 FILE_REF = {"type": "string", "description": "The file the line is in: the main path, or a path in loaded_with."}
 
@@ -1128,11 +1160,13 @@ SCHEMA = {
     "description": (
         "Written by the reviewer to one file in the system's temporary folder, never inside the reviewed "
         "project. Paths are relative to root. One entry per persona, and one per file find.py sets aside. For "
-        "each persona, answer the thirty-three questions of review-questions.md by their bold titles without "
-        "the full stop, 'A dedicated persona' first: a 0 there sets the file aside, and the entry then holds that "
-        "answer alone. A check marked script may be left out: check.py's rows set it. Every finding and place "
-        "names its file and quotes its line word for word with its number. The report prints each finding's "
-        "sources from bibliography.md and orders the findings by question, then file, then line."
+        "each persona, give its branches as find.py prints them and answer the questions of "
+        "review-questions.md by their bold titles, the root question (the file's first check) first: a 0 there "
+        "sets the file aside, and the entry then holds that answer alone. A check marked script may be left out: "
+        "check.py's rows set it. A question that does not apply is marked does_not_apply with the reason the "
+        "file's tables print. Every finding and place names its file and quotes its line word for word with its "
+        "number. The report prints each finding's sources from bibliography.md and orders the findings by "
+        "question, then file, then line."
     ),
     "type": "object",
     "required": ["files"],
@@ -1153,6 +1187,16 @@ SCHEMA = {
                         "description": "true for a file find.py sets aside, with no other field; the report prints find.py's reason.",
                     },
                     "kind": {"type": "string", "description": "Optional; as find.py gives it."},
+                    "branches": {
+                        "type": "object",
+                        "description": "The three branches as find.py prints them; validate checks them against the files.",
+                        "required": ["delegated", "harness", "settings"],
+                        "properties": {
+                            "delegated": {"type": "boolean"},
+                            "harness": {"type": ["string", "null"], "description": "The harness the path names, or null."},
+                            "settings": {"type": "array", "items": {"type": "string"}, "description": "The settings fields the file holds."},
+                        },
+                    },
                     "loaded_with": {
                         "type": "array",
                         "description": "The other files reviewed with the persona, each with why it loads with it.",
@@ -1166,9 +1210,12 @@ SCHEMA = {
                     "questions": {
                         "type": "array",
                         "description": (
-                            "One answer per question. A check: score, and findings at 0. A frequency rating: "
-                            "scale and places. A quality rating: scale, point and, below 6, findings. Or "
-                            "not_scored (a check) or not_rated (a rating) with the reason."
+                            "One answer per question that applies. A check: score (1 met, 0 not), and findings at "
+                            "0. A rating on a scale with bands: scale and places. A rating on another scale: scale, "
+                            "point and, below its top point, findings. A content-test question that applies also "
+                            "gives its subject. A question that does not apply: does_not_apply with the reason "
+                            "review-questions.md prints; one the branches, an exception or the rows remove may also "
+                            "be left out."
                         ),
                         "items": {
                             "type": "object",
@@ -1176,9 +1223,16 @@ SCHEMA = {
                             "properties": {
                                 "question": {"type": "string"},
                                 "score": {"enum": [0, 1], "description": "Checks only."},
-                                "scale": {"enum": ["frequency", "quality"], "description": "Ratings only."},
-                                "point": {"type": "integer", "minimum": 0, "maximum": TOP_POINT,
-                                          "description": "Quality ratings only; frequency points are counted."},
+                                "scale": {"type": "string", "description": "Ratings only: the scale review-questions.md names."},
+                                "point": {"type": "integer", "minimum": 0,
+                                          "description": "Ratings on a scale without bands only; the others are counted."},
+                                "subject": {
+                                    "type": "object",
+                                    "description": "A content-test question that applies: the line holding what it tests for.",
+                                    "required": ["file", "line", "quote"],
+                                    "properties": {"file": FILE_REF, "line": {"type": "integer", "minimum": 1}, "quote": {"type": "string"}},
+                                },
+                                "does_not_apply": {"type": "string", "description": "The reason review-questions.md prints for it here."},
                                 "places": {
                                     "type": "array",
                                     "description": "Frequency ratings: every place the question applies to, in any file of the persona.",
@@ -1195,8 +1249,6 @@ SCHEMA = {
                                     },
                                 },
                                 "findings": {"type": "array", "items": FINDING},
-                                "not_scored": {"type": "string", "description": "A check: the reason it is not scored."},
-                                "not_rated": {"type": "string", "description": "A rating: the reason it is not rated."},
                             },
                         },
                     },
@@ -1230,6 +1282,9 @@ SCHEMA = {
 # ---------------------------------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------------------------------
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__.strip())
@@ -1238,13 +1293,21 @@ def main(argv):
     if cmd == "schema" and not args:
         print(json.dumps(SCHEMA, indent=2, ensure_ascii=False))
         return EXIT_OK
+    try:
+        qs = questions.load_cached(REVIEW_QUESTIONS)
+    except questions.ContractError as exc:
+        print(f"report.py: {exc}", file=sys.stderr)
+        return EXIT_REFUSED
+    except OSError as exc:
+        print(f"report.py: cannot read the review questions: {exc.strerror}", file=sys.stderr)
+        return EXIT_REFUSED
     if cmd == "verify" and len(args) == 1:
         try:
             text = sys.stdin.read() if args[0] == "-" else open(args[0], encoding="utf-8").read()
         except OSError as exc:
             print(f"report.py: cannot read {args[0]}: {exc.strerror}; check the path", file=sys.stderr)
             return EXIT_REFUSED
-        code, messages = verify(text)
+        code, messages = verify(text, qs)
         for m in messages:
             print(m, file=sys.stderr if code == EXIT_REFUSED else sys.stdout)
         return code
@@ -1256,19 +1319,15 @@ def main(argv):
               file=sys.stderr)
         return EXIT_REFUSED
     try:
-        problem = disagreement(file_questions())
         table = check.load_table(check.DEFAULT_TABLE)
         grounding = load_grounding()
     except (OSError, ValueError, check.TableError) as exc:
-        print(f"report.py: cannot load the review questions, the check table or the bibliography: {exc}", file=sys.stderr)
-        return EXIT_REFUSED
-    if problem:
-        print(f"report.py: {problem}", file=sys.stderr)
+        print(f"report.py: cannot load the check table or the bibliography: {exc}", file=sys.stderr)
         return EXIT_REFUSED
     record, faults = load_record(args[0])
     prepared = []
     if record is not None:
-        prepared, faults = validate(record, table, grounding)
+        prepared, faults = validate(record, table, grounding, qs)
     if faults:
         stream = sys.stdout if cmd == "validate" else sys.stderr
         for f in faults:

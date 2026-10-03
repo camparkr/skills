@@ -22,6 +22,9 @@ own instruction and every line keeps its number. A pointer is a path, in backtic
 consult, follow, refer or look, first in the sentence or after its opening clause, or after 'you', a modal or
 'please'; a list item counts when the line ending in a colon that introduces it does.
 
+Before each persona's rows, one line gives its three branches: delegated, the harness its path names, and
+the settings it holds, as find.py prints them.
+
 Files set aside (project instructions, output styles, READMEs and skills) are not checked. A persona the
 project's list names is checked over all its files, each under the persona's kind and harness.
 
@@ -59,6 +62,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import find  # noqa: E402
 import personafile  # noqa: E402
+import questions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_TABLE = os.path.join(HERE, "..", "references", "failures.tsv")
@@ -93,19 +97,15 @@ class TableError(Exception):
 
 
 def check_titles(path=REVIEW_QUESTIONS):
-    """The checks in review-questions.md as {title: 'script' or 'reading'}, from the bold titles under each
-    section's '### Checks' and the mark after each."""
+    """The checks in review-questions.md as {title: 'script' or 'reading'}, read by questions.py under the file's
+    markup contract; a file that breaks the contract is a table error naming its line."""
     try:
-        text = open(path, encoding="utf-8").read()
+        qs = questions.load_cached(path)
     except OSError as exc:
         raise TableError(f"cannot read the review questions at {find.posix(path)}: {exc.strerror}")
-    sections = re.findall(r"^### Checks\s*$(.*?)(?=^##)", text, re.MULTILINE | re.DOTALL)
-    if not sections:
-        raise TableError("review-questions.md has no '### Checks' section; the table's questions cannot be checked")
-    found = []
-    for body in sections:
-        found += re.findall(r"^\*\*(.+?)\*\*(?: \(\*(script|reading)\*\))?", body, re.MULTILINE)
-    return {t.rstrip("."): mark for t, mark in found}
+    except questions.ContractError as exc:
+        raise TableError(str(exc))
+    return {q.title: q.kind for q in qs.questions if q.kind in questions.CHECK_KINDS}
 
 
 def load_defaults(path, shown):
@@ -312,9 +312,13 @@ def check_files(records, texts, table, kind_override=None, root=None):
         if files[0][1].empty:
             raise EmptyFile(rec["path"])
         delegated = rec["delegated"] if kind_override is None else kind_override == find.DELEGATED
+        branches = {"delegated": delegated, "harness": rec.get("harness"), "settings": list(rec.get("settings") or [])}
+        line = find.branch_text(dict(rec, delegated=delegated))
         file_root = root or find.project_root(os.getcwd())
         for shown, pf in files:
-            results += check_one(shown, pf, rec["kind"], delegated, rec.get("harness"), table, file_root)
+            for r in check_one(shown, pf, rec["kind"], delegated, rec.get("harness"), table, file_root):
+                r.update(persona=rec["path"], branches=branches, _branch_text=line)
+                results.append(r)
     return results
 
 
@@ -396,6 +400,9 @@ def main(argv):
         return EXIT_ERROR
     try:
         found = find.search(opts["paths"])
+    except questions.ContractError as exc:
+        print(f"check.py: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     except personafile.PersonaError as exc:
         print(f"check.py: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -417,9 +424,14 @@ def main(argv):
         print(f"check.py: nothing to check: {exc} is empty", file=sys.stderr)
         return EXIT_NOTHING
     if opts["format"] == "json":
-        print(json.dumps([{k: v for k, v in r.items()} for r in results], indent=2))
+        print(json.dumps([{k: v for k, v in r.items() if not k.startswith("_")} for r in results], indent=2))
     else:
+        shown = set()
         for r in results:
+            if r["persona"] not in shown:
+                # The three branches, printed for the record once per persona (specification §3c, round 4).
+                shown.add(r["persona"])
+                print(f"{r['persona']}\tbranches: {r['_branch_text']}")
             print(text_line(r))
     if any(r["score"] == ZERO for r in results) and not opts["exit_zero"]:
         return EXIT_ZERO_FOUND

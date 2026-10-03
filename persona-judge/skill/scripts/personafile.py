@@ -166,6 +166,16 @@ MODALS = ("must", "should", "can", "may", "will", "do", "need to", "have to", "o
 
 _SENTENCE_MARKER = re.compile(r"^([-*+]|\d+\.)\s+")
 _EMPHASIS = "*_"
+# The opening of a Markdown link, skipped before a sentence's first word: '[Read the guide](guide.md)' counts, its
+# target being the pointer (Sophos, 3 October 2026).
+_LINK_OPEN = "["
+# 'Open' followed by one of these is an adjective, as in 'Open source code', not an instruction (Sophos,
+# 3 October 2026); 'Open-source' already fails the word boundary.
+_OPEN_ADJECTIVE = re.compile(r"^open\s+(?:source|sourced)\b", re.IGNORECASE)
+# 'You' counts only where it opens a clause: first in the sentence, or after a comma or one of these words
+# (Sophos, 3 October 2026).
+CLAUSE_WORDS = ("before", "after", "when", "whenever", "once", "if", "until", "while", "as soon as", "and", "then")
+_CLAUSE_END = re.compile(r"(?:,|\b(?:" + "|".join(w.replace(" ", r"\s+") for w in CLAUSE_WORDS) + r"))\s*$", re.IGNORECASE)
 _LEADING = re.compile(r"^(?:" + "|".join(LEADING_WORDS) + r")\b,?\s*", re.IGNORECASE)
 _OPENER = re.compile(r"^(?:" + "|".join(o.replace(" ", r"\s+") for o in CLAUSE_OPENERS) + r")\b", re.IGNORECASE)
 _FIRST_VERB = re.compile(r"^(?:" + "|".join(BASE_VERBS) + r")(?![\w'’-])", re.IGNORECASE)
@@ -201,10 +211,30 @@ def sentences(text):
 
 
 def _verb_first(text):
-    """Whether text starts with a base read verb, after emphasis marks and at most one leading word."""
-    text = text.lstrip().lstrip(_EMPHASIS).lstrip()
-    text = _LEADING.sub("", text, count=1).lstrip(_EMPHASIS).lstrip()
-    return bool(_FIRST_VERB.match(text))
+    """Whether text starts with a base read verb, after emphasis marks, a link's opening bracket and at most one
+    leading word; 'Open source' is an adjective, not the verb."""
+    text = text.lstrip().lstrip(_EMPHASIS).lstrip().lstrip(_LINK_OPEN).lstrip()
+    text = _LEADING.sub("", text, count=1).lstrip(_EMPHASIS).lstrip().lstrip(_LINK_OPEN).lstrip()
+    return bool(_FIRST_VERB.match(text)) and not _OPEN_ADJECTIVE.match(text)
+
+
+def _opens_clause(text, at):
+    """Whether the word at offset at opens a clause: first in the text, or after a comma or a clause word."""
+    before = text[:at].rstrip()
+    return not before or bool(_CLAUSE_END.search(before))
+
+
+def _addressed_after_you(text):
+    """A base read verb after 'you' (with a modal) where 'you' opens a clause, or after 'please'; or a participle
+    after 'you have' where 'you' opens a clause. 'open source' is an adjective, not the verb."""
+    for pattern in (_AFTER_YOU, _AFTER_YOU_HAVE):
+        for m in pattern.finditer(text):
+            verb = m.group(0).split()[-1].lower()
+            if verb == "open" and re.match(r"\s+(?:source|sourced)\b", text[m.end():], re.IGNORECASE):
+                continue
+            if m.group(0).lower().startswith("please") or _opens_clause(text, m.start()):
+                return True
+    return False
 
 
 def addressed(sentence):
@@ -212,12 +242,12 @@ def addressed(sentence):
     or after 'you', a modal or 'please' (a participle after 'you have'). Backticked text and link targets are
     read as names, not words."""
     text = LINK_TARGET.sub("]", BACKTICKED.sub("CODE", sentence)).strip()
-    text = _SENTENCE_MARKER.sub("", text, count=1).lstrip(_EMPHASIS).lstrip()
+    text = _SENTENCE_MARKER.sub("", text, count=1).lstrip(_EMPHASIS).lstrip().lstrip(_LINK_OPEN)
     if _verb_first(text):
         return True
     if _OPENER.match(text) and "," in text and _verb_first(text.split(",", 1)[1]):
         return True
-    return bool(_AFTER_YOU.search(text) or _AFTER_YOU_HAVE.search(text))
+    return _addressed_after_you(text)
 
 
 def _paths_in(text):

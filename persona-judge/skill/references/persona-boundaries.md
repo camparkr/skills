@@ -1,11 +1,12 @@
 # Persona boundaries
 
-A persona defines an agent of its own, and much else shapes what the agent does. Load this file when a file under
-review may be something other than a persona, or before a finding blames the persona for what it does not control.
+Much besides a persona shapes what an agent does; `review-questions.md` defines a persona. Load this file when a file
+under review may be something other than a persona, or before a finding blames the persona for what it does not
+control.
 
 A persona file holds instruction, which the model reads, and may hold bound parts: settings the harness enforces and
-code the file names to run. The model reasons; the file does not. A persona therefore has no behaviour of its own. It
-shapes the model's acts by being read and limits them through its settings.
+code the file names to run. So a persona has no behaviour of its own: it shapes the agent's acts by being read, and
+limits them through its settings.
 
 ## Neighbours of a persona
 
@@ -20,10 +21,7 @@ Each row names something a reader may mistake for a persona, or for the persona'
 | A tool and what it returns | A capability the agent calls | Code decides what it returns; the agent's choice to call it is behaviour, the output is not | The tool's own tests |
 | Something that runs by itself | A hook or a scheduled job | It fires on an event or a clock, and no act of the agent chose it | A configuration or security linter |
 | The harness | The program holding the session | It loads the persona, supplies the tools and enforces the settings; a refused tool call is the harness acting | The harness's own settings and documents |
-| The machine | The computer the harness runs on | Installed software and files stay whichever harness runs | The machine's own administration |
 | An outside service | A hosted interface or server the agent calls | It runs elsewhere and answers requests | The service's own terms and documents |
-| The task | What the agent was asked to do | Behaviour is how a task is carried out, whatever the task | Nobody: it is the input, not the instruction |
-| The session | A stretch of time the agent works in | It holds no instruction; the persona loads into it | Nobody |
 | A document nothing loads | A README, design note or reference file | The agent reads it only when a loaded file names it | Its own author |
 | A settings file with no prose | Configuration alone | There is nothing for the model to read | A configuration linter |
 

@@ -52,8 +52,13 @@ Paths are relative to the skill's folder. Open these files when you need more th
 - Read `references/persona-boundaries.md` when a file may be something other than a persona.
 - Read `references/bibliography.md` only when someone asks for the source behind a question.
 
-## Before you return
+## How a review goes wrong
 
-When a score is about to rest on a line you have not quoted, quote the line or raise the score. When a review finds
-nothing, read each question against the file once more before you return 'Nothing was found.': it is the one result
-that quotes no line.
+Check the review against each of these before you return it:
+
+- a score that rests on a line nobody quoted: quote the line or raise the score, because an unquoted score cannot be
+  checked;
+- 'Nothing was found.' after one reading: read each question against the file once more, because it is the one
+  result that quotes no line; and
+- a finding that blames the persona for the model, the harness or a hook: read `references/persona-boundaries.md`
+  first, because the persona controls none of them.

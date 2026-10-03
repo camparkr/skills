@@ -1,7 +1,8 @@
 # Review questions
 
 The questions *persona-judge* asks of a persona file and the formula that turns the answers into a score. Load this
-file at the start of every review.
+file at the start of every review. Each source is cited by its key in `bibliography.md`, which gives its full
+reference and the date it was read.
 
 A persona is a dedicated agent: a named specialist with its own instructions, and often its own tools and context,
 such as a subagent or a custom agent. It holds instruction, which the model reads and nothing enforces, and it may
@@ -36,10 +37,8 @@ place in the file they apply to.
 when anything does. Checks marked *script* run in `check.py` from a table, without a model, and give the same answer
 on every run. Checks marked *reading* are answered by the reviewer, who quotes the line behind every 0.
 
-**Ratings** are judged on a seven-point scale chosen for the answer the question seeks, from Brown's examples of
-Likert scales (Sorrel Brown, 'Likert Scale Examples for Surveys', Iowa State University Extension, December 2010,
-<https://www.extension.iastate.edu/documents/anr/likertscaleexamplesforsurveys.pdf>, read 1 October 2026). Two are
-used.
+**Ratings** are judged on a seven-point scale chosen for the answer the question seeks, from Brown's examples of Likert
+scales (SC1). Two are used.
 
 *How many places meet the question.* The reviewer lists every place the question applies, quotes each one, counts how
 many meet it and rates the share:
@@ -58,8 +57,8 @@ many meet it and rates the share:
 question states for each point and quotes the lines behind the rating. The points are exceptional 6, excellent 5,
 very good 4, good 3, fair 2, poor 1 and very poor 0.
 
-A question with no place to apply to is not rated, and it leaves the total. The words are Brown's: the quality scale
-is the seven-point quality scale, and the frequency words come from the frequency and likelihood lists. The share bands and
+A question with no place to apply to is not rated, and it leaves the total. The words are Brown's: the quality scale is
+the seven-point quality scale, and the frequency words come from the frequency and likelihood lists. The share bands and
 the anchors are this skill's own choice, and no study fixes them.
 
 ## Persona questions
@@ -69,16 +68,14 @@ enforces, beside a harness and other files.
 
 ### Checks
 
-**A dedicated persona** (*reading*). The file defines an agent of its own: a named specialist with its own
-instructions, and often its own tools and context. It is not project instructions setting the agent's context, nor an
-output style setting its tone. Answered first. A file that scores 0 is set aside with that reason and not scored on
-the other questions, which assume a persona. *Scores 0 on:* a `CLAUDE.md` of build commands and conventions. Sources:
-GitHub, a custom agent is a 'Specialist persona with its own instructions, tool restrictions, and context', and custom
-instructions are 'Always-on context' (<https://docs.github.com/en/copilot/reference/customization-cheat-sheet>, read
-1 October 2026); Google, 'Each subagent has its own system prompt and persona'
-(<https://geminicli.com/docs/core/subagents/>, read 1 October 2026); Anthropic, an output style 'sets Claude's role,
-tone, and response format', and has no tools or context of its own (<https://code.claude.com/docs/en/output-styles>,
-read 1 October 2026).
+**A dedicated persona** (*reading*). The file defines an agent of its own: a named specialist with its own instructions,
+and often its own tools and context. It is not project instructions setting the agent's context, nor an output style
+setting its tone. Answered first. A file that scores 0 is set aside with that reason and not scored on the other
+questions, which assume a persona. *Scores 0 on:* a `CLAUDE.md` of build commands and conventions. Sources: GitHub, a
+custom agent is a 'Specialist persona with its own instructions, tool restrictions, and context', and custom
+instructions are 'Always-on context' (GH4); Google, 'Each subagent has its own system prompt and persona' (GO2);
+Anthropic, an output style 'sets Claude's role, tone, and response format', and has no tools or context of its own
+(AN6).
 
 **Pointers carry their triggers** (*script*). Every reference to another file says when to read it and gives its
 path. *Scores 0 on:* 'See also `notes.md`.' Evidence: in the record kept while this skill was built, a pointer that
@@ -87,68 +84,64 @@ said when to open its file was followed in three runs of three, and an index not
 **Bound parts agree with the prose** (*script*). No setting the harness applies permits what the prose forbids or
 forbids what the prose requires. *Scores 0 on:* a file told never to edit files whose `tools` include an editing tool.
 Not scored for a file with no settings. Sources: Anthropic, 'Permission rules are enforced by Claude Code, not by the
-model' (<https://code.claude.com/docs/en/permissions>, read 1 October 2026); the subagent fields `tools`,
-`disallowedTools`, `permissionMode` and `hooks` (<https://code.claude.com/docs/en/sub-agents>, read 1 October 2026).
+model' (AN2); the subagent fields `tools`, `disallowedTools`, `permissionMode` and `hooks` (AN3).
 
 **Leaves the harness's work to the harness** (*script*). The file asks for nothing its harness already does, such as
-reading a file the harness loads anyway or using tools the agent already has. A table of each harness's defaults
-drives the check. *Scores 0 on:* 'Read AGENTS.md before you start', in a file loaded beside it. Sources: Anthropic,
-'Only add context Claude doesn't already have'
-(<https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>, read 2 October 2026); a
-`CLAUDE.md` that tells Claude in words to read `AGENTS.md` means 'Claude sees `AGENTS.md` only if it decides to open
-the file' (<https://code.claude.com/docs/en/memory>, read 1 October 2026).
+reading a file the harness loads anyway or using tools the agent already has. A table of each harness's defaults drives
+the check. *Scores 0 on:* 'Read AGENTS.md before you start', in a file loaded beside it. Sources: Anthropic, 'Only add
+context Claude doesn't already have' (AN4); a `CLAUDE.md` that tells Claude in words to read `AGENTS.md` means 'Claude
+sees `AGENTS.md` only if it decides to open the file' (AN1).
 
-**Enforceable rules enforced** (*reading*). A rule that must hold every time, and that a hook or setting could
-enforce, is not left to prose alone. *Scores 0 on:* 'Never push to main', with no setting or hook behind it. Source:
-Anthropic, 'If the instruction is something that must run at a specific point … write it as a hook' and 'To block an
-action regardless of what Claude decides, use a PreToolUse hook' (<https://code.claude.com/docs/en/memory>, read
-1 October 2026). Also: OpenAI, 'reserve formatting and lint checks for CI' (<https://learn.chatgpt.com/docs/agent-configuration/agents-md>, read 2 October 2026).
+**Enforceable rules enforced** (*reading*). A rule that must hold every time, and that a hook or setting could enforce,
+is not left to prose alone. *Scores 0 on:* 'Never push to main', with no setting or hook behind it. Source: Anthropic,
+'If the instruction is something that must run at a specific point … write it as a hook' and 'To block an action
+regardless of what Claude decides, use a PreToolUse hook' (AN1). Also: OpenAI, 'reserve formatting and lint checks for
+CI' (OA1).
 
 **No procedure for one kind of task** (*reading*). The file holds no multi-step procedure that only one kind of task
 needs. *Scores 0 on:* a 12-step release checklist in a project's standing instructions. Source: Anthropic, 'If an
 entry is a multi-step procedure or only matters for one part of the codebase, move it to a skill or a path-scoped
-rule' (<https://code.claude.com/docs/en/memory>, read 1 October 2026). Also: GitHub, standing instructions 'should be broadly applicable to most requests' (<https://docs.github.com/en/copilot/concepts/prompting/response-customization>, read 2 October 2026).
+rule' (AN1). Also: GitHub, standing instructions 'should be broadly applicable to most requests' (GH1).
 
-**No facts the project already holds** (*reading*). The file does not restate what the agent can read from the
-project, such as its directory layout, its dependencies or its architecture. *Scores 0 on:* a copied directory tree.
-Source: Anthropic, the `/doctor` trim 'cuts content Claude can derive from the codebase, such as directory layouts,
-dependency lists, and architecture overviews' (<https://code.claude.com/docs/en/memory>, read 1 October 2026). GitHub's blog post above recommends listing the file structure; Anthropic's trim and this question read it the other way.
+**No facts the project already holds** (*reading*). The file does not restate what the agent can read from the project,
+such as its directory layout, its dependencies or its architecture. *Scores 0 on:* a copied directory tree. Source:
+Anthropic, the `/doctor` trim 'cuts content Claude can derive from the codebase, such as directory layouts, dependency
+lists, and architecture overviews' (AN1). GitHub's blog post above recommends listing the file structure; Anthropic's
+trim and this question read it the other way.
 
 **No pressure from consequences** (*reading*). The file does not tell the agent what its output will cause for itself
 or for others, as a lever on the output. *Scores 0 on:* 'Low scores will get this model retrained.' Source: judges told
 what their verdicts would cause 'reliably soften verdicts', with a peak shift of 9.8 percentage points and 'zero
-explicit acknowledgment' of the framing in their reasoning (Gupta, Nair, Wang and Kumar, 'Context Over Content',
-<https://arxiv.org/abs/2604.15224>, abstract read 30 September 2026).
+explicit acknowledgment' of the framing in their reasoning (ST6).
 
 **One job** (*reading*). A delegated persona gives the agent one job. Not scored for a standing persona. *Scores 0
 on:* a subagent told to review code, write the tests and update the changelog. Sources: OpenAI, 'The best custom agents
-are narrow and opinionated. Give each one clear job' (<https://learn.chatgpt.com/docs/agent-configuration/subagents>, read 2 October 2026); Google, 'Limit scope' (<https://geminicli.com/docs/cli/skills-best-practices/>, read 2 October 2026).
+are narrow and opinionated. Give each one clear job' (OA2); Google, 'Limit scope' (GO1).
 
 **Declares its tools** (*script*). A delegated persona names the tools it may use, so it does not inherit every tool by
 leaving the list out. Not scored for a standing persona. *Scores 0 on:* a subagent definition with no `tools` field.
-Sources: OpenAI, 'a tool surface that matches that job' (<https://learn.chatgpt.com/docs/agent-configuration/subagents>, read 2 October 2026); in Gemini CLI and GitHub Copilot an agent with no
-tool list is given every tool (<https://geminicli.com/docs/core/subagents/> and <https://docs.github.com/en/copilot/reference/custom-agents-configuration>, read 2 October 2026).
+Sources: OpenAI, 'a tool surface that matches that job' (OA2); in Gemini CLI and GitHub Copilot an agent with no
+tool list is given every tool (GO2 and GH2).
 
 **States its output** (*reading*). A delegated persona says what the agent returns and in what form. Not scored for a
 standing persona. *Scores 0 on:* a subagent told to 'review the change' with no word on what it hands back. Sources:
-Google, an agent's instruction covers 'The desired format for its output' (<https://google.github.io/adk-docs/agents/llm-agents/>, read 2 October 2026); OpenAI, 'Write imperative steps
-with explicit inputs and outputs' (<https://learn.chatgpt.com/docs/build-skills>, read 2 October 2026).
+Google, an agent's instruction covers 'The desired format for its output' (GO3); OpenAI, 'Write imperative steps
+with explicit inputs and outputs' (OA3).
 
 **Boundaries in three tiers** (*reading*). The file says what the agent always does, what it asks about first and what
 it never does. *Scores 0 on:* a file with rules to follow and nothing on what needs asking first. Source: GitHub, 'Set
-clear rules using always do, ask first, never do' (Matt Nigh, 'How to write a great agents.md', GitHub Blog,
-19 November 2025, <https://github.blog/ai-and-ml/github-copilot/how-to-write-a-great-agents-md-lessons-from-over-2500-repositories/>, read 2 October 2026). The post reports one reader's analysis of over 2,500 files, not a measured
-comparison.
+clear rules using always do, ask first, never do' (GH3). The post reports one reader's analysis of over 2,500 files, not
+a measured comparison.
 
 ### Ratings
 
 The first five are rated on the frequency scale and the last two on the quality scale.
 
 **Rules held in the persona.** *Places:* each rule the agent applies in every act. *Meets it:* the rule is stated in the
-persona's own files, the ones loaded with it, not only in a file it points to. *Example of a low rating:* 'Rate findings on the scale in `severity.md`', with
-the scale absent. Evidence: in the same record, a rule moved to another file and pointed to was applied in one run in
-three. Source: Anthropic, CLAUDE.md files 'are context, not enforced configuration' (<https://code.claude.com/docs/en/memory>,
-read 1 October 2026).
+persona's own files, the ones loaded with it, not only in a file it points to. *Example of a low rating:* 'Rate findings
+on the scale in `severity.md`', with the scale absent. Evidence: in the same record, a rule moved to another file and
+pointed to was applied in one run in three. Source: Anthropic, CLAUDE.md files 'are context, not enforced configuration'
+(AN1).
 
 **Directions for when nobody answers.** *Places:* each rule that asks, waits or needs a reply. *Meets it:* the rule
 says what the agent does when no one replies, as in a delegated or unattended run. *Example of a low rating:* 'When
@@ -159,35 +152,34 @@ inconclusive, so this question rests on the reading.
 **Rules used in every act come first.** *Places:* each rule the agent applies in every act. *Meets it:* the rule
 stands before any procedure, example or reference material in the file. *Example of a low rating:* the rating scale a
 reviewer uses on every finding, set out at the end of a long file after three worked examples. Source: 'earlier-listed
-instructions' are followed more reliably as instructions accumulate (Jaroslawicz, Whiting, Shah and Maamari, 'How Many
-Instructions Can LLMs Follow at Once?', <https://arxiv.org/abs/2507.11538>, abstract read 30 September 2026).
+instructions' are followed more reliably as instructions accumulate (ST5).
 
 **Tools explained.** *Places:* each tool the file names. *Meets it:* the file says when and why the agent uses it.
 *Example of a low rating:* a list of six tool names and nothing more. Source: Google, 'Don't just list tools; explain
-*when* and *why* the agent should use them' (<https://google.github.io/adk-docs/agents/llm-agents/>, read 2 October 2026).
+*when* and *why* the agent should use them' (GO3).
 
 **Commands given exactly.** *Places:* each command the file tells the agent to run. *Meets it:* the command is given as
 it is run, flags and options included. *Example of a low rating:* 'Run the tests' where `pytest -v tests/` was meant.
 Source: GitHub, 'Put relevant executable commands in an early section … Include flags and options, not just tool names'
-(Matt Nigh, GitHub Blog, <https://github.blog/ai-and-ml/github-copilot/how-to-write-a-great-agents-md-lessons-from-over-2500-repositories/>, read 2 October 2026).
+(GH3).
 
 **The description says when to choose it.** Rated for a delegated persona only; a standing persona, which nothing
 chooses, is not rated. *Exceptional:* it puts the main use first, names the requests it is for in words a user would
 type and says what it is not for. *Excellent:* it names those requests in a user's words and says what it is not for.
 *Very good:* it names the requests in a user's words. *Good:* it names the tasks in its own terms. *Fair:* it names a
 subject and no task. *Poor:* it names a role and no task, such as 'A helpful reviewer'. *Very poor:* it is empty or
-missing. Sources: 'Claude uses each subagent's description to decide when to delegate tasks'
-(<https://code.claude.com/docs/en/sub-agents>, read 1 October 2026); Gemini CLI's main agent 'decides whether an agent
-is a relevant expert based on the agent's description'
-(<https://github.com/google-gemini/gemini-cli/blob/main/docs/core/subagents.md>, read 1 October 2026). Also: OpenAI, 'Front-load the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (<https://learn.chatgpt.com/docs/build-skills>, read 2 October 2026); Google, 'specific enough to differentiate it from peers' (<https://google.github.io/adk-docs/agents/llm-agents/>, read 2 October 2026).
+missing. Sources: 'Claude uses each subagent's description to decide when to delegate tasks' (AN3); Gemini CLI's main
+agent 'decides whether an agent is a relevant expert based on the agent's description' (GO2). Also: OpenAI, 'Front-load
+the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (OA3); Google,
+'specific enough to differentiate it from peers' (GO3).
 
 **An identity that does the work.** Rated where the file opens with an identity, such as 'You are…'. *Exceptional:* it
-states what the agent does and where its work stops, with no praise. *Excellent:* it states both, with a word of
-praise. *Very good:* it states what the agent does, with no praise. *Good:* it states what the agent does, with
-praise. *Fair:* it names a role with praise and says nothing of the work. *Poor:* it is praise alone, such as 'You are
-a world-class expert'. *Very poor:* it names a role at odds with the rest of the file. Source: persona cues unrelated
-to the task cost agents up to 26.2% of their performance (Cao, Sun and Yue, <https://arxiv.org/abs/2602.12285>, read
-1 October 2026). GitHub's blog post above opens its examples with 'You are an expert technical writer'; this question marks the praise down and keeps the role.
+states what the agent does and where its work stops, with no praise. *Excellent:* it states both, with a word of praise.
+*Very good:* it states what the agent does, with no praise. *Good:* it states what the agent does, with praise. *Fair:*
+it names a role with praise and says nothing of the work. *Poor:* it is praise alone, such as 'You are a world-class
+expert'. *Very poor:* it names a role at odds with the rest of the file. Source: persona cues unrelated to the task cost
+agents up to 26.2% of their performance (ST2). GitHub's blog post above opens its examples with 'You are an expert
+technical writer'; this question marks the praise down and keeps the role.
 
 ## Instruction-writing questions
 
@@ -197,13 +189,12 @@ These hold for any instruction an agent reads, in a persona file or elsewhere.
 
 **No time-sensitive statements** (*script*). The file says nothing that goes out of date by itself, such as 'until
 August' or 'the new API'. *Scores 0 on:* 'Use the v1 endpoint until the migration finishes.' Source: Anthropic, 'Avoid
-time-sensitive information' (<https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>, read
-2 October 2026).
+time-sensitive information' (AN4).
 
 **Consistent with itself** (*reading*). No two statements in the file contradict each other. *Scores 0 on:* a line
-leaving the final decision to someone else beside a line telling the agent to make that decision. Source: Anthropic,
-'if two instructions contradict each other, Claude may pick one arbitrarily' (<https://code.claude.com/docs/en/memory>,
-read 1 October 2026). Also: GitHub, 'Whenever possible, try to avoid providing conflicting sets of instructions' (<https://docs.github.com/en/copilot/concepts/prompting/response-customization>, read 2 October 2026).
+leaving the final decision to someone else beside a line telling the agent to make that decision. Source: Anthropic, 'if
+two instructions contradict each other, Claude may pick one arbitrarily' (AN1). Also: GitHub, 'Whenever possible, try to
+avoid providing conflicting sets of instructions' (GH1).
 
 **Nothing said twice** (*reading*). No sentence restates another sentence or setting in the same file. *Scores 0 on:*
 the description's sentence repeated as the first rule. No external source was found; the question rests on the
@@ -212,13 +203,12 @@ reading that a second statement can drift from the first.
 **Leaves known things unsaid** (*reading*). The file spends no lines on what the model already knows, such as what a
 file format is or how a library works. *Scores 0 on:* a paragraph explaining what a pull request is. Source:
 Anthropic, 'Claude is already very smart' and 'Does this paragraph justify its token cost?'
-(<https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>, read 2 October 2026).
+(AN4).
 
 **Plain emphasis** (*script*). The file emphasises with plain words, not capitals or alarms such as 'CRITICAL' or 'You
 MUST'. *Scores 0 on:* 'CRITICAL: You MUST run the tests.' Source: Anthropic, 'Where you might have said "CRITICAL: You
 MUST use this tool when...", you can use more normal prompting like "Use this tool when..."', because such language
-makes newer models overtrigger (<https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>,
-read 2 October 2026).
+makes newer models overtrigger (AN5).
 
 **No placeholders** (*script*). The file holds no unfinished text, such as 'TODO', 'TBD' or a bracketed slot to fill.
 *Scores 0 on:* 'Deploy steps: TODO.' Source: a recurring check among the instruction-file linters surveyed while this
@@ -226,9 +216,9 @@ skill was built [no primary source quoted].
 
 **Shows an example** (*reading*). Where the file asks for output in a particular form, it shows an example of that form.
 Not scored for a file that asks for no particular form. *Scores 0 on:* three paragraphs describing a commit message
-style and no example message. Sources: Google, 'Provide Examples (Few-Shot)' (<https://google.github.io/adk-docs/agents/llm-agents/>, read 2 October 2026); Anthropic, examples 'convey
+style and no example message. Sources: Google, 'Provide Examples (Few-Shot)' (GO3); Anthropic, examples 'convey
 the desired style and level of detail to Claude more clearly than descriptions alone'
-(<https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>, read 2 October 2026).
+(AN4).
 
 ### Ratings
 
@@ -250,25 +240,23 @@ cite none.
 
 **Instructions an observer can check.** *Places:* each instruction. *Meets it:* someone watching the agent could tell
 whether it was followed. *Example of a low rating:* 'Format code properly' where 'Use 2-space indentation' was meant.
-Source: Anthropic, 'Write instructions that are concrete enough to verify' (<https://code.claude.com/docs/en/memory>,
-read 1 October 2026). Also: Google, 'Be Clear and Specific: Avoid ambiguity. Clearly state the desired actions and outcomes' (<https://google.github.io/adk-docs/agents/llm-agents/>, read 2 October 2026).
+Source: Anthropic, 'Write instructions that are concrete enough to verify' (AN1). Also: Google, 'Be Clear and Specific:
+Avoid ambiguity. Clearly state the desired actions and outcomes' (GO3).
 
 **What to do, not what to avoid.** *Places:* each instruction about the agent's output. *Meets it:* it says what to
 produce rather than only what to leave out. *Example of a low rating:* 'Do not use markdown in your response.' Source:
 Anthropic, on steering output format, 'Tell Claude what to do instead of what not to do'
-(<https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>, read
-2 October 2026).
+(AN5).
 
 **Reasons given.** *Places:* each rule that limits what the agent does. *Meets it:* the rule says why. *Example of a low
 rating:* 'NEVER use ellipses', with no word on why. Source: Anthropic, 'Providing context or motivation behind your
 instructions, such as explaining to Claude why such behavior is important, can help Claude better understand your goals'
-(<https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>, read
-2 October 2026).
+(AN5).
 
 **Each instruction stands alone.** *Places:* each instruction. *Meets it:* it can be understood without reading another
 instruction first. *Example of a low rating:* 'Do the same for the other folders', three paragraphs after the first.
 Source: GitHub, 'The instructions you add to your custom instruction file(s) should be short, self-contained statements'
-(<https://docs.github.com/en/copilot/concepts/prompting/response-customization>, read 2 October 2026).
+(GH1).
 
 ## Score
 
@@ -285,9 +273,9 @@ The report gives, in this order:
 - each check, as 'yes 1' or 'no 0', and each rating, as its point out of 6 with its word, grouped by section;
 - the fit with neighbouring files, apart from the score; and
 - the formula, so anyone can recompute the stars.
+
 The quoted lines matter more than the total, because a total alone does not predict how an agent behaves. In the
 record kept while this skill was built, two versions of one persona scored one point apart on a skill rubric, while
 blind judges preferred one in every pair. Wording changes behaviour: 'prompt wording can change reasoning and
-verification behavior without changing the task' (Weinberger and Hozez, <https://arxiv.org/abs/2608.01347>, read
-1 October 2026), and agents given a standing policy document 'report compliance they did not achieve' (Panavas et al.,
-<https://arxiv.org/abs/2607.25398>, read 1 October 2026).
+verification behavior without changing the task' (ST1), and agents given a standing policy document 'report
+compliance they did not achieve' (ST4).

@@ -63,6 +63,202 @@ def outside_fences(body):
             yield n, text
 
 
+# The mask (build specification §3c, Sophos, 3 October 2026): quoted and example text is not the file's own
+# instruction. Fenced code, Markdown block quotes and quoted spans are replaced by spaces before any check reads
+# the body, so every line keeps its number and its length.
+BLOCK_QUOTE = re.compile(r"^\s*>")
+# A list item starts a new paragraph: a bullet or a number, then a space.
+LIST_ITEM = re.compile(r"^\s*([-*+]|\d+[.)])\s")
+# Opening marks and, for each, the marks that close it: single marks first, since Australian English quotes with
+# single marks and keeps double marks for a quotation within a quotation (QUOT-001, QUOT-002).
+OPENING = {"'": "'’", "‘": "'’", '"': '"”', "“": '"”'}
+# What may stand before an opening mark, and after a closing one, besides a space or the paragraph's edge.
+BEFORE_OPENING = "([:"
+AFTER_CLOSING = ".,;:!?)]"
+
+
+def _apostrophe(text, i):
+    """A mark with a letter on both sides, as in harness's or don't, neither opens nor closes."""
+    return 0 < i < len(text) - 1 and text[i - 1].isalpha() and text[i + 1].isalpha()
+
+
+def _opens(text, i):
+    if text[i] not in OPENING or _apostrophe(text, i):
+        return False
+    before_ok = i == 0 or text[i - 1].isspace() or text[i - 1] in BEFORE_OPENING
+    return before_ok and i + 1 < len(text) and not text[i + 1].isspace()
+
+
+def _closes(text, i, marks):
+    if text[i] not in marks or _apostrophe(text, i):
+        return False
+    after_ok = i == len(text) - 1 or text[i + 1].isspace() or text[i + 1] in AFTER_CLOSING
+    return i > 0 and not text[i - 1].isspace() and after_ok
+
+
+def mask_spans(text):
+    """Text with each quoted span, its marks included, replaced by spaces; line breaks are kept. A span runs
+    from an opening mark to the next closing mark of the same kind; an opening with no closing opens nothing."""
+    chars = list(text)
+    i = 0
+    while i < len(text):
+        if _opens(text, i):
+            marks = OPENING[text[i]]
+            j = next((k for k in range(i + 1, len(text)) if _closes(text, k, marks)), None)
+            if j is not None:
+                for k in range(i, j + 1):
+                    if chars[k] != "\n":
+                        chars[k] = " "
+                i = j + 1
+                continue
+        i += 1
+    return "".join(chars)
+
+
+def paragraphs(body):
+    """The body's paragraphs, as lists of indexes into body: runs of non-blank lines, a list item starting a
+    new one."""
+    out, current = [], []
+    for i, (_, text) in enumerate(body):
+        if not text.strip():
+            if current:
+                out.append(current)
+            current = []
+            continue
+        if LIST_ITEM.match(text) and current:
+            out.append(current)
+            current = []
+        current.append(i)
+    if current:
+        out.append(current)
+    return out
+
+
+def masked_body(pf):
+    """The body as (line number, text) with fenced code, block quotes and quoted spans replaced by spaces."""
+    lines = [text for _, text in pf.body]
+    inside = False
+    for i, text in enumerate(lines):
+        if FENCE.match(text):
+            inside = not inside
+            lines[i] = " " * len(text)
+        elif inside or BLOCK_QUOTE.match(text):
+            lines[i] = " " * len(text)
+    body = list(zip([n for n, _ in pf.body], lines))
+    for para in paragraphs(body):
+        masked = mask_spans("\n".join(lines[i] for i in para)).split("\n")
+        for i, text in zip(para, masked):
+            lines[i] = text
+    return list(zip([n for n, _ in pf.body], lines))
+
+
+# A sentence tells the agent to read a path when it holds one of these verbs, in any form (specification §3c).
+READ_VERBS = re.compile(
+    r"\b(read|reads|reading|open|opens|opened|opening|load|loads|loaded|loading|see|sees|seen|seeing|saw|"
+    r"consult|consults|consulted|consulting|follow|follows|followed|following|refer|refers|referred|referring|"
+    r"look|looks|looked|looking)\b",
+    re.IGNORECASE,
+)
+BACKTICKED = re.compile(r"`([^`\n]+)`")
+LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
+# A path holds a / or ends in a file extension of one to five letters or digits.
+PATH_SHAPE = re.compile(r"/|\.[A-Za-z0-9]{1,5}$")
+
+
+def sentences(text):
+    """(start, end) of each sentence in a paragraph's text, split at . ! ? or ; followed by a space or line
+    break, with backticked text held whole."""
+    out, start, in_tick = [], 0, False
+    for i, c in enumerate(text):
+        if c == "`":
+            in_tick = not in_tick
+        elif not in_tick and c in ".!?;" and (i + 1 == len(text) or text[i + 1].isspace()):
+            out.append((start, i + 1))
+            start = i + 1
+    if start < len(text):
+        out.append((start, len(text)))
+    return out
+
+
+def _has_read_verb(text):
+    """Whether text holds a read verb outside backticks and link targets."""
+    return bool(READ_VERBS.search(LINK_TARGET.sub(" ", BACKTICKED.sub(" ", text))))
+
+
+def _paths_in(text):
+    """(offset, path) for each path in text, in backticks or as a link target, as §3c shapes a pointer."""
+    found = []
+    for m in BACKTICKED.finditer(text):
+        ref = m.group(1)
+        if " " in ref or "\t" in ref:  # a command line, not a path
+            continue
+        found.append((m.start(), ref))
+    for m in LINK_TARGET.finditer(text):
+        found.append((m.start(), m.group(1).split("#", 1)[0]))
+    return [(o, r) for o, r in found if r and PATH_SHAPE.search(r) and not NOT_A_PATH.search(r)]
+
+
+def pointers(pf):
+    """(line number, path) for each pointer in the body: a path in a sentence that tells the agent to read it,
+    read with the mask applied. A list item also takes the verbs of the line ending in a colon that introduces
+    its list."""
+    masked = masked_body(pf)
+    lines = [t for _, t in masked]
+    numbers = [n for n, _ in masked]
+    out = []
+    paras = paragraphs(masked)
+    para_of = {i: k for k, para in enumerate(paras) for i in para}
+    for para in paras:
+        text = "\n".join(lines[i] for i in para)
+        offsets = []  # the offset at which each of the paragraph's lines starts
+        pos = 0
+        for i in para:
+            offsets.append(pos)
+            pos += len(lines[i]) + 1
+        introduced = False
+        if LIST_ITEM.match(lines[para[0]]):
+            # The line just before the list: skip back over blank lines and the list's earlier items.
+            j = para[0] - 1
+            while j >= 0 and (not lines[j].strip() or LIST_ITEM.match(lines[paras[para_of[j]][0]])):
+                j -= 1
+            if j >= 0 and lines[j].rstrip().endswith(":"):
+                intro = paras[para_of[j]]
+                intro_text = "\n".join(lines[i] for i in intro)
+                last = sentences(intro_text)[-1]
+                introduced = _has_read_verb(intro_text[last[0]:last[1]])
+        for start, end in sentences(text):
+            sentence = text[start:end]
+            if not (introduced or _has_read_verb(sentence)):
+                continue
+            for offset, ref in _paths_in(sentence):
+                at = start + offset
+                row = max(r for r, o in enumerate(offsets) if o <= at)
+                out.append((numbers[para[row]], ref))
+    return out
+
+
+def resolve_up(ref, folder, root):
+    """The absolute path a pointer names when it exists in the file's folder or any folder above it, up to the
+    project root (specification §3c); otherwise None."""
+    ref = ref[2:] if ref.startswith("./") else ref
+    if ref.startswith("~"):
+        found = os.path.expanduser(ref)
+        return found if os.path.exists(found) else None
+    if os.path.isabs(ref):
+        return ref if os.path.exists(ref) else None
+    root = os.path.abspath(root)
+    current = os.path.abspath(folder)
+    while True:
+        candidate = os.path.join(current, ref)
+        if os.path.exists(candidate):
+            return os.path.normpath(candidate)
+        if current == root or os.path.dirname(current) == current or not (current + os.sep).startswith(root + os.sep):
+            break
+        current = os.path.dirname(current)
+    candidate = os.path.join(root, ref)
+    return os.path.normpath(candidate) if os.path.exists(candidate) else None
+
+
 def resolve(ref, folder, root):
     """The absolute path a named path refers to when it exists, from the file's folder or the project root;
     otherwise None."""

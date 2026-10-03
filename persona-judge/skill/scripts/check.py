@@ -15,15 +15,22 @@ or delegated persona, to another harness than the row's, to a file with no such 
 names, or to a field it could not read. The place is path:line for a 0 and the path otherwise. With
 --format json, the same as one JSON array, with every line a row found.
 
+Every kind reads the body through one mask: fenced code, Markdown block quotes and quoted spans (from an
+opening ' or " to its closing mark, over the paragraph) become spaces, so quoted examples are not the file's
+own instruction and every line keeps its number. A pointer is a path, in backticks or as a link target, with a
+/ or a file extension, in a sentence that tells the agent to read it (read, open, load, see, consult, follow,
+refer or look, in any form); a list item takes the verbs of the line ending in a colon that introduces it.
+
 Files set aside (project instructions, output styles, READMEs and skills) are not checked. A persona the
 project's list names is checked over all its files, each under the persona's kind and harness.
 
 Adding a row of an existing kind to the table needs no code change. A row names one of the checks the
 review questions mark *script*; the checks they mark *reading* are the reviewer's. A row's harness column is
 empty for every harness, or names the one harness it applies to. The kinds:
-  line-pattern     0 when a body line outside fenced code matches the pattern and not the unless pattern
-  missing-path     0 when a path the body names, in backticks or a link, exists neither beside the file
-                   nor from the project root
+  line-pattern     0 when a body line, read with quoted and example text masked, matches the pattern and
+                   not the unless pattern
+  missing-path     0 when a pointer names a path that exists neither in the file's folder nor in any
+                   folder above it, up to the project root
   field-and-line   0 when the field matches the pattern and a body line matches the unless pattern
   field-missing    0 when the field is absent or empty; the line quoted is the one that names the agent
   harness-default  0 when a body line matches a row of the defaults table named in the data column,
@@ -225,19 +232,24 @@ def run_row(row, pf, delegated, root, harness=None):
         return None, [], f"applies to {row['harness']} files only"
     flags = re.IGNORECASE
     k = row["kind"]
+    # Every kind reads the body through the mask; a finding quotes the line as the file holds it.
+    masked = personafile.masked_body(pf)
+    original = dict(pf.body)
     if k == "line-pattern":
         pat = re.compile(row["pattern"], flags)
         unless = re.compile(row["unless"], flags) if row["unless"] else None
         faults = [
-            fault(n, t) for n, t in personafile.outside_fences(pf.body)
+            fault(n, original[n]) for n, t in masked
             if pat.search(t) and not (unless and unless.search(t))
         ]
     elif k == "missing-path":
-        faults = []
-        for n, t in personafile.outside_fences(pf.body):
-            missing = [ref for ref in personafile.named_paths(t) if not personafile.resolve(ref, pf.folder, root)]
+        faults, by_line = [], {}
+        for n, ref in personafile.pointers(pf):
+            if not personafile.resolve_up(ref, pf.folder, root) and ref not in by_line.setdefault(n, []):
+                by_line[n].append(ref)
+        for n, missing in by_line.items():
             if missing:
-                faults.append(fault(n, t, f"{', '.join(missing)} does not exist"))
+                faults.append(fault(n, original[n], f"{', '.join(missing)} does not exist"))
     elif k in ("field-and-line", "field-missing"):
         field = row["field"]
         if field in pf.unparsed:
@@ -255,20 +267,20 @@ def run_row(row, pf, delegated, root, harness=None):
         unless = re.compile(row["unless"], flags)
         at = pf.field_line(field)
         faults = [
-            dict(fault(n, t, f"{field}: {value}"), field_line=at, field_quote=pf.lines[at - 1].strip() if at else None)
-            for n, t in pf.body if unless.search(t)
+            dict(fault(n, original[n], f"{field}: {value}"), field_line=at, field_quote=pf.lines[at - 1].strip() if at else None)
+            for n, t in masked if unless.search(t)
         ]
     elif k == "harness-default":
         if harness not in KNOWN_HARNESSES:
             return None, [], "the file's path names no harness"
         faults = []
-        for n, t in pf.body:
+        for n, t in masked:
             for d in row["_defaults"]:
                 if d["harness"] != harness or not re.search(d["pattern"], t, flags):
                     continue
                 if d["unless"] and re.search(d["unless"], t, flags):
                     continue
-                faults.append(fault(n, t, f"{d['id']}, {harness} {d['default']}"))
+                faults.append(fault(n, original[n], f"{d['id']}, {harness} {d['default']}"))
                 break
     else:  # load_table rejects any other kind
         raise TableError(f"unknown kind {k}")

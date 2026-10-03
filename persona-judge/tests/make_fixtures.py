@@ -136,6 +136,9 @@ PROJECTS = {
     "tq-c15": {".claude/agents/vendor-reader.md": "tq-c15"},
     "tq-c16": {".claude/agents/limit-reader.md": "tq-c16"},
     "tq-controls-4": {".claude/agents/checker.md": "tq-controls-4"},
+    # The verifier's file with no rule that limits the agent: 'Reasons given' has no place (round 4, Sophos's five
+    # content-test rows, 3 October 2026).
+    "no-place": {".claude/agents/zeta.md": "no-place-agent"},
     # T-10's derived case: a persona to which every question applies (round 4).
     "complete": {".claude/agents/release-checker.md": "complete-agent"},
     # T-W: the three branches, each at yes and at no (specification §3b and §8, round 4).

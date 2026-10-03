@@ -77,28 +77,56 @@ def place(line, quote, meets, file, note=None):
     return p
 
 
-def review(path, answers, branches, removed=(), default_place=None, **extra):
+def with_subject(answer, path):
+    """A content-test answer that applies gives its subject: the line of its first place or finding, when the
+    answer does not give one itself."""
+    if "does_not_apply" in answer or "subject" in answer:
+        return answer
+    item = (answer.get("places") or answer.get("findings") or [None])[0]
+    if item:
+        answer = dict(answer, subject={"file": item.get("file", path), "line": item["line"], "quote": item["quote"]})
+    return answer
+
+
+def review(path, answers, branches, removed=(), default_place=None, absent=(), **extra):
     """A record entry: the answers given, and for every other question the persona answers, a reading check met, a
-    quality rating at its top point, a frequency rating with default_place meeting it, and a content-test question
-    marked as not applying with its reason. Questions in removed, and script checks, are left out."""
+    quality rating at its top point, and a frequency rating with default_place meeting it. A content-test question
+    named in absent (the fixture's file does not hold its subject) is marked as not applying, with the reason the
+    file prints; any other content-test question gives its subject. Questions in removed, and script checks, are
+    left out. Which questions are content tests is read from review-questions.md, so a new row needs no change
+    here."""
     out = []
     for title in TITLES:
         q = QS.by_title[title]
         if title in answers:
             if answers[title] is not None:
-                out.append(dict(answers[title], question=title))
+                answer = dict(answers[title], question=title)
+                out.append(with_subject(answer, path) if title in QS.content_tests else answer)
             continue
         if title in removed or q.kind == "script":
             continue
-        if title in QS.content_tests:
+        if title in QS.content_tests and title in absent:
             out.append({"question": title, "does_not_apply": reason(title)})
-        elif q.kind == "reading":
-            out.append({"question": title, "score": 1})
+            continue
+        if q.kind == "reading":
+            answer = {"question": title, "score": 1}
+            if title in QS.content_tests:
+                answer["subject"] = {"file": path, "line": default_place[0], "quote": default_place[1]}
         elif q.scale == "quality":
-            out.append({"question": title, "scale": "quality", "point": QS.scales["quality"].top})
+            answer = {"question": title, "scale": "quality", "point": QS.scales["quality"].top}
         else:
-            out.append({"question": title, "scale": q.scale, "places": [place(*default_place, True, path)]})
+            answer = {"question": title, "scale": q.scale, "places": [place(*default_place, True, path)]}
+        out.append(with_subject(answer, path) if title in QS.content_tests else answer)
     return dict({"path": path, "branches": branches, "questions": out}, **extra)
+
+
+# The content tests each fixture's file holds no subject for, by the fixture's text (the questions come from the file).
+NO_COMMANDS, NO_FORM, NO_CRITERION = "Commands given exactly", "Shows an example", "Its own criteria met"
+NO_ASKING, NO_ANSWERS, NO_TOOLS = "Directions for when nobody answers", "Answers defined, edge cases included", "Tools explained"
+HELPER_ABSENT = (NO_COMMANDS, NO_FORM, NO_CRITERION)
+DOC_WRITER_ABSENT = (NO_COMMANDS, NO_ASKING, NO_CRITERION, NO_FORM)
+TRIAGE_ABSENT = (NO_COMMANDS, NO_ASKING, NO_ANSWERS, NO_CRITERION, NO_FORM)
+BARE_ABSENT = (NO_TOOLS, NO_COMMANDS, NO_ASKING, NO_ANSWERS, NO_CRITERION, NO_FORM)
 
 
 def helper_review(path=HELPER, **extra):
@@ -143,14 +171,11 @@ def helper_review(path=HELPER, **extra):
         },
         "Reasons given": {"scale": "frequency", "places": [place(9, "Never edit files", False, f, "The rule gives no reason.")]},
     }
-    return review(path, answers, HELPER_BRANCHES, default_place=(9, "Never edit files; report what you find in a list."), **extra)
+    return review(path, answers, HELPER_BRANCHES, default_place=(9, "Never edit files; report what you find in a list."),
+                  absent=HELPER_ABSENT, **extra)
 
 
-HELPER_DO_NOT_APPLY = [
-    ("Commands given exactly", reason("Commands given exactly")),
-    ("Shows an example", reason("Shows an example")),
-    ("Its own criteria met", reason("Its own criteria met")),
-]
+HELPER_DO_NOT_APPLY = [(t, reason(t)) for t in TITLES if t in HELPER_ABSENT]
 
 
 def doc_writer_review():
@@ -165,7 +190,7 @@ def doc_writer_review():
     }
     return review(
         f, answers, {"delegated": True, "harness": "Claude Code", "settings": ["tools"]},
-        default_place=(8, "Write each note as one sentence in the past tense."),
+        default_place=(8, "Write each note as one sentence in the past tense."), absent=DOC_WRITER_ABSENT,
         fit={"statement": "No neighbouring persona files were supplied."},
     )
 
@@ -187,7 +212,8 @@ def triage_review():
         },
     }
     removed = QS.branches["settings"].removes + ["Tools explained"]
-    return review(f, answers, {"delegated": True, "harness": "GitHub Copilot", "settings": []}, removed, (6, line))
+    return review(f, answers, {"delegated": True, "harness": "GitHub Copilot", "settings": []}, removed, (6, line),
+                  absent=TRIAGE_ABSENT)
 
 
 def release_review():
@@ -199,7 +225,8 @@ def release_review():
             "scale": "quality", "point": 0, "findings": [finding(1, "# Release notes guide", "The file states no identity.", f)],
         },
     }
-    return review(f, answers, {"delegated": False, "harness": None, "settings": []}, removed,
+    return review(f, answers, {"delegated": False, "harness": None, "settings": []}, removed, absent=BARE_ABSENT,
+                  default_place=
                   (3, "Run `make notes` before each release."))
 
 
@@ -591,7 +618,7 @@ class TestWhatAppliesT_W(ReportCase):
         proj = self.project("branches")
         f = ".codex/agents/auditor.toml"
         entry = review(f, {}, {"delegated": True, "harness": "Codex", "settings": ["sandbox_mode"]},
-                       default_place=(5, "Read each changed lockfile entry."))
+                       default_place=(5, "Read each changed lockfile entry."), absent=BARE_ABSENT)
         path = self.write([entry], root=proj)
         proc = run("report.py", "render", path)
         self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
@@ -606,7 +633,7 @@ class TestWhatAppliesT_W(ReportCase):
         line = "Return a summary of the change in three sentences."
         entry = review(
             f, {"Tools explained": None}, {"delegated": True, "harness": "Claude Code", "settings": []},
-            removed=QS.branches["settings"].removes, default_place=(7, line),
+            removed=QS.branches["settings"].removes, default_place=(7, line), absent=TRIAGE_ABSENT,
         )
         proc = run("report.py", "render", self.write([entry], root=proj))
         self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
@@ -614,6 +641,30 @@ class TestWhatAppliesT_W(ReportCase):
         for title in QS.branches["settings"].removes:
             self.assertIn((title, branch_reason("settings")), dna)
         self.assertIn(("Tools explained", QS.following["Tools explained"][1]), dna)
+
+
+class TestNoPlace(ReportCase):
+    """A frequency rating with no place in the file: with Sophos's five content-test rows (3 October 2026), it does not
+    apply, with the reason the file prints, and no script changed. The verifier's file holds no rule that limits the
+    agent, so 'Reasons given' has no place."""
+
+    project_name = "no-place"
+
+    def test_reasons_given_does_not_apply(self):
+        f = ".claude/agents/zeta.md"
+        title = "Reasons given"
+        self.assertIn(title, QS.content_tests)
+        entry = review(
+            f, {}, {"delegated": True, "harness": "Claude Code", "settings": ["tools"]},
+            default_place=(8, "Report each change as a numbered list item."),
+            absent=(NO_COMMANDS, NO_ASKING, NO_ANSWERS, NO_CRITERION, title),
+        )
+        proc = self.render([entry])
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        lines = block(proc.stdout)
+        self.assertIn((title, reason(title)), do_not_apply(lines))
+        self.assertRegex("\n".join(lines), rf"(?m)^{re.escape(title)} +does not apply$")
+        self.assert_totals_follow(lines)
 
 
 class TestRenderT4(ReportCase):
@@ -730,7 +781,7 @@ class TestRenderT4(ReportCase):
                     want.append((title, branch_reason(key)))
                     break
             else:
-                if title in QS.content_tests:
+                if title in QS.content_tests and title in BARE_ABSENT:
                     want.append((title, reason(title)))
         self.assertEqual(dna, want)
 
@@ -837,6 +888,7 @@ class TestSpreadOverFilesT13(ReportCase):
             },
             {"delegated": True, "harness": None, "settings": ["tools"]},
             removed=QS.branches["harness"].removes, default_place=(9, "Rate each finding on the scale in scale.md."),
+            absent=(NO_COMMANDS, NO_ASKING, NO_CRITERION),
             loaded_with=[{"path": scale, "reason": self.LIST_REASON}, {"path": "personas/reviewer/examples.md", "reason": self.LIST_REASON}],
             left_out=[{"path": "personas/reviewer/missing.md", "reason": "personas.txt lists it, and it does not exist"}],
         )

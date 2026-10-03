@@ -26,8 +26,6 @@ REVIEW_QUESTIONS = SKILL / "references" / "review-questions.md"
 BIBLIOGRAPHY = SKILL / "references" / "bibliography.md"
 # The sample report, landed for round 3 and read once its hash is checked.
 SAMPLE = "references/sample-review.md"
-# Where the sample's contents heading falls (sample-review.md as landed, line 10).
-SAMPLE_CONTENTS_LINE = 10
 # The reviewer file's path inside the skill, named once (specification §0).
 REVIEWER = SKILL / "agents" / "reviewer.md"
 
@@ -239,10 +237,11 @@ class TestContentsT_C(ScratchCase):
         need(REVIEWER)
 
     def test_sample(self):
-        """T-C on the sample: over 100 lines, with its contents heading at line 10."""
+        """T-C on the sample, once its hash is checked: a contents heading within its first lines, by T-C's own rule
+        and not a pinned line number, so the sample's prose can move."""
         lines = sample_text().splitlines()
         self.assertGreater(len(lines), CONTENTS_THRESHOLD)
-        self.assertRegex(lines[SAMPLE_CONTENTS_LINE - 1], r"^#+\s+Contents\b")
+        self.assertTrue(any(re.match(r"#+\s+Contents\b", l) for l in lines[:CONTENTS_WITHIN]))
         self.assertEqual([f for f in contents_faults(SKILL) if f.startswith(SAMPLE)], [])
 
     def test_control(self):

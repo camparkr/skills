@@ -18,8 +18,10 @@ from pathlib import Path
 from support import REFERENCES, ROOT, SCRIPTS, ScratchCase, make_fixtures
 
 QUESTIONS_MD = REFERENCES / "review-questions.md"
-# The ratified file T-K (1) reads, pinned by its hash (§8, 'Counts in every test and eval').
-FROZEN_SHA256 = "e229cb727fef6a27eeda4ad1514b833d6ce3d64df10dc57cd9530e1e24798b3a"
+# A fixture copy of the round-4 file (committed at 146a82a), pinned by its hash, so the tests that check §3e's reading
+# word for word hold while the live file changes (§8, 'Counts in every test and eval': only fixtures pin a known file).
+FIXTURE_MD = make_fixtures.FILES / "review-questions-round-4.fixture"
+FIXTURE_SHA256 = "e229cb727fef6a27eeda4ad1514b833d6ce3d64df10dc57cd9530e1e24798b3a"
 
 # The prose counts T-K (2) compares with the derived ones: each pattern held here, in the test, never in a script.
 PROSE_COUNTS = {
@@ -45,8 +47,29 @@ def run_questions(path, *extra):
     )
 
 
+UNITS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+         "seventeen eighteen nineteen").split()
+TENS = "twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+
 def word_number(word):
-    return {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7}[word.lower()]
+    """A count the prose writes as digits or in words, such as '35', 'Ten' or 'twenty-one'."""
+    word = word.lower().strip()
+    if word.isdigit():
+        return int(word)
+    total = 0
+    for part in word.replace("-", " ").split():
+        if part in UNITS:
+            total += UNITS.index(part)
+        elif part in TENS:
+            total += 20 + 10 * TENS.index(part)
+        else:
+            raise ValueError(f"'{word}' is not a number the test can read")
+    return total
+
+
+# A count written in the prose: digits, or number words, hyphenated or not.
+NUMBER = r"(\d+|[A-Za-z]+(?:-[A-Za-z]+)?)"
 
 
 def stated_counts(text):
@@ -56,16 +79,16 @@ def stated_counts(text):
     for name, pattern in PROSE_COUNTS.items():
         m = re.search(pattern, folded)
         out[name] = int(m.group(1)) if m else None
-    m = re.search(r"(\w+) checks count (\d+) points", folded)
+    m = re.search(NUMBER + r" checks count (\d+) points", folded)
     out["weighted checks"] = word_number(m.group(1)) if m else None
     out["weighted points"] = int(m.group(2)) if m else None
-    m = re.search(r"(\w+) ratings and (\w+) check apply only where the file holds", folded)
+    m = re.search(NUMBER + r" ratings and " + NUMBER + r" checks? apply only where the file holds", folded)
     out["content-test ratings"] = word_number(m.group(1)) if m else None
     out["content-test checks"] = word_number(m.group(2)) if m else None
-    m = re.search(r"The first (\w+) are rated on the frequency scale and the last (\w+) on the quality scale", folded)
+    m = re.search(r"The first " + NUMBER + r" are rated on the frequency scale and the last " + NUMBER + r" on the quality scale", folded)
     out["persona frequency ratings"] = word_number(m.group(1)) if m else None
     out["persona quality ratings"] = word_number(m.group(2)) if m else None
-    m = re.search(r"All (\w+) are rated on the frequency scale", folded)
+    m = re.search(r"All " + NUMBER + r" are rated on the frequency scale", folded)
     out["writing frequency ratings"] = word_number(m.group(1)) if m else None
     return out
 
@@ -93,12 +116,12 @@ def derived_counts(qs):
 
 
 class TestReadsTheFile(unittest.TestCase):
-    """T-K (1): the frozen file reads as §3e says."""
+    """T-K (1): the round-4 file, kept as a fixture copy pinned by its hash, reads as §3e says, word for word."""
 
     def setUp(self):
-        self.assertEqual(hashlib.sha256(QUESTIONS_MD.read_bytes()).hexdigest(), FROZEN_SHA256, "review-questions.md has moved")
+        self.assertEqual(hashlib.sha256(FIXTURE_MD.read_bytes()).hexdigest(), FIXTURE_SHA256, "the fixture copy has moved")
         self.q = load_module()
-        self.qs = self.q.load(QUESTIONS_MD)
+        self.qs = self.q.load(FIXTURE_MD)
 
     def test_sections_and_root(self):
         self.assertEqual(self.qs.sections, ["Persona", "Instruction writing"])
@@ -165,11 +188,56 @@ class TestReadsTheFile(unittest.TestCase):
         self.assertEqual(sum(self.qs.section_points(s) for s in self.qs.sections), total)
 
     def test_cli(self):
+        proc = run_questions(FIXTURE_MD, "--format", "json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        data = json.loads(proc.stdout)
+        self.assertEqual(len(data["questions"]), len(self.qs.questions))
+        self.assertEqual(data["possible"], self.qs.possible)
+
+
+class TestLiveFile(unittest.TestCase):
+    """The live review-questions.md meets the contract, and every count the tests use comes from it."""
+
+    def setUp(self):
+        self.q = load_module()
+        self.qs = self.q.load(QUESTIONS_MD)
+
+    def test_meets_the_contract(self):
         proc = run_questions(QUESTIONS_MD, "--format", "json")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = json.loads(proc.stdout)
         self.assertEqual(len(data["questions"]), len(self.qs.questions))
         self.assertEqual(data["possible"], self.qs.possible)
+
+    def test_root_and_sections(self):
+        self.assertIn(self.qs.questions[0].kind, ("script", "reading"))
+        for section in self.qs.sections:
+            self.assertTrue(any(q.section == section for q in self.qs.questions), section)
+
+    def test_points_are_derived(self):
+        total = sum(q.weight if q.kind != "rating" else self.qs.scales[q.scale].top for q in self.qs.questions)
+        self.assertEqual(self.qs.possible, total)
+        self.assertEqual(sum(self.qs.section_points(s) for s in self.qs.sections), total)
+
+    def test_weights_table_names_the_weighted_checks(self):
+        weighted = {q.title for q in self.qs.questions if q.kind != "rating" and q.weight > 1}
+        self.assertEqual(set(self.qs.weights_table), weighted)
+
+    def test_every_table_title_is_a_question(self):
+        titles = set(self.qs.by_title)
+        named = [t for b in self.qs.branches.values() for t in b.removes] + list(self.qs.content_tests)
+        named += list(self.qs.following) + [c for c, _ in self.qs.following.values()] + [e[0] for e in self.qs.exceptions]
+        self.assertEqual([t for t in named if t not in titles], [])
+
+
+class TestNumberWords(unittest.TestCase):
+    def test_words_and_digits(self):
+        self.assertEqual([word_number(w) for w in ("35", "One", "seven", "Ten", "twelve", "twenty-one", "Thirty five")],
+                         [35, 1, 7, 10, 12, 21, 35])
+
+    def test_control(self):
+        with self.assertRaises(ValueError):
+            word_number("several")
 
 
 class TestProseCounts(ScratchCase):
@@ -239,6 +307,25 @@ class TestContractRefused(ScratchCase):
     def test_scale_never_defined(self):
         err, line = self.broken("**Reasons given** (*frequency*).", "**Reasons given** (*agreement*).")
         self.assertIn("agreement", err)
+
+    def test_unknown_harness(self):
+        """A harness-exception row naming a harness find.py does not name is refused (the verifier's first gap)."""
+        err, line = self.broken("| Declares its tools | Codex | Codex has no tools field | OA2 |",
+                                "| Declares its tools | Codexx | Codex has no tools field | OA2 |")
+        self.assertIn(f"line {line}:", err)
+        self.assertIn("Codexx", err)
+
+    def test_empty_reason(self):
+        """An empty 'Reason printed' cell is refused (the verifier's second gap)."""
+        err, line = self.broken("| Commands given exactly | a command the file tells the agent to run | no command to run |",
+                                "| Commands given exactly | a command the file tells the agent to run |  |")
+        self.assertIn(f"line {line}:", err)
+        self.assertIn("Reason printed", err)
+
+    def test_empty_branch_reason(self):
+        err, line = self.broken("| One job; States its output; The description says when to choose it | not delegated |",
+                                "| One job; States its output; The description says when to choose it |  |")
+        self.assertIn(f"line {line}:", err)
 
     def test_report_refuses_too(self):
         """report.py and check.py stop with exit 2 when the file they read breaks the contract."""

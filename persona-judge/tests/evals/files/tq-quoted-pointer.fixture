@@ -1,0 +1,8 @@
+---
+name: rater
+description: Rates review findings when asked how serious each is.
+tools: Read, Grep
+---
+
+A rule such as 'Rate findings on the scale in `severity.md`' leaves the scale out.
+Give each finding its rating in the same reply.

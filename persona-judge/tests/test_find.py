@@ -318,6 +318,31 @@ class TestReader(ScratchCase):
         proj = self.project("empty-file")
         self.assertTrue(self.pf.read_path(proj / ".claude/agents/blank.md").empty)
 
+    def test_mask(self):
+        """The mask (specification §3c): spaces in place of quoted spans, block quotes and fenced code, every line
+        kept with its number; an apostrophe masks nothing; a span may wrap across lines of one paragraph."""
+        text = (
+            "Flag 'CRITICAL: You\n"
+            "MUST run it.' when seen.\n"
+            "Keep the harness's CRITICAL step.\n"
+            "\n"
+            "> Deploy steps: TODO.\n"
+            "```\n"
+            "TODO\n"
+            "```\n"
+            "An 'unclosed quote stays.\n"
+        )
+        pf = self.pf.read_text(text)
+        masked = self.pf.masked_body(pf)
+        self.assertEqual([n for n, _ in masked], [n for n, _ in pf.body])
+        self.assertEqual([len(t) for _, t in masked], [len(t) for _, t in pf.body])
+        got = [t.rstrip() for _, t in masked]
+        self.assertEqual(got[0], "Flag")
+        self.assertEqual(got[1].strip(), "when seen.")
+        self.assertEqual(got[2], "Keep the harness's CRITICAL step.")
+        self.assertEqual(got[4:8], ["", "", "", ""])
+        self.assertEqual(got[8], "An 'unclosed quote stays.")
+
     def test_named_paths(self):
         """The paths a line names, in backticks or as a link, skipping patterns and placeholders."""
         got = list(self.pf.named_paths("Read `docs/a.md`, [b](../b.md), `src/*.ts`, `<your>.md` and `https://x.io/c.md`."))

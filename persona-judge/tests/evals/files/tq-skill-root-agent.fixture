@@ -1,0 +1,7 @@
+---
+name: judge
+description: Rates agent instructions when asked how well a prompt is written.
+tools: Read, Grep
+---
+
+Read `references/rules.md` before you rate.

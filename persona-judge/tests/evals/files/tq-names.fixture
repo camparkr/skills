@@ -1,0 +1,8 @@
+---
+name: runner
+description: Lists the personas in a project when asked which agents it has.
+tools: Read, Grep
+---
+
+Run `find.py` when the user asks which personas the project holds.
+A standing persona, such as `CLAUDE.md`, frames every session.

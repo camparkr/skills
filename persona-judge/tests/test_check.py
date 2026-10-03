@@ -6,7 +6,7 @@ import json
 import shutil
 import unittest
 
-from support import REFERENCES, SCRIPTS, ScratchCase, make_fixtures, run
+from support import REFERENCES, ROOT, SCRIPTS, ScratchCase, make_fixtures, run
 
 # Exit codes check.py promises (specification §3c).
 ALL_ONE, SOME_ZERO, ERROR, NOTHING = 0, 1, 2, 3
@@ -243,6 +243,76 @@ class TestSeedRows(ScratchCase):
         self.assertEqual(proc.returncode, NOTHING)
         self.assertIn("CLAUDE.md is set aside", proc.stderr)
         self.assertIn("project instructions", proc.stderr)
+
+
+def zeros(proc):
+    """{(row id, path): the lines that row scored 0 on} from check.py's JSON output."""
+    return {(r["id"], r["path"]): sorted(l["line"] for l in r["lines"]) for r in json.loads(proc.stdout) if r["score"] == 0}
+
+
+class TestTQ(ScratchCase):
+    """T-Q: check.py reads quoted and example text as masked, and scores only real pointers (specification §3c and
+    §8, Sophos, 3 October 2026). Each case scores 1; each control is still caught."""
+
+    def checked(self, project, *paths):
+        proc = run("check.py", *paths, "--format", "json", cwd=self.project(project))
+        self.assertIn(proc.returncode, (ALL_ONE, SOME_ZERO), proc.stderr)
+        return proc
+
+    def test_case_1_names_not_pointers(self):
+        """'Run `find.py`' and 'such as `CLAUDE.md`', neither file present: no read verb, so not pointers."""
+        got = scores(self.checked("tq-names"))
+        self.assertEqual(got[("PJ-001", ".claude/agents/runner.md")], 1)
+
+    def test_case_2_quoted_pointer(self):
+        """'Rate findings on the scale in `severity.md`', quoted, with no such file: masked."""
+        got = scores(self.checked("tq-quoted-pointer"))
+        self.assertEqual(got[("PJ-001", ".claude/agents/rater.md")], 1)
+
+    def test_case_3_quoted_examples(self):
+        """The three quoted examples, the first wrapping across two lines: masked."""
+        got = scores(self.checked("tq-quoted-examples"))
+        for rid in ("PJ-007", "PJ-011", "PJ-012"):
+            self.assertEqual(got[(rid, ".claude/agents/linter.md")], 1, rid)
+
+    def test_case_4_block_quote(self):
+        """The same three in a block quote: masked."""
+        got = scores(self.checked("tq-blockquote"))
+        for rid in ("PJ-007", "PJ-011", "PJ-012"):
+            self.assertEqual(got[(rid, ".claude/agents/linter.md")], 1, rid)
+
+    def test_case_5_pointer_from_the_skill_root(self):
+        """A pointer named from the skill's root, as agents/reviewer.md names references/review-questions.md."""
+        got = scores(self.checked("tq-skill-root", "skill/agents/judge.md"))
+        self.assertEqual(got[("PJ-001", "skill/agents/judge.md")], 1)
+
+    def test_case_6_the_frozen_files(self):
+        """The frozen review-questions.md and agents/reviewer.md give none of §3c's five rows at 0."""
+        questions, reviewer = "skill/references/review-questions.md", "skill/agents/reviewer.md"
+        frozen = {
+            questions: "aea58eacbcc15b29345865cd2897f942617a092cf705bff155fffe2005ede835",
+            reviewer: "77c42965947cef7cad6009fb49fd8395cdd367bf487c3676b9ff005ab5fd379f",
+        }
+        for rel, digest in frozen.items():
+            self.assertEqual(sha(ROOT / rel), digest, f"{rel} has moved")
+        proc = run("check.py", questions, reviewer, "--format", "json", cwd=ROOT)
+        got = zeros(proc)
+        listed = [
+            ("PJ-001", questions, 11), ("PJ-001", reviewer, 10), ("PJ-007", questions, 191),
+            ("PJ-011", questions, 208), ("PJ-012", questions, 213),
+        ]
+        for rid, path, line in listed:
+            self.assertNotIn(line, got.get((rid, path), []), (rid, path, line))
+
+    def test_controls_still_caught(self):
+        """A real pointer, a list under 'Open these when you need more:', real capitals, a real placeholder, a real
+        dated statement, and an apostrophe beside capitals: each still scores 0, on its own line."""
+        got = zeros(self.checked("tq-controls"))
+        path = ".claude/agents/checker.md"
+        self.assertEqual(got[("PJ-001", path)], [7, 10])
+        self.assertEqual(got[("PJ-011", path)], [12, 18])
+        self.assertEqual(got[("PJ-012", path)], [14])
+        self.assertEqual(got[("PJ-007", path)], [16])
 
 
 class TestT10Determinism(ScratchCase):

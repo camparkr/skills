@@ -111,6 +111,17 @@ PROJECTS = {
     # Two rows scoring 0 on one line, PJ-001 and PJ-002, which the report merges into one finding.
     "pointer": {".claude/agents/pointer.md": "pointer-agent"},
     "emphasis-likeness": {".claude/agents/tester.md": "emphasis-likeness"},
+    # T-Q: quoted and example text is not the file's own instruction, and only a pointer is checked for its path
+    # (specification §3c, Sophos, 3 October 2026). Cases (1) to (5), then the controls still caught.
+    "tq-names": {".claude/agents/runner.md": "tq-names"},
+    "tq-quoted-pointer": {".claude/agents/rater.md": "tq-quoted-pointer"},
+    "tq-quoted-examples": {".claude/agents/linter.md": "tq-quoted-examples"},
+    "tq-blockquote": {".claude/agents/linter.md": "tq-blockquote"},
+    "tq-skill-root": {
+        "skill/agents/judge.md": "tq-skill-root-agent",
+        "skill/references/rules.md": "tq-skill-root-rules",
+    },
+    "tq-controls": {".claude/agents/checker.md": "tq-controls"},
     # A named file in no table: a standing persona, which 'Declares its tools' does not apply to.
     "standing": {"notes/release.md": "notes-standing"},
     # The discovery rows: the four dedicated locations and the set-aside Copilot and Cursor files, beside

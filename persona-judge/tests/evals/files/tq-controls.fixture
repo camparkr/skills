@@ -16,3 +16,5 @@ Deploy steps: TODO.
 Use the v1 endpoint until the migration finishes.
 
 Never skip the harness's CRITICAL step.
+
+Before you rate, open `notes/before-missing.md`.

@@ -122,6 +122,14 @@ PROJECTS = {
         "skill/references/rules.md": "tq-skill-root-rules",
     },
     "tq-controls": {".claude/agents/checker.md": "tq-controls"},
+    # T-Q cases (7) to (12): a read verb makes a pointer only when it is addressed to the agent as an instruction
+    # (specification §3c, Sophos, 3 October 2026, option 2).
+    "tq-c7": {".claude/agents/namer.md": "tq-c7"},
+    "tq-c8": {".claude/agents/builder.md": "tq-c8"},
+    "tq-c9": {".claude/agents/explainer.md": "tq-c9"},
+    "tq-c10": {".claude/agents/gatherer.md": "tq-c10"},
+    "tq-c11": {".claude/agents/scorer.md": "tq-c11"},
+    "tq-c12": {".claude/agents/checker.md": "tq-c12"},
     # A named file in no table: a standing persona, which 'Declares its tools' does not apply to.
     "standing": {"notes/release.md": "notes-standing"},
     # The discovery rows: the four dedicated locations and the set-aside Copilot and Cursor files, beside

@@ -287,7 +287,8 @@ class TestTQ(ScratchCase):
         self.assertEqual(got[("PJ-001", "skill/agents/judge.md")], 1)
 
     def test_case_6_the_frozen_files(self):
-        """The frozen review-questions.md and agents/reviewer.md give none of §3c's five rows at 0."""
+        """The frozen review-questions.md and agents/reviewer.md give no row at 0 on either file (§8, T-Q, as
+        revised for the read-verb rule, 3 October 2026), and so none of §3c's five rows."""
         questions, reviewer = "skill/references/review-questions.md", "skill/agents/reviewer.md"
         frozen = {
             questions: "aea58eacbcc15b29345865cd2897f942617a092cf705bff155fffe2005ede835",
@@ -303,13 +304,42 @@ class TestTQ(ScratchCase):
         ]
         for rid, path, line in listed:
             self.assertNotIn(line, got.get((rid, path), []), (rid, path, line))
+        self.assertEqual(got, {})
+
+    def test_case_7_a_form_that_is_not_base(self):
+        """'A standing persona, such as `CLAUDE.md`, loads every session.': 'loads' is not a base form."""
+        self.assertEqual(scores(self.checked("tq-c7"))[("PJ-001", ".claude/agents/namer.md")], 1)
+
+    def test_case_8_following(self):
+        """'Run `build.sh` with the following flags.': 'following' is not a base form."""
+        self.assertEqual(scores(self.checked("tq-c8"))[("PJ-001", ".claude/agents/builder.md")], 1)
+
+    def test_case_9_another_file_reads_it(self):
+        """review-questions.md line 92's sentence: 'tells Claude in words to read `AGENTS.md`' is not addressed to
+        the agent."""
+        self.assertEqual(scores(self.checked("tq-c9"))[("PJ-001", ".claude/agents/explainer.md")], 1)
+
+    def test_case_10_read_after_to(self):
+        """reviewer.md line 19's sentence: 'tells the agent to read' is not an instruction to read."""
+        self.assertEqual(scores(self.checked("tq-c10"))[("PJ-001", ".claude/agents/gatherer.md")], 1)
+
+    def test_case_11_follows(self):
+        """reviewer.md line 30's sentence: 'the score follows' has a subject that is not the agent."""
+        self.assertEqual(scores(self.checked("tq-c11"))[("PJ-001", ".claude/agents/scorer.md")], 1)
+
+    def test_case_12_addressed_instructions(self):
+        """'You must open `notes/missing.md`' and 'once you have read `notes/other-missing.md`': both addressed to the
+        agent, so both missing files score 0."""
+        got = zeros(self.checked("tq-c12"))
+        self.assertEqual(got[("PJ-001", ".claude/agents/checker.md")], [7, 8])
 
     def test_controls_still_caught(self):
         """A real pointer, a list under 'Open these when you need more:', real capitals, a real placeholder, a real
-        dated statement, and an apostrophe beside capitals: each still scores 0, on its own line."""
+        dated statement, an apostrophe beside capitals, and 'Before you rate, open …': each still scores 0, on its
+        own line."""
         got = zeros(self.checked("tq-controls"))
         path = ".claude/agents/checker.md"
-        self.assertEqual(got[("PJ-001", path)], [7, 10])
+        self.assertEqual(got[("PJ-001", path)], [7, 10, 20])
         self.assertEqual(got[("PJ-011", path)], [12, 18])
         self.assertEqual(got[("PJ-012", path)], [14])
         self.assertEqual(got[("PJ-007", path)], [16])

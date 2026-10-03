@@ -1,0 +1,7 @@
+---
+name: builder
+description: Builds the project when asked to compile it.
+tools: Read, Grep
+---
+
+Run `build.sh` with the following flags.

@@ -14,6 +14,7 @@ is skipped with the reason, so the run says what waits.
 """
 
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -292,7 +293,11 @@ class TestBibliographyT_B(ScratchCase):
         return path.read_text(encoding="utf-8")
 
     def test_real_files(self):
-        self.assertEqual(len(question_titles(self.questions)), 33)
+        sys.path.insert(0, str(SKILL / "scripts"))
+        import questions
+
+        # The count comes from the file, through questions.py (specification §8, round 4).
+        self.assertEqual(len(question_titles(self.questions)), len(questions.load(REVIEW_QUESTIONS).questions))
         self.assertEqual(drift_faults(self.questions, self.bibliography), [])
 
     def test_control_title_missing_or_twice(self):

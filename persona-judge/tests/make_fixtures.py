@@ -130,6 +130,22 @@ PROJECTS = {
     "tq-c10": {".claude/agents/gatherer.md": "tq-c10"},
     "tq-c11": {".claude/agents/scorer.md": "tq-c11"},
     "tq-c12": {".claude/agents/checker.md": "tq-c12"},
+    # T-Q cases (13) to (16) and two more controls (round 4: Sophos's three read-verb rulings, 3 October 2026).
+    "tq-c13": {".claude/agents/guide-reader.md": "tq-c13"},
+    "tq-c14": {".claude/agents/row-reader.md": "tq-c14"},
+    "tq-c15": {".claude/agents/vendor-reader.md": "tq-c15"},
+    "tq-c16": {".claude/agents/limit-reader.md": "tq-c16"},
+    "tq-controls-4": {".claude/agents/checker.md": "tq-controls-4"},
+    # T-10's derived case: a persona to which every question applies (round 4).
+    "complete": {".claude/agents/release-checker.md": "complete-agent"},
+    # T-W: the three branches, each at yes and at no (specification §3b and §8, round 4).
+    "branches": {
+        ".claude/agents/helper.md": "helper-agent",
+        ".claude/agents/planner.md": "planner-agent",
+        ".claude/agents/summary-writer.md": "model-only",
+        ".codex/agents/auditor.toml": "codex-sandbox",
+        "notes/release.md": "notes-standing",
+    },
     # A named file in no table: a standing persona, which 'Declares its tools' does not apply to.
     "standing": {"notes/release.md": "notes-standing"},
     # The discovery rows: the four dedicated locations and the set-aside Copilot and Cursor files, beside

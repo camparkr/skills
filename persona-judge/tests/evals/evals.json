@@ -35,10 +35,10 @@
         "tests/evals/files/changelog.fixture"
       ],
       "expectations": [
-        "The report's first line is five star places with the number in brackets, such as '★★★☆☆ (3)'; its second is 'Total: x out of y'; its third and fourth are 'Persona: x out of y' and 'Instruction writing: x out of y'",
+        "The report's first line is five star places with the number in brackets, such as '★★★☆☆ (3)'; its second is 'Total: x out of y (M possible, less n that do not apply)'; its third and fourth are 'Persona: x out of y' and 'Instruction writing: x out of y'",
         "The report names the files reviewed under 'Files reviewed:' and says what was left out under 'Files left out:'",
         "Every item under 'Lines that lowered the score' names its file and line number, quotes the line, names its question and prints a 'Sources:' line",
-        "The checks and ratings are printed under 'Persona' and then 'Instruction writing'; each check shows 'yes 1' or 'no 0', and each rating 'n of 6' with its word, or says it is not scored or not rated",
+        "The checks and ratings are printed under 'Persona' and then 'Instruction writing'; each check shows 'yes' with its weight or 'no 0', each rating 'n of 6' with its word, and each question that does not apply 'does not apply', named with its reason under 'Do not apply:'",
         "The report holds the sentence 'A score does not predict how the agent will behave. The quoted lines are what to act on.'",
         "The report holds an item quoting 'tools: Read, Grep, Edit' against line 9, 'Never edit files; report what you find in a list.', under 'Bound parts agree with the prose', with 'Rule PJ-003'",
         "The output holds no replacement wording for any line and no verdict word (pass, fail, approve, block, severity) outside the quoted lines"
@@ -61,7 +61,7 @@
       ],
       "expectations": [
         "The SHA-256 manifest of the project after the run equals the manifest before it, file list included (checked by script: make_fixtures.py compare)",
-        "The output holds only the summary and, for each persona, the stars, the total, the subtotals, the header, the files reviewed and left out, the quoted lines, the checks and ratings, the fit part when neighbours were supplied, the formula and the closing sentences; and, for each file set aside, its path and reason",
+        "The output holds only the summary and, for each persona, the stars, the total, the subtotals, the header, the branches, the files reviewed and left out, the questions that do not apply, the quoted lines, the checks and ratings, the fit part when neighbours were supplied, the formula and the closing sentences; and, for each file set aside, its path and reason",
         "The output offers no replacement wording and compares with no other version of any file"
       ]
     },
@@ -82,7 +82,7 @@
       ],
       "expectations": [
         "Saved to a file, the report makes 'report.py verify' exit 0 (checked by script)",
-        "The formula is printed with the report's own numbers: 'Formula: each check counts 1 or 0 and each rating its points; persona x out of y, instruction writing x out of y, total x out of y.'",
+        "The formula is printed with the report's own numbers: 'Formula: each check counts its weight or 0, and each rating its points; <the weighted checks> weigh <their weight>, every other check 1; persona x out of y, instruction writing x out of y, total x out of y.', followed by 'At equal weights: x out of y.'",
         "The stars line 'Stars: x ÷ y × 5 = s, to the nearest half star.' is printed, and s rounds to the stars at the top"
       ]
     },

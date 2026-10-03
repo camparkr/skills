@@ -333,6 +333,29 @@ class TestTQ(ScratchCase):
         got = zeros(self.checked("tq-c12"))
         self.assertEqual(got[("PJ-001", ".claude/agents/checker.md")], [7, 8])
 
+    def test_case_13_link_first(self):
+        """'[Read the guide](missing.md) before you rate.': a sentence opening with a link counts; the target is the
+        pointer (Sophos, 3 October 2026)."""
+        got = zeros(self.checked("tq-c13"))
+        self.assertEqual(got[("PJ-001", ".claude/agents/guide-reader.md")], [7])
+
+    def test_case_14_you_inside_a_clause(self):
+        """'The file you see in `notes/missing.md` lists the rows.': 'you' follows 'file', so it opens no clause."""
+        self.assertEqual(scores(self.checked("tq-c14"))[("PJ-001", ".claude/agents/row-reader.md")], 1)
+
+    def test_case_15_open_source(self):
+        """'Open source code lives in `vendor/missing/`.': 'Open source' is not an instruction."""
+        self.assertEqual(scores(self.checked("tq-c15"))[("PJ-001", ".claude/agents/vendor-reader.md")], 1)
+
+    def test_case_16_known_limits(self):
+        """'read in full' after the path, and 'refer to it' in a later clause: the stated limit, not counted."""
+        self.assertEqual(scores(self.checked("tq-c16"))[("PJ-001", ".claude/agents/limit-reader.md")], 1)
+
+    def test_round_4_controls(self):
+        """'When you need more, you must open …' and 'Open … when a note is old.': still caught."""
+        got = zeros(self.checked("tq-controls-4"))
+        self.assertEqual(got[("PJ-001", ".claude/agents/checker.md")], [7, 9])
+
     def test_controls_still_caught(self):
         """A real pointer, a list under 'Open these when you need more:', real capitals, a real placeholder, a real
         dated statement, an apostrophe beside capitals, and 'Before you rate, open …': each still scores 0, on its
@@ -343,6 +366,27 @@ class TestTQ(ScratchCase):
         self.assertEqual(got[("PJ-011", path)], [12, 18])
         self.assertEqual(got[("PJ-012", path)], [14])
         self.assertEqual(got[("PJ-007", path)], [16])
+
+
+class TestBranchesT_W(ScratchCase):
+    """T-W: check.py prints the three branches for each persona, as find.py does (specification §3c, round 4)."""
+
+    def test_text_and_json(self):
+        proj = self.project("branches")
+        text = run("check.py", ".claude/agents/summary-writer.md", ".codex/agents/auditor.toml", "notes/release.md", cwd=proj)
+        self.assertIn(".claude/agents/summary-writer.md\tbranches: delegated yes (folder); harness Claude Code; settings none", text.stdout)
+        self.assertIn(".codex/agents/auditor.toml\tbranches: delegated yes (folder); harness Codex; settings sandbox_mode", text.stdout)
+        self.assertIn("notes/release.md\tbranches: delegated no; harness none; settings none", text.stdout)
+        proc = run("check.py", ".codex/agents/auditor.toml", "--format", "json", cwd=proj)
+        rows = json.loads(proc.stdout)
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertEqual(r["branches"], {"delegated": True, "harness": "Codex", "settings": ["sandbox_mode"]})
+
+    def test_rows_read_the_weighted_titles(self):
+        """The check table's questions are matched against review-questions.md's titles, weight marks included."""
+        proc = run("check.py", cwd=self.project("si2-clean"))
+        self.assertEqual(proc.returncode, ALL_ONE, proc.stderr)
 
 
 class TestT10Determinism(ScratchCase):

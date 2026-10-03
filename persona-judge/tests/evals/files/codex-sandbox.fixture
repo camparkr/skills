@@ -1,0 +1,7 @@
+name = "auditor"
+description = "Audits dependency changes when asked to check a lockfile."
+sandbox_mode = "read-only"
+developer_instructions = """
+Read each changed lockfile entry.
+Report each risky version with its line number.
+"""

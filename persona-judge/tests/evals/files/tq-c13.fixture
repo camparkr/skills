@@ -1,0 +1,7 @@
+---
+name: guide-reader
+description: Rates a change when asked how well it follows the guide.
+tools: Read, Grep
+---
+
+[Read the guide](missing.md) before you rate.

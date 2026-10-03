@@ -95,7 +95,8 @@ class TestFindProject(ScratchCase):
         text = (make_fixtures.FILES / "helper-agent.fixture").read_text()
         proc = run("find.py", "-", "--format", "json", stdin=text)
         self.assertEqual(proc.returncode, FOUND, proc.stderr)
-        self.assertEqual(reviewed(proc), [("<session text>", "persona", None, True)])
+        # Session text is never delegated (round 4, the delegated branch).
+        self.assertEqual(reviewed(proc), [("<session text>", "persona", None, False)])
         self.assertIn("inferred", records(proc)[0]["kind_basis"])
 
     def test_text_format(self):
@@ -233,6 +234,51 @@ class TestSpreadOverFiles(ScratchCase):
         proj = self.project("si2-planted")
         rec = records(run("find.py", "--format", "json", cwd=proj))[0]
         self.assertEqual((rec["candidates"], rec["listed"], rec["list_missing"]), ([], [], []))
+
+
+class TestBranchesT_W(ScratchCase):
+    """T-W: find.py prints the three branches for each persona (specification §3b, round 4)."""
+
+    WANT = {
+        ".claude/agents/helper.md": (True, "Claude Code", ["tools"], "delegated yes (folder); harness Claude Code; settings tools"),
+        ".claude/agents/planner.md": (True, "Claude Code", [], "delegated yes (folder); harness Claude Code; settings none"),
+        ".claude/agents/summary-writer.md": (True, "Claude Code", [], "delegated yes (folder); harness Claude Code; settings none"),
+        ".codex/agents/auditor.toml": (True, "Codex", ["sandbox_mode"], "delegated yes (folder); harness Codex; settings sandbox_mode"),
+        "notes/release.md": (False, None, [], "delegated no; harness none; settings none"),
+    }
+
+    def run_branches(self):
+        proj = self.project("branches")
+        named = [".claude/agents/helper.md", ".claude/agents/planner.md", ".claude/agents/summary-writer.md",
+                 ".codex/agents/auditor.toml", "notes/release.md"]
+        return proj, run("find.py", *named, "--format", "json", cwd=proj), run("find.py", *named, cwd=proj)
+
+    def test_json_fields(self):
+        _, proc, _ = self.run_branches()
+        self.assertEqual(proc.returncode, FOUND, proc.stderr)
+        got = {r["path"]: (r["delegated"], r["harness"], r["settings"]) for r in records(proc)}
+        self.assertEqual(got, {k: v[:3] for k, v in self.WANT.items()})
+
+    def test_text_lines(self):
+        _, _, proc = self.run_branches()
+        lines = proc.stdout.splitlines()
+        for path, want in self.WANT.items():
+            i = next(n for n, l in enumerate(lines) if l.startswith(path + "\t"))
+            self.assertEqual(lines[i + 1], f"  branches: {want[3]}", path)
+
+    def test_model_only_holds_no_settings(self):
+        """A file holding only `model` has no settings for this branch (A-32)."""
+        _, proc, _ = self.run_branches()
+        self.assertEqual([r for r in records(proc) if r["path"] == ".claude/agents/summary-writer.md"][0]["settings"], [])
+
+    def test_listed_persona_and_session_text(self):
+        proj = self.project("si13")
+        rec = [r for r in records(run("find.py", "--format", "json", cwd=proj)) if r["path"] == "personas/reviewer/reviewer.md"][0]
+        self.assertEqual((rec["delegated"], rec["harness"], rec["settings"]), (True, None, ["tools"]))
+        text = run("find.py", cwd=proj).stdout
+        self.assertIn("  branches: delegated yes (front matter); harness none; settings tools", text)
+        session = run("find.py", "-", stdin=(make_fixtures.FILES / "helper-agent.fixture").read_text())
+        self.assertIn("  branches: delegated no; harness none; settings tools", session.stdout)
 
 
 class TestFindRejects(ScratchCase):

@@ -2,10 +2,11 @@
 
 This file shows the form of every report. Load it when you write a report, and match its order and wording.
 
-Every report opens with the stars, the total and the two subtotals. Each line that lowered the score comes next, with
-its file, line, question, note and sources; a script check also names its rule. Then come the checks and ratings by
-section, the fit with neighbouring files, which does not count towards the score, and the formula. Source keys refer
-to `bibliography.md`.
+Every report opens with the stars, the total and the two subtotals; the total line gives the points possible and those
+that do not apply. The persona's branches and the questions that do not apply, each with its reason, come next, then
+each line that lowered the score, with its file, line, question, note and sources; a script check also names its rule.
+Then come the checks and ratings by section, the fit with neighbouring files, which does not count towards the score,
+the formula with its weights, and the total at equal weights. Source keys refer to `bibliography.md`.
 
 ## Contents
 

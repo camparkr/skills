@@ -15,7 +15,7 @@ REFERENCES = SKILL / "references"
 # sample-review.md with its blocks regenerated for round 4 (162 lines); every test that reads its content checks
 # this first.
 SAMPLE = REFERENCES / "sample-review.md"
-SAMPLE_SHA256 = "69fd8ca0e87ad1cdc68f7522fa888ae8afbe1ea232dcfa4f2c8801e4f2190a92"
+SAMPLE_SHA256 = "ee3c74133b1909dcb8a779883ba4a4b5fe32dddf7aadc7b111c0b4c9b5922f31"
 
 
 def sample_text():

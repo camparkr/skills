@@ -27,7 +27,8 @@ The contract, the only markup read:
                       Follows check, Reason printed); the harness exceptions (Question, Harness, Reason printed,
                       Source); and the weights (Check, Why it weighs more, Evidence), read only for the order in
                       which the formula names the weighted checks
-Every title a table names must be a question's title, word for word.
+Every title a table names must be a question's title, word for word; every 'Reason printed' cell must hold a
+reason; and each harness exception must name a harness as find.py names it.
 
 Output: the questions, sections, weights, scales, tables and points, as text or, with --format json, as one JSON
 object.
@@ -72,6 +73,8 @@ TABLES_BY_FIRST = {
     "Check": ("weights", WEIGHT_COLUMNS),
 }
 TITLES_SEPARATOR = "; "
+# The column every table of what applies prints its reason from; an empty cell is refused.
+REASON_COLUMN = "Reason printed"
 
 CHECK_MARK = re.compile(r"^\*\*([^*]+)\*\* \(\*(script|reading)\*(?:, weight (\d+))?\)\.(?:\s|$)")
 RATING_MARK = re.compile(r"^\*\*([^*]+)\*\* \(\*([a-z]+)\*\)\.(?:\s|$)")
@@ -331,9 +334,13 @@ def load(path=REVIEW_QUESTIONS):
             fail(hline - 1, f"the {kind} table's columns are {', '.join(header)}", f"the columns {', '.join(columns)}")
         if kind in found:
             fail(hline - 1, f"a second {kind} table", f"one {kind} table")
+        reason_at = columns.index(REASON_COLUMN) if REASON_COLUMN in columns else None
         for rline, cells in rows:
             if len(cells) != len(columns):
                 fail(rline - 1, f"a row of the {kind} table has {len(cells)} cells", f"{len(columns)} cells")
+            if reason_at is not None and not cells[reason_at]:
+                fail(rline - 1, f"a row of the {kind} table has an empty '{REASON_COLUMN}' cell",
+                     f"the reason the report prints, in '{REASON_COLUMN}'")
         found[kind] = rows
 
     def known(rline, title, what):
@@ -370,10 +377,15 @@ def load(path=REVIEW_QUESTIONS):
         if by[rating].kind != RATING or by[check].kind not in CHECK_KINDS:
             fail(rline - 1, f"'{rating}' follows '{check}'", "a rating that follows a check")
         following[rating] = (check, cells[2])
-    exceptions = [
-        (known(rline, cells[0], "harness-exception table"), cells[1], cells[2], cells[3])
-        for rline, cells in found.get("exceptions", [])
-    ]
+    # A harness is named as find.py names it; any other name would never match a file, so it is refused, not guessed.
+    import find  # imported here: find.py imports this module at its top
+
+    exceptions = []
+    for rline, cells in found.get("exceptions", []):
+        if cells[1] not in find.KNOWN_HARNESSES:
+            fail(rline - 1, f"the harness-exception table names the harness '{cells[1]}', which find.py does not name",
+                 f"one of {', '.join(find.KNOWN_HARNESSES)}")
+        exceptions.append((known(rline, cells[0], "harness-exception table"), cells[1], cells[2], cells[3]))
     weights_table = [known(rline, cells[0], "weights table") for rline, cells in found.get("weights", [])]
     return Questions(questions, sections, scales, ordered, content, following, exceptions, weights_table, os.fspath(path))
 

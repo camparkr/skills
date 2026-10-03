@@ -97,7 +97,7 @@ class TestFindProject(ScratchCase):
         self.assertEqual(proc.returncode, FOUND, proc.stderr)
         # Session text is never delegated (round 4, the delegated branch).
         self.assertEqual(reviewed(proc), [("<session text>", "persona", None, False)])
-        self.assertIn("inferred", records(proc)[0]["kind_basis"])
+        self.assertIn("session text", records(proc)[0]["kind_basis"])
 
     def test_text_format(self):
         proj = self.project("si11")

@@ -4,6 +4,7 @@ column, and rows for 'Declares its tools', 'Plain emphasis' and 'No placeholders
 import hashlib
 import json
 import shutil
+import subprocess
 import unittest
 
 from support import REFERENCES, ROOT, SCRIPTS, ScratchCase, make_fixtures, run
@@ -294,9 +295,15 @@ class TestTQ(ScratchCase):
             questions: "aea58eacbcc15b29345865cd2897f942617a092cf705bff155fffe2005ede835",
             reviewer: "77c42965947cef7cad6009fb49fd8395cdd367bf487c3676b9ff005ab5fd379f",
         }
+        # Case (6) is defined on the files at 1764a6c; round 4 ratified a new review-questions.md, so the files are
+        # read from Git at that commit into a scratch copy of the skill, never from the working tree.
+        tree = self.tmp / "at-1764a6c"
+        tree.mkdir()
+        archive = subprocess.run(["git", "-C", str(ROOT), "archive", "1764a6c", "--", "."], capture_output=True, check=True)
+        subprocess.run(["tar", "-x", "-C", str(tree)], input=archive.stdout, check=True)
         for rel, digest in frozen.items():
-            self.assertEqual(sha(ROOT / rel), digest, f"{rel} has moved")
-        proc = run("check.py", questions, reviewer, "--format", "json", cwd=ROOT)
+            self.assertEqual(sha(tree / rel), digest, f"{rel} at 1764a6c is not the file case (6) names")
+        proc = run("check.py", questions, reviewer, "--format", "json", cwd=tree)
         got = zeros(proc)
         listed = [
             ("PJ-001", questions, 11), ("PJ-001", reviewer, 10), ("PJ-007", questions, 191),

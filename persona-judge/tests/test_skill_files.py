@@ -278,7 +278,7 @@ class TestPathsT_P(ScratchCase):
 
 
 class TestDefinitions(unittest.TestCase):
-    """definitions.md replaces persona-boundaries.md and absorbs its content (Sophos, 4 October 2026): the new file is
+    """definitions.md replaces persona-boundaries.md and absorbs its content (ruling of 4 October 2026): the new file is
     in place and linked from SKILL.md, and the old one is gone, so no test or reader can find it."""
 
     def test_definitions_replace_persona_boundaries(self):

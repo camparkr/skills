@@ -1,5 +1,5 @@
 """T-K: questions.py reads review-questions.md at run time under its markup contract (specification §3e and §8,
-Sophos, 3 October 2026). No script holds a question, a count of questions or a count of points.
+ruling of 3 October 2026). No script holds a question, a count of questions or a count of points.
 
 (1) the frozen file reads as §3e says; (2) the file's prose counts equal the counts questions.py derives; (3) a copy
 that breaks the contract once is refused with exit 2, naming the line and what was expected; (4) a copy with a

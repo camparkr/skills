@@ -63,7 +63,7 @@ def outside_fences(body):
             yield n, text
 
 
-# The mask (build specification §3c, Sophos, 3 October 2026): quoted and example text is not the file's own
+# The mask (build specification §3c, ruling of 3 October 2026): quoted and example text is not the file's own
 # instruction. Fenced code, Markdown block quotes and quoted spans are replaced by spaces before any check reads
 # the body, so every line keeps its number and its length.
 BLOCK_QUOTE = re.compile(r"^\s*>")
@@ -153,7 +153,7 @@ def masked_body(pf):
 
 
 # A sentence tells the agent to read a path only when a read verb in it is addressed to the agent as an instruction
-# (specification §3c, Sophos, 3 October 2026, option 2). The verbs, in their base form only.
+# (specification §3c, ruling of 3 October 2026, option 2). The verbs, in their base form only.
 BASE_VERBS = ("read", "open", "load", "see", "consult", "follow", "refer", "look")
 # After 'you have' or "you've", the past participle counts instead.
 PARTICIPLES = ("read", "opened", "loaded", "seen", "consulted", "followed", "referred", "looked")
@@ -167,13 +167,13 @@ MODALS = ("must", "should", "can", "may", "will", "do", "need to", "have to", "o
 _SENTENCE_MARKER = re.compile(r"^([-*+]|\d+\.)\s+")
 _EMPHASIS = "*_"
 # The opening of a Markdown link, skipped before a sentence's first word: '[Read the guide](guide.md)' counts, its
-# target being the pointer (Sophos, 3 October 2026).
+# target being the pointer (ruling of 3 October 2026).
 _LINK_OPEN = "["
-# 'Open' followed by one of these is an adjective, as in 'Open source code', not an instruction (Sophos,
+# 'Open' followed by one of these is an adjective, as in 'Open source code', not an instruction (ruling of
 # 3 October 2026); 'Open-source' already fails the word boundary.
 _OPEN_ADJECTIVE = re.compile(r"^open\s+(?:source|sourced)\b", re.IGNORECASE)
 # 'You' counts only where it opens a clause: first in the sentence, or after a comma or one of these words
-# (Sophos, 3 October 2026).
+# (ruling of 3 October 2026).
 CLAUSE_WORDS = ("before", "after", "when", "whenever", "once", "if", "until", "while", "as soon as", "and", "then")
 _CLAUSE_END = re.compile(r"(?:,|\b(?:" + "|".join(w.replace(" ", r"\s+") for w in CLAUSE_WORDS) + r"))\s*$", re.IGNORECASE)
 _LEADING = re.compile(r"^(?:" + "|".join(LEADING_WORDS) + r")\b,?\s*", re.IGNORECASE)

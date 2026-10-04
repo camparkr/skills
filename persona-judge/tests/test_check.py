@@ -253,7 +253,7 @@ def zeros(proc):
 
 class TestTQ(ScratchCase):
     """T-Q: check.py reads quoted and example text as masked, and scores only real pointers (specification §3c and
-    §8, Sophos, 3 October 2026). Each case scores 1; each control is still caught."""
+    §8, ruling of 3 October 2026). Each case scores 1; each control is still caught."""
 
     def checked(self, project, *paths):
         proc = run("check.py", *paths, "--format", "json", cwd=self.project(project))
@@ -342,7 +342,7 @@ class TestTQ(ScratchCase):
 
     def test_case_13_link_first(self):
         """'[Read the guide](missing.md) before you rate.': a sentence opening with a link counts; the target is the
-        pointer (Sophos, 3 October 2026)."""
+        pointer (ruling of 3 October 2026)."""
         got = zeros(self.checked("tq-c13"))
         self.assertEqual(got[("PJ-001", ".claude/agents/guide-reader.md")], [7])
 

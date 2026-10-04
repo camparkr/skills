@@ -372,7 +372,7 @@ class TestFormula(unittest.TestCase):
             self.assertEqual([hex(ord(c)) for c in self.r.star_line(value)], [hex(ord(c)) for c in line], value)
 
     def test_no_question_in_the_script(self):
-        """No script holds a question title (Sophos, 3 October 2026)."""
+        """No script holds a question title (ruling of 3 October 2026)."""
         for script in SCRIPTS.glob("*.py"):
             text = script.read_text(encoding="utf-8")
             held = [t for t in TITLES if t in text]
@@ -644,7 +644,7 @@ class TestWhatAppliesT_W(ReportCase):
 
 
 class TestNoPlace(ReportCase):
-    """A frequency rating with no place in the file: with Sophos's five content-test rows (3 October 2026), it does not
+    """A frequency rating with no place in the file: with the five ratified content-test rows (3 October 2026), it does not
     apply, with the reason the file prints, and no script changed. The verifier's file holds no rule that limits the
     agent, so 'Reasons given' has no place."""
 
@@ -690,7 +690,7 @@ def thin_review():
 
 class TestThinFile(ReportCase):
     """A file that says little: past half the points possible not applying, the report says so under 'Do not apply'
-    (Sophos, 4 October 2026). The threshold is half the points the file derives, never a number in code."""
+    (ruling of 4 October 2026). The threshold is half the points the file derives, never a number in code."""
 
     project_name = "thin"
 

@@ -112,7 +112,7 @@ PROJECTS = {
     "pointer": {".claude/agents/pointer.md": "pointer-agent"},
     "emphasis-likeness": {".claude/agents/tester.md": "emphasis-likeness"},
     # T-Q: quoted and example text is not the file's own instruction, and only a pointer is checked for its path
-    # (specification §3c, Sophos, 3 October 2026). Cases (1) to (5), then the controls still caught.
+    # (specification §3c, ruling of 3 October 2026). Cases (1) to (5), then the controls still caught.
     "tq-names": {".claude/agents/runner.md": "tq-names"},
     "tq-quoted-pointer": {".claude/agents/rater.md": "tq-quoted-pointer"},
     "tq-quoted-examples": {".claude/agents/linter.md": "tq-quoted-examples"},
@@ -123,20 +123,20 @@ PROJECTS = {
     },
     "tq-controls": {".claude/agents/checker.md": "tq-controls"},
     # T-Q cases (7) to (12): a read verb makes a pointer only when it is addressed to the agent as an instruction
-    # (specification §3c, Sophos, 3 October 2026, option 2).
+    # (specification §3c, ruling of 3 October 2026, option 2).
     "tq-c7": {".claude/agents/namer.md": "tq-c7"},
     "tq-c8": {".claude/agents/builder.md": "tq-c8"},
     "tq-c9": {".claude/agents/explainer.md": "tq-c9"},
     "tq-c10": {".claude/agents/gatherer.md": "tq-c10"},
     "tq-c11": {".claude/agents/scorer.md": "tq-c11"},
     "tq-c12": {".claude/agents/checker.md": "tq-c12"},
-    # T-Q cases (13) to (16) and two more controls (round 4: Sophos's three read-verb rulings, 3 October 2026).
+    # T-Q cases (13) to (16) and two more controls (round 4: the three read-verb rulings, 3 October 2026).
     "tq-c13": {".claude/agents/guide-reader.md": "tq-c13"},
     "tq-c14": {".claude/agents/row-reader.md": "tq-c14"},
     "tq-c15": {".claude/agents/vendor-reader.md": "tq-c15"},
     "tq-c16": {".claude/agents/limit-reader.md": "tq-c16"},
     "tq-controls-4": {".claude/agents/checker.md": "tq-controls-4"},
-    # The verifier's file with no rule that limits the agent: 'Reasons given' has no place (round 4, Sophos's five
+    # The verifier's file with no rule that limits the agent: 'Reasons given' has no place (round 4, the five ratified
     # content-test rows, 3 October 2026).
     "no-place": {".claude/agents/zeta.md": "no-place-agent"},
     # The verifier's one-line persona: an identity and nothing else (small round, 4 October 2026).

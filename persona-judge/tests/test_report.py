@@ -716,6 +716,34 @@ class TestThinFile(ReportCase):
         self.assertLessEqual(2 * n, QS.possible)
         self.assertNotIn(THIN_LINE, lines)
 
+    def verify_text(self, text):
+        path = self.tmp / "thin-report.md"
+        path.write_text(text, encoding="utf-8")
+        proc = run("report.py", "verify", path)
+        return proc.returncode, proc.stdout + proc.stderr
+
+    def test_verify_thin_line_removed(self):
+        """A thin file's report without the line fails verify, naming it."""
+        text = self.render([thin_review()]).stdout
+        self.assertIn(THIN_LINE, text)
+        code, out = self.verify_text(text.replace(THIN_LINE + "\n", "", 1))
+        self.assertEqual(code, MISMATCH, out)
+        self.assertIn(THIN_LINE, out)
+        self.assertIn(THIN, out)
+
+    def test_verify_thin_line_added(self):
+        """A fuller file's report with the line added fails verify, naming it."""
+        text = run("report.py", "render", self.write([helper_review()], root=self.project("si11"))).stdout
+        self.assertNotIn(THIN_LINE, text)
+        lines = text.split("\n")
+        after = lines.index("Do not apply:") + 1
+        while lines[after].startswith("  "):
+            after += 1
+        code, out = self.verify_text("\n".join(lines[:after] + [THIN_LINE] + lines[after:]))
+        self.assertEqual(code, MISMATCH, out)
+        self.assertIn(THIN_LINE, out)
+        self.assertIn(HELPER, out)
+
     def test_identity_only_file_validates(self):
         """The two instruction ratings, content tests since 4 October 2026, do not apply to a file holding only an
         identity, each with the reason the file prints."""

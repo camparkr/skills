@@ -277,6 +277,17 @@ class TestPathsT_P(ScratchCase):
         self.assertEqual(backslash_faults([f]), ["x.md:1: scripts\\check.py"])
 
 
+class TestDefinitions(unittest.TestCase):
+    """definitions.md replaces persona-boundaries.md and absorbs its content (Sophos, 4 October 2026): the new file is
+    in place and linked from SKILL.md, and the old one is gone, so no test or reader can find it."""
+
+    def test_definitions_replace_persona_boundaries(self):
+        self.assertTrue((SKILL / "references" / "definitions.md").is_file())
+        self.assertFalse((SKILL / "references" / "persona-boundaries.md").exists())
+        self.assertIn("references/definitions.md", links(SKILL_MD))
+        self.assertNotIn("references/persona-boundaries.md", links(SKILL_MD))
+
+
 class TestBibliographyT_B(ScratchCase):
     """T-B: the bibliography drift test, on the frozen files and on three controls, one per fault."""
 

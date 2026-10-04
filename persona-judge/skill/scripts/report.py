@@ -51,7 +51,8 @@ Exit codes:
   validate  0 the record is sound; 2 it is not, with one message per fault
   render    0 rendered; 2 the record refused, with the reasons; 3 no persona got a total, because each is
             empty, set aside or no question applied to it
-  verify    0 every printed subtotal, total and star line matches its checks and ratings; 1 one or more do
+  verify    0 every printed subtotal, total and star line matches its checks and ratings, and the thin-file line
+            is printed exactly when more than half the points possible do not apply; 1 one or more do
             not, each named; 2 the report cannot be parsed
   any       2 review-questions.md breaks its markup contract, naming the line
 This script changes no file.
@@ -119,7 +120,7 @@ DO_NOT_APPLY_HEADING = "Do not apply:"
 DO_NOT_APPLY_NONE = "Do not apply: none."
 DOES_NOT_APPLY = "does not apply"
 # Printed under 'Do not apply' when the points that do not apply exceed THIN_SHARE of the points possible, which
-# the file derives; the share is the ruling's, not a count of questions or points (Sophos, 4 October 2026).
+# the file derives; the share is the ruling's, not a count of questions or points (ruling of 4 October 2026).
 THIN_LINE = "Most questions do not apply: this file says little, and the score covers only what it says."
 THIN_SHARE = Fraction(1, 2)
 BRANCHES_PREFIX = "Branches: "
@@ -873,6 +874,12 @@ def set_aside_reason(p):
     return f"not a dedicated persona: {p.set_aside['finding']['note'].rstrip('.')}"
 
 
+def is_thin(qs, not_applying):
+    """Whether the points that do not apply exceed THIN_SHARE of the points possible, as the file derives them; render
+    prints the thin-file line, and verify requires it, exactly then."""
+    return not_applying > THIN_SHARE * qs.possible
+
+
 def total_line(qs, x, y, not_applying):
     return f"Total: {x} out of {y} ({qs.possible} possible, less {not_applying} that do not apply)"
 
@@ -900,7 +907,7 @@ def render_one(p, grounding=None):
     out = [star_line(stars(x, y)), total_line(qs, x, y, not_applying)]
     out += [f"{s}: {by_section[s][0]} out of {by_section[s][1]}" for s in qs.sections]
     out += [""] + review_lines(p) + [""] + do_not_apply_lines(p)
-    if not_applying > THIN_SHARE * qs.possible:
+    if is_thin(qs, not_applying):
         out.append(THIN_LINE)
     out += ["", LINES_HEADING]
     if p.items:
@@ -1088,6 +1095,17 @@ def verify(text, qs=None):
             sx, sy = parts[s][0], parts[s][1]
             if (int(sm.group(1)), int(sm.group(2))) != (sx, sy):
                 differ(f"{path}: prints '{line}', but its {s.lower()} rows give {sx} out of {sy}")
+        thin_printed = THIN_LINE in lines
+        if is_thin(qs, not_applying) and not thin_printed:
+            differ(
+                f"{path}: {not_applying} of {qs.possible} points do not apply, more than half, but the report does not "
+                f"print '{THIN_LINE}'"
+            )
+        elif thin_printed and not is_thin(qs, not_applying):
+            differ(
+                f"{path}: prints '{THIN_LINE}', but only {not_applying} of {qs.possible} points do not apply, not more "
+                f"than half"
+            )
         want_total = total_line(qs, x, y, not_applying)
         if lines[1] != want_total:
             differ(f"{path}: prints '{lines[1]}', but its checks and ratings give '{want_total[len('Total: '):]}'")

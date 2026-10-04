@@ -139,6 +139,8 @@ PROJECTS = {
     # The verifier's file with no rule that limits the agent: 'Reasons given' has no place (round 4, Sophos's five
     # content-test rows, 3 October 2026).
     "no-place": {".claude/agents/zeta.md": "no-place-agent"},
+    # The verifier's one-line persona: an identity and nothing else (small round, 4 October 2026).
+    "thin": {".claude/agents/reviewer.md": "thin-agent"},
     # T-10's derived case: a persona to which every question applies (round 4).
     "complete": {".claude/agents/release-checker.md": "complete-agent"},
     # T-W: the three branches, each at yes and at no (specification §3b and §8, round 4).

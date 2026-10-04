@@ -667,6 +667,63 @@ class TestNoPlace(ReportCase):
         self.assert_totals_follow(lines)
 
 
+THIN_LINE = "Most questions do not apply: this file says little, and the score covers only what it says."
+THIN = ".claude/agents/reviewer.md"
+THIN_TEXT = "You are an expert code reviewer who helps with pull requests."
+
+
+def thin_review():
+    """The verifier's one-line persona: an identity and nothing else, so every content test finds no subject."""
+    f = THIN
+    answers = {
+        "The description says when to choose it": {
+            "scale": "quality", "point": 0, "findings": [finding(1, THIN_TEXT, "The file has no description.", f)],
+        },
+        "An identity that does the work": {
+            "scale": "quality", "point": 3, "findings": [finding(1, THIN_TEXT, "It states the work, with praise.", f)],
+        },
+    }
+    removed = QS.branches["settings"].removes + [r for r, (c, _) in QS.following.items()]
+    return review(f, answers, {"delegated": True, "harness": "Claude Code", "settings": []}, removed,
+                  default_place=(1, THIN_TEXT), absent=tuple(QS.content_tests))
+
+
+class TestThinFile(ReportCase):
+    """A file that says little: past half the points possible not applying, the report says so under 'Do not apply'
+    (Sophos, 4 October 2026). The threshold is half the points the file derives, never a number in code."""
+
+    project_name = "thin"
+
+    def test_thin_file_line(self):
+        proc = self.render([thin_review()])
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        lines = block(proc.stdout)
+        _, _, n = self.assert_totals_follow(lines)
+        self.assertGreater(2 * n, QS.possible)
+        last = max(i for i, l in enumerate(lines) if l.startswith("  ") and i > lines.index("Do not apply:"))
+        self.assertEqual(lines[last + 1], THIN_LINE)
+        code = run("report.py", "verify", "-", stdin=proc.stdout)
+        self.assertEqual(code.returncode, OK, code.stdout + code.stderr)
+
+    def test_fuller_file_has_no_thin_line(self):
+        proc = run("report.py", "render", self.write([helper_review()], root=self.project("si11")))
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        lines = block(proc.stdout)
+        _, _, n = self.assert_totals_follow(lines)
+        self.assertLessEqual(2 * n, QS.possible)
+        self.assertNotIn(THIN_LINE, lines)
+
+    def test_identity_only_file_validates(self):
+        """The two instruction ratings, content tests since 4 October 2026, do not apply to a file holding only an
+        identity, each with the reason the file prints."""
+        proc = run("report.py", "validate", self.write([thin_review()]))
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        lines = block(self.render([thin_review()]).stdout)
+        for title in ("Instructions an observer can check", "Each instruction stands alone"):
+            self.assertIn(title, QS.content_tests)
+            self.assertIn((title, reason(title)), do_not_apply(lines))
+
+
 class TestRenderT4(ReportCase):
     def test_report_with_findings(self):
         proc = self.render([helper_review()])

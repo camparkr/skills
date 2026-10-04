@@ -24,13 +24,17 @@ FIXTURE_MD = make_fixtures.FILES / "review-questions-round-4.fixture"
 FIXTURE_SHA256 = "e229cb727fef6a27eeda4ad1514b833d6ce3d64df10dc57cd9530e1e24798b3a"
 
 # The prose counts T-K (2) compares with the derived ones: each pattern held here, in the test, never in a script.
+# A count written in the prose: digits, or number words, hyphenated or not, up to the hundreds.
+WORD = r"[A-Za-z]+(?:-[A-Za-z]+)?"
+NUMBER = rf"(\d+|{WORD}(?: hundred(?: and {WORD})?)?)"
+# Every pattern reads its number through NUMBER, so a count written in words is found as one in digits.
 PROSE_COUNTS = {
-    "questions": r"All (\d+) questions are asked",
-    "possible": r"(\d+) points are possible:",
-    "persona points": r"points are possible: (\d+) in the persona section",
-    "writing points": r"and (\d+) in instruction\s+writing",
-    "persona questions": r"persona questions, (\d+) questions",
-    "writing questions": r"instruction-writing questions, (\d+) questions",
+    "questions": rf"All {NUMBER} questions are asked",
+    "possible": rf"{NUMBER} points are possible:",
+    "persona points": rf"points are possible: {NUMBER} in the persona section",
+    "writing points": rf"and {NUMBER} in instruction writing",
+    "persona questions": rf"persona questions, {NUMBER} questions",
+    "writing questions": rf"instruction-writing questions, {NUMBER} questions",
 }
 
 
@@ -53,23 +57,39 @@ TENS = "twenty thirty forty fifty sixty seventy eighty ninety".split()
 
 
 def word_number(word):
-    """A count the prose writes as digits or in words, such as '35', 'Ten' or 'twenty-one'."""
+    """A count the prose writes as digits or in words, such as '35', 'Ten', 'twenty-one' or 'one hundred and eleven'."""
     word = word.lower().strip()
     if word.isdigit():
         return int(word)
-    total = 0
+    current = 0
     for part in word.replace("-", " ").split():
-        if part in UNITS:
-            total += UNITS.index(part)
+        if part == "and":
+            continue
+        if part == "hundred":
+            current = (current or 1) * 100
+        elif part in UNITS:
+            current += UNITS.index(part)
         elif part in TENS:
-            total += 20 + 10 * TENS.index(part)
+            current += 20 + 10 * TENS.index(part)
         else:
             raise ValueError(f"'{word}' is not a number the test can read")
-    return total
+    return current
 
 
-# A count written in the prose: digits, or number words, hyphenated or not.
-NUMBER = r"(\d+|[A-Za-z]+(?:-[A-Za-z]+)?)"
+def number_words(n):
+    """n in words, as the prose might write it: 'thirty-five', 'one hundred and eleven'."""
+    if n < 20:
+        return UNITS[n]
+    if n < 100:
+        tens, unit = divmod(n, 10)
+        return TENS[tens - 2] + (f"-{UNITS[unit]}" if unit else "")
+    hundreds, rest = divmod(n, 100)
+    return f"{UNITS[hundreds]} hundred" + (f" and {number_words(rest)}" if rest else "")
+
+
+def raw(pattern):
+    """A pattern for the file as written, its spaces matching any run of spaces and line breaks."""
+    return pattern.replace(" ", r"\s+")
 
 
 def stated_counts(text):
@@ -78,10 +98,10 @@ def stated_counts(text):
     out = {}
     for name, pattern in PROSE_COUNTS.items():
         m = re.search(pattern, folded)
-        out[name] = int(m.group(1)) if m else None
-    m = re.search(NUMBER + r" checks count (\d+) points", folded)
+        out[name] = word_number(m.group(1)) if m else None
+    m = re.search(NUMBER + r" checks count " + NUMBER + r" points", folded)
     out["weighted checks"] = word_number(m.group(1)) if m else None
-    out["weighted points"] = int(m.group(2)) if m else None
+    out["weighted points"] = word_number(m.group(2)) if m else None
     m = re.search(NUMBER + r" ratings and " + NUMBER + r" checks? apply only where the file holds", folded)
     out["content-test ratings"] = word_number(m.group(1)) if m else None
     out["content-test checks"] = word_number(m.group(2)) if m else None
@@ -232,8 +252,10 @@ class TestLiveFile(unittest.TestCase):
 
 class TestNumberWords(unittest.TestCase):
     def test_words_and_digits(self):
-        self.assertEqual([word_number(w) for w in ("35", "One", "seven", "Ten", "twelve", "twenty-one", "Thirty five")],
-                         [35, 1, 7, 10, 12, 21, 35])
+        self.assertEqual([word_number(w) for w in ("35", "One", "seven", "Ten", "twelve", "twenty-one", "Thirty five",
+                                                   "one hundred and eleven")],
+                         [35, 1, 7, 10, 12, 21, 35, 111])
+        self.assertEqual([number_words(n) for n in (7, 35, 60, 111)], ["seven", "thirty-five", "sixty", "one hundred and eleven"])
 
     def test_control(self):
         with self.assertRaises(ValueError):
@@ -252,14 +274,31 @@ class TestProseCounts(ScratchCase):
         self.assertEqual(stated, derived)
 
     def test_control(self):
-        """A copy with one count changed fails, naming it."""
+        """A copy with one count changed fails, naming it. The count changed is the one the file states, read with the
+        test's own pattern, so the control holds whatever the number of questions."""
         q = load_module()
         text = QUESTIONS_MD.read_text(encoding="utf-8")
-        changed = text.replace("All 35 questions are asked", "All 36 questions are asked", 1)
+        derived = derived_counts(q.load(QUESTIONS_MD))
+        m = re.search(raw(PROSE_COUNTS["questions"]), text)
+        self.assertIsNotNone(m, "the stated count of questions was not found")
+        changed = text[: m.start(1)] + str(derived["questions"] + 1) + text[m.end(1):]
         self.assertNotEqual(changed, text)
-        stated, derived = stated_counts(changed), derived_counts(q.load(QUESTIONS_MD))
+        stated = stated_counts(changed)
         wrong = [name for name in stated if stated[name] != derived[name]]
         self.assertEqual(wrong, ["questions"])
+
+    def test_counts_written_in_words(self):
+        """A copy with every count in PROSE_COUNTS written in words is read the same."""
+        q = load_module()
+        text = QUESTIONS_MD.read_text(encoding="utf-8")
+        derived = derived_counts(q.load(QUESTIONS_MD))
+        words = text
+        for name, pattern in PROSE_COUNTS.items():
+            m = re.search(raw(pattern), words)
+            self.assertIsNotNone(m, name)
+            words = words[: m.start(1)] + number_words(word_number(m.group(1))) + words[m.end(1):]
+        self.assertNotEqual(words, text)
+        self.assertEqual(stated_counts(words), derived)
 
 
 class TestContractRefused(ScratchCase):

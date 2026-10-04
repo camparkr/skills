@@ -700,8 +700,11 @@ class TestThinFile(ReportCase):
         lines = block(proc.stdout)
         _, _, n = self.assert_totals_follow(lines)
         self.assertGreater(2 * n, QS.possible)
-        last = max(i for i, l in enumerate(lines) if l.startswith("  ") and i > lines.index("Do not apply:"))
-        self.assertEqual(lines[last + 1], THIN_LINE)
+        # The line directly under the 'Do not apply' block: the first line after it that is not one of its items.
+        after = lines.index("Do not apply:") + 1
+        while lines[after].startswith("  "):
+            after += 1
+        self.assertEqual(lines[after], THIN_LINE)
         code = run("report.py", "verify", "-", stdin=proc.stdout)
         self.assertEqual(code.returncode, OK, code.stdout + code.stderr)
 

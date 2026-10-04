@@ -99,9 +99,8 @@ Copy this checklist into your working notes and tick each step as you finish it:
 5. Answer every other question for each persona, reading every file it loads. Answer 'A dedicated persona' first; a
    file scoring 0 on it answers nothing else. When a file is empty, say so and give it no score; when part of a file
    cannot be read, review the rest and name the part skipped. Load
-   [`references/persona-boundaries.md`](references/persona-boundaries.md) when a file may be something other than a
-   persona, or before a finding blames the persona for the model, the harness or a hook, which the persona does not
-   control. Leave it unloaded otherwise, because no other answer depends on it.
+   [`references/definitions.md`](references/definitions.md) when a file may be something other than a persona, or
+   before a finding blames the persona for the model, the harness or a hook, which the persona does not control. Leave it unloaded otherwise, because no other answer depends on it.
 6. Run `python3 <skill>/scripts/report.py schema` and write the review record it describes, as one JSON file in the
    system's temporary folder, copying each persona's branches from `find.py`. Load
    [`references/sample-review.md`](references/sample-review.md) now, for the form the report takes; no earlier step
@@ -114,7 +113,8 @@ Copy this checklist into your working notes and tick each step as you finish it:
    a total, because each was empty, set aside or had no question apply: return what it printed.
 
 Leave [`references/bibliography.md`](references/bibliography.md) unloaded during a review, because no score depends
-on it. Load it only when someone asks for the source behind a question.
+on it. Load it only when someone asks for the source behind a question, and load
+[`references/definitions.md`](references/definitions.md) when someone asks what a term means.
 
 ## Scripts
 

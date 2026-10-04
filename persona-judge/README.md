@@ -121,7 +121,8 @@ The full questions, their scales and the scoring formula are in `skill/reference
 - a run of the agent on a real task, for how it behaves; and
 - you, for the next draft, since *persona-judge* offers no wording of its own.
 
-`skill/references/persona-boundaries.md` sets out each neighbour of a persona and where its review belongs.
+`skill/references/definitions.md` sets out what each term means, the theatre picture the terms come from, and each
+neighbour of a persona with where its review belongs.
 
 ## Sample review
 

@@ -176,6 +176,13 @@ and sensitivity analysis' (SC3).
 | SC2 | Robyn M. Dawes, University of Oregon, 'The Robust Beauty of Improper Linear Models in Decision Making', *American Psychologist*, vol. 34, no. 7, July 1979, pp. 571–582, <https://web.stanford.edu/~knutson/nfc/dawes79.pdf> | 3 October 2026 |
 | SC3 | OECD and the European Commission's Joint Research Centre, *Handbook on Constructing Composite Indicators*, <https://knowledge-for-policy.ec.europa.eu/sites/default/files/jrc47008_handbook_final.pdf> | 3 October 2026 |
 
+### Lexicons
+
+| Key | Source | Read |
+|---|---|---|
+| LX1 | Liddell, Scott and Jones, *A Greek-English Lexicon*, Perseus TEI edition, <https://github.com/PerseusDL/lexica>, at commit `56061ca127f4a2844980baffc5f2b6d1332897b3` | at that commit |
+| LX2 | *Online Etymology Dictionary*, <https://www.etymonline.com> | 4 October 2026 |
+
 ### Record of this build
 
 | Key | Source |

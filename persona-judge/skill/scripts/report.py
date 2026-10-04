@@ -41,7 +41,8 @@ to the total; the stars are x divided by y, times 5, rounded to the nearest half
 The report is plain lines in a fenced text block, in this order: the stars, as five places with the number in
 brackets, such as ★★★½☆ (3.5); the total, with the points possible and those that do not apply; each section's
 subtotal; the persona, its kind, its branches and the files reviewed and left out; the questions that do not apply,
-each with its reason; the lines that lowered the score, each with its file, line, question, note, rule and
+each with its reason, and, when more than half the points possible do not apply, a line saying the file says
+little; the lines that lowered the score, each with its file, line, question, note, rule and
 sources; each section's checks as 'yes' with the weight or 'no 0' and its ratings as their point with the word;
 the fit with neighbouring files, when the record gives it; the formula with the weights; the total at equal
 weights; the stars line; and the closing lines. A file set aside prints its path, 'set aside' and the reason.
@@ -117,6 +118,10 @@ LEFT_OUT_HEADING = "Files left out:"
 DO_NOT_APPLY_HEADING = "Do not apply:"
 DO_NOT_APPLY_NONE = "Do not apply: none."
 DOES_NOT_APPLY = "does not apply"
+# Printed under 'Do not apply' when the points that do not apply exceed THIN_SHARE of the points possible, which
+# the file derives; the share is the ruling's, not a count of questions or points (Sophos, 4 October 2026).
+THIN_LINE = "Most questions do not apply: this file says little, and the score covers only what it says."
+THIN_SHARE = Fraction(1, 2)
 BRANCHES_PREFIX = "Branches: "
 NO_TOTAL = "no stars and no total"
 # A question with no sources in the grounding table rests on the reading alone (build specification §3e).
@@ -894,7 +899,10 @@ def render_one(p, grounding=None):
     _, (ex, ey), _ = totals(p, equal=True)
     out = [star_line(stars(x, y)), total_line(qs, x, y, not_applying)]
     out += [f"{s}: {by_section[s][0]} out of {by_section[s][1]}" for s in qs.sections]
-    out += [""] + review_lines(p) + [""] + do_not_apply_lines(p) + ["", LINES_HEADING]
+    out += [""] + review_lines(p) + [""] + do_not_apply_lines(p)
+    if not_applying > THIN_SHARE * qs.possible:
+        out.append(THIN_LINE)
+    out += ["", LINES_HEADING]
     if p.items:
         for k, (title, f) in enumerate(p.items, start=1):
             out += item_lines(k, title, f, grounding)

@@ -99,7 +99,7 @@ same answer:
 | harness | Does its path name a harness? | its folder, such as `.claude/agents/` or `.github/agents/` | Leaves the harness's work to the harness; Declares its tools | path names no harness |
 | settings | Does it hold settings that grant or restrict what the agent can do? | a field `tools`, `disallowedTools`, `permissionMode`, `sandbox_mode`, `hooks` or `mcpServers` in its front matter | Bound parts agree with the prose; Permissions fit the job | holds no settings |
 
-**Questions about what the file holds.** Ten ratings and one check apply only where the file holds their subject.
+**Questions about what the file holds.** Twelve ratings and one check apply only where the file holds their subject.
 Each states its test, and the reviewer quotes the line that meets it, or says that no line does:
 
 | Question | Applies when the file holds | Reason printed |
@@ -115,6 +115,8 @@ Each states its test, and the reviewer quotes the line that meets it, or says th
 | Terms defined where they are used | a scale, a set of answers or a term the rules name | no scale, set of answers or term named |
 | What to do, not what to avoid | an instruction about the agent's output | no instruction about the output |
 | Reasons given | a rule that limits what the agent does | no rule that limits the agent |
+| Instructions an observer can check | an instruction | no instruction |
+| Each instruction stands alone | an instruction | no instruction |
 
 Every other question applies to every dedicated persona.
 

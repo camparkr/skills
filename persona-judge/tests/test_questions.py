@@ -288,7 +288,8 @@ class TestProseCounts(ScratchCase):
         self.assertEqual(wrong, ["questions"])
 
     def test_counts_written_in_words(self):
-        """A copy with every count in PROSE_COUNTS written in words is read the same."""
+        """A copy with every count in PROSE_COUNTS written in words is read the same. The copy may equal the file, when
+        the file already writes its counts in words."""
         q = load_module()
         text = QUESTIONS_MD.read_text(encoding="utf-8")
         derived = derived_counts(q.load(QUESTIONS_MD))
@@ -297,7 +298,6 @@ class TestProseCounts(ScratchCase):
             m = re.search(raw(pattern), words)
             self.assertIsNotNone(m, name)
             words = words[: m.start(1)] + number_words(word_number(m.group(1))) + words[m.end(1):]
-        self.assertNotEqual(words, text)
         self.assertEqual(stated_counts(words), derived)
 
 

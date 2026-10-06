@@ -1,0 +1,9 @@
+---
+name: checker
+description: Checks persona files when asked to review an agent.
+tools: Read, Grep
+---
+
+When you need more, you must open `notes/missing.md`.
+
+Open `notes/old-missing.md` when a note is old.

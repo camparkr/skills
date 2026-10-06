@@ -1,0 +1,8 @@
+---
+name: checker
+description: Checks persona files when asked to review an agent.
+tools: Read, Grep
+---
+
+You must open `notes/missing.md` before you rate.
+Rate each line once you have read `notes/other-missing.md`.

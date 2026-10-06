@@ -1,0 +1,7 @@
+---
+name: explainer
+description: Explains harness defaults when asked what a harness loads.
+tools: Read, Grep
+---
+
+Sources: Anthropic, 'Only add context Claude doesn't already have' (AN4); a `CLAUDE.md` that tells Claude in words to read `AGENTS.md` means 'Claude sees `AGENTS.md` only if it decides to open the file' (AN1).

@@ -1,0 +1,3 @@
+# Release notes guide
+
+Run `make notes` before each release.

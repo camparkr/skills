@@ -1,0 +1,7 @@
+---
+name: vendor-reader
+description: Explains the project layout when asked where code lives.
+tools: Read, Grep
+---
+
+Open source code lives in `vendor/missing/`.

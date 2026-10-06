@@ -1,0 +1,20 @@
+---
+name: checker
+description: Checks persona files when asked to review an agent.
+tools: Read, Grep
+---
+
+Read `notes/missing.md` before you rate.
+
+Open these when you need more:
+- `notes/also-missing.md`
+
+CRITICAL: run the tests.
+
+Deploy steps: TODO.
+
+Use the v1 endpoint until the migration finishes.
+
+Never skip the harness's CRITICAL step.
+
+Before you rate, open `notes/before-missing.md`.

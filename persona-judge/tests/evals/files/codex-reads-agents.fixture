@@ -1,0 +1,6 @@
+name = "reviewer"
+description = "Reviews database migrations when asked to review one."
+developer_instructions = """
+Read AGENTS.md before you start.
+Review each migration for a missing rollback.
+"""

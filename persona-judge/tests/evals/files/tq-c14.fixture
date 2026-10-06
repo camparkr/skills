@@ -1,0 +1,7 @@
+---
+name: row-reader
+description: Reads row files when asked what a table holds.
+tools: Read, Grep
+---
+
+The file you see in `notes/missing.md` lists the rows.

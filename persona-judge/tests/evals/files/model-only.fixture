@@ -1,0 +1,7 @@
+---
+name: summary-writer
+description: Writes a summary of a change when asked to summarise a pull request.
+model: sonnet
+---
+
+Return a summary of the change in three sentences.

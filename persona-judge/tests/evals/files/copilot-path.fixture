@@ -1,0 +1,5 @@
+---
+applyTo: "src/**/*.ts"
+---
+
+Name each hook after what it returns.

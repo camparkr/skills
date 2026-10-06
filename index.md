@@ -7,7 +7,11 @@ tags: [index, skill]
 
 # Skills
 
-The repository holds one skill:
+The repository holds two skills:
 
 - `dry-run/`, which tests a planned change before the change is merged, published or put to use, to find
-  what the change would break, with the skill's files listed in `dry-run/index.md`.
+  what the change would break, with the skill's files listed in `dry-run/index.md`; and
+- `persona-judge/`, which reviews dedicated agent personas and scores each out of five stars, quoting every
+  line that lowered the score, with the skill's files listed in `persona-judge/index.md`.
+
+`.claude-plugin/marketplace.json` lists the skills that also install as Claude Code plugins: `persona-judge`.

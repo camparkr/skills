@@ -31,7 +31,7 @@ the review, not the record: stop.
 ## Render the report
 
 Run `python3 <skill>/scripts/report.py render - <<'RECORD'` with the validated record, and add `--summary` before the
-`-` when there is more than one persona. Return the report it prints.
+`-` when the record holds more than one file, personas and files set aside together. Return the report it prints.
 
 On exit 2, treat the refusal as `validate`'s: fix each fault and render again, within the same three reruns. On exit 3,
 no persona got a total because each was empty, set aside or had no question apply: stop, because there is no score to

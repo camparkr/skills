@@ -29,7 +29,7 @@ behave:
   [`evidence.md`](evidence.md) summarises that record: how it was gathered, what it found and where it falls short.
 
 So *persona-judge* quotes every line that lowered the score: the stars summarise, and the lines show what to act on. The
-full sources, with the date each was read, are in `skill/references/sources.md`.
+full sources, with the date each was read, are in `sources.md`.
 
 ## How the reviewer scores
 
@@ -66,7 +66,7 @@ their effect.
 
 **Measured against the vendors' own definitions.** Anthropic, OpenAI, Google and GitHub each describe what a persona
 has: its own instructions, tools, permissions and context, a description that decides when it is chosen, and a result
-it returns. `skill/references/vendor-terms.md` maps each of these to the questions that ask about it.
+it returns. `vendor-terms.md` maps each of these to the questions that ask about it.
 
 ## Scoring well
 

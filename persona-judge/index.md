@@ -35,8 +35,8 @@ The folder holds these files:
 - `skill/references/sample-review.md`: the form every report takes, shown on one persona;
 - `skill/references/persona-boundaries.md`: what each term means in a review, and what a persona is not;
 - `skill/references/grounding.md`: what each question rests on, and the words its sources say;
-- `skill/references/vendor-terms.md`: what each vendor calls a persona and what it says a persona has;
-- `skill/references/sources.md`: every source by its key, with the date each was read;
+- `vendor-terms.md`: what each vendor calls a persona and what it says a persona has;
+- `sources.md`: every source by its key, with the date each was read;
 - `skill/references/failures.tsv`: the table of checks `check.py` runs without a model;
 - `skill/references/harness-defaults.tsv`: what each harness already does, which a persona need not ask
   for;

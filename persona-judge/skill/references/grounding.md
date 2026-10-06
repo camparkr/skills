@@ -2,7 +2,7 @@
 
 What each of *persona-judge*'s questions rests on: its sources, the kind of evidence behind it and the words it quotes.
 Load this file when a reader asks why a question exists or how strong its support is. Each key's full reference is in
-[`sources.md`](sources.md).
+`sources.md`, at the plugin's root.
 
 ## Each question's support
 
@@ -54,7 +54,7 @@ The scales come from SC1. The case for reviewing a persona rests on ST1 to ST4 a
 
 The words each question rests on, quoted from its sources; the questions keep only the keys.
 
-- **A dedicated persona.** Sources: GH4, GO2 and AN6, whose words are in [`vendor-terms.md`](vendor-terms.md), 'Context, not a persona'.
+- **A dedicated persona.** Sources: GH4, GO2 and AN6, whose words are in `vendor-terms.md` at the plugin's root, 'Context, not a persona'.
 - **Bound parts agree with the prose.** Sources: Anthropic, 'Permission rules are enforced by Claude Code, not by the model' (AN2); the subagent fields `tools`, `disallowedTools`, `permissionMode` and `hooks` (AN3).
 - **Permissions fit the job.** Sources: OpenAI, a subagent needs 'a tool surface that matches that job' (OA2); Anthropic, 'If you leave it unset, the subagent inherits the main conversation's permission mode' (AN3).
 - **Needs no context it is not given.** Sources: Anthropic, 'Each subagent starts with a fresh, isolated context window. It doesn't see your conversation history, the skills you've already invoked, or the files Claude has already read' (AN3); Google, 'Each subagent runs in its own isolated context loop' (GO2).
@@ -71,7 +71,7 @@ The words each question rests on, quoted from its sources; the questions keep on
 - **Rules used in every act come first.** Source: 'earlier-listed instructions' are followed more reliably as instructions accumulate (ST5).
 - **Tools explained.** Source: Google, 'Don't just list tools; explain *when* and *why* the agent should use them' (GO3).
 - **Commands given exactly.** Source: GitHub, 'Put relevant executable commands in an early section … Include flags and options, not just tool names' (GH3).
-- **The description says when to choose it.** Sources: AN3, in [`vendor-terms.md`](vendor-terms.md), 'What the vendors say a persona has'; Gemini CLI's main agent 'decides whether an agent is a relevant expert based on the agent's description' (GO2). Also: OpenAI, 'Front-load the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (OA3); Google, 'specific enough to differentiate it from peers' (GO3).
+- **The description says when to choose it.** Sources: AN3, in `vendor-terms.md` at the plugin's root, 'What the vendors say a persona has'; Gemini CLI's main agent 'decides whether an agent is a relevant expert based on the agent's description' (GO2). Also: OpenAI, 'Front-load the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (OA3); Google, 'specific enough to differentiate it from peers' (GO3).
 - **An identity that does the work.** Source: persona cues unrelated to the task cost agents up to 26.2% of their performance (ST2).
 - **No time-sensitive statements.** Source: Anthropic, 'Avoid time-sensitive information' (AN4).
 - **Consistent with itself.** Source: Anthropic, 'if two instructions contradict each other, Claude may pick one arbitrarily' (AN1). Also: GitHub, 'Whenever possible, try to avoid providing conflicting sets of instructions' (GH1).

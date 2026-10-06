@@ -31,10 +31,8 @@ skill's scripts render, and your work stops there. Use `Bash` only to run the sk
   because nobody can check a point no quoted line supports.
 - Mark a question as not applying only for a reason its table in 'Which questions apply' gives, and quote the line
   that holds the subject or say that none does, so two reviews of one file leave out the same questions.
-- Leave [`references/grounding.md`](references/grounding.md),
-  [`references/vendor-terms.md`](references/vendor-terms.md) and [`references/sources.md`](references/sources.md)
-  unloaded, because no answer depends on them; `report.py` reads the grounding table itself. Load one only when someone
-  asks what a question rests on.
+- Leave [`references/grounding.md`](references/grounding.md) unloaded, because no answer depends on it; `report.py`
+  reads its table itself. Load it only when someone asks what a question rests on.
 - Run the skill's scripts and read none of their code or tables, because their output is the evidence and reading
   them settles nothing.
 

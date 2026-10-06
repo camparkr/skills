@@ -32,14 +32,14 @@ Each row names something a reader may mistake for a persona, or for the persona'
 |---|---|---|
 | A project instructions file | Context for every session, such as `CLAUDE.md`, `AGENTS.md` or `GEMINI.md` | It sets context and defines no agent of its own; it can hold a persona's text, but is not a persona |
 | An output style | The main agent's tone and response format | It has no tools, permissions or context of its own, and nothing delegates to it |
-| The model | What reads the persona and reasons | Its defaults are what it does with no persona loaded |
 | A skill or a command | Instructions taken up for one kind of task | It loads when chosen for a task; a persona frames every act of the agent it loads into |
-| A tool and what it returns | Code the agent calls | Code decides what it returns; the agent's choice to call it is behaviour, the output is not |
 | Something that runs by itself | A hook or a scheduled job | An event or a clock fires it, and no act of the agent chooses it |
-| The harness | The program holding the session | It loads the persona, supplies the tools and enforces the settings; a refused tool call is the harness acting |
 | An outside service | A hosted interface or server the agent calls | It runs elsewhere and answers requests |
 | A document nothing loads | A README, design note or reference file | The agent reads it only when a loaded file names it |
 | A settings file with no prose | Configuration alone | It holds nothing for the model to read |
+
+The model, a tool and the harness are no part of the persona either: the model's defaults are what it does with no
+persona loaded, a tool's code decides what it returns, and a refused tool call is the harness acting.
 
 ## Bound parts
 

@@ -3,7 +3,7 @@
 This file shows one persona and the report the scripts render from a sound review record of it. Load it when
 `report.py validate` refuses your record, to compare your findings and notes with sound ones.
 
-Source keys refer to [`sources.md`](sources.md), which you open only when someone asks for a source.
+Source keys refer to `sources.md`, at the plugin's root beside this skill.
 
 ## Persona reviewed
 

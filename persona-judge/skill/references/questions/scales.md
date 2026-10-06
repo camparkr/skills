@@ -2,8 +2,8 @@
 
 The questions *persona-judge* asks of a persona file and the formula that turns the answers into a score are in the
 files of this folder, each read at the step of `reviewer.md` that uses it. This file holds the scales. Each source is
-cited by its key in [`../sources.md`](../sources.md), which gives its full reference and the date it was read; open it
-only when someone asks for a source.
+cited by its key; `sources.md`, at the plugin's root beside this skill, gives its full reference and the date it was
+read.
 
 A persona is a dedicated agent: a named specialist with its own instructions, and often its own tools and context,
 such as a subagent or a custom agent. It holds instruction, which the model reads and nothing enforces, and it may

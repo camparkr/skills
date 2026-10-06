@@ -108,4 +108,4 @@ one pinned revision, so a reader checks each sense against the same text.
 | LX1 | Liddell, Scott and Jones, *A Greek-English Lexicon*, Perseus TEI edition, <https://github.com/PerseusDL/lexica>, at commit `56061ca127f4a2844980baffc5f2b6d1332897b3` | at that commit |
 
 `persona-boundaries.md` quotes the vendors' own documents; their keys, such as AN1, are in
-[`skill/references/sources.md`](skill/references/sources.md).
+[`sources.md`](sources.md).

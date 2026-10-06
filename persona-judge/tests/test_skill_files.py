@@ -31,7 +31,7 @@ SKILL_MD = SKILL / "SKILL.md"
 # The folder holding the review questions' parts, relative to the skill folder.
 QUESTIONS_FOLDER = "references/questions"
 GROUNDING = SKILL / "references" / "grounding.md"
-SOURCES = SKILL / "references" / "sources.md"
+SOURCES = SKILL.parent / "sources.md"
 BOUNDARIES = SKILL / "references" / "persona-boundaries.md"
 # The section of grounding.md whose table names each question's sources.
 GROUNDING_SECTION = "Each question's support"
@@ -278,13 +278,13 @@ class TestLinksT_L(ScratchCase):
         self.assertEqual(link_faults(SKILL), [])
 
     def test_sample_content(self):
-        """The sample's content: every skill file it links exists, and it links sources.md for its source keys."""
+        """The sample's content: every skill file it links exists, and it names sources.md for its source keys."""
         sample_text()
         files = model_read_files(SKILL)
         named = {Path(f).name: f for f in files}
         targets = links(SKILL / SAMPLE)
         linked = [named[t] if t in named else t for t in targets if t in named or t in files]
-        self.assertIn("references/sources.md", linked)
+        self.assertIn("`sources.md`", (SKILL / SAMPLE).read_text(encoding="utf-8"))
         for rel in linked:
             self.assertTrue((SKILL / rel).is_file(), rel)
 

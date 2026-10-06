@@ -37,7 +37,7 @@ files enforces the rule, the check scores 0. A rule about judgement, such as how
 could enforce it, so this check leaves it alone. *Scores 0 on:* 'Never push to main', with no setting or hook behind it.
 A setting that closes some routes and leaves another open leaves the rule to prose: a tools list without Edit or Write
 that still grants Bash scores 0 on 'Never change code'; in this skill's test runs, one review in four gave such a
-persona full marks. Sources: AN1, OA1.
+persona full marks. Sources: AN1, OA1, ST4.
 
 **No procedure for one kind of task** (*reading*). The file holds no multi-step procedure that only one kind of task
 needs. *Scores 0 on:* a 12-step release checklist in a project's standing instructions. Sources: AN1, GH1.

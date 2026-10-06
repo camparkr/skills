@@ -6,15 +6,15 @@ Two scale-rating models: frequency and quality.
 *Scale model:* Frequency. 
 *Places:* Each rule the agent applies in every act: a rule that holds whatever the task is, not one tied to a single step or kind of task. 
 *Meets it:* The rule is stated in the persona's own files, the ones loaded with it, not only in a file it points to. 
-*Example of a low rating:* 'Rate findings on the scale in `severity.md`', with the scale absent. Evidence: in the same record, a rule moved to another file and pointed to was applied in one run in three. 
+*Example of a low rating:* 'Rate findings on the scale in `severity.md`', with the scale absent. Evidence: in the record kept while this skill was built, a rule moved to another file and pointed to was applied in one run in three. 
 
-Sources: AN1.
+Sources: AN1, RE1.
 
 **Directions for when nobody answers** 
 *Scale model:* Frequency.
 *Places:* Each rule that asks, waits or needs a reply. 
 *Meets it:* The rule says what the agent does when no one replies, as in a delegated or unattended run. 
-*Example of a low rating:* 'When no level is named, ask', with nothing for a run that has no one to ask. Evidence: a skill review of one persona file in the same record found that rule 'can stall a pipeline subagent that has no one to ask'.
+*Example of a low rating:* 'When no level is named, ask', with nothing for a run that has no one to ask. Evidence: a skill review of one persona file in that record found that rule 'can stall a pipeline subagent that has no one to ask'.
 
 Sources: RE1.
 

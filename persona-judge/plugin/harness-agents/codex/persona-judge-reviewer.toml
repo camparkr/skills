@@ -33,8 +33,8 @@ skill's scripts render, and your work stops there. Use `Bash` only to run the sk
   that holds the subject or say that none does, so two reviews of one file leave out the same questions.
 - Leave [`references/grounding.md`](references/grounding.md),
   [`references/vendor-terms.md`](references/vendor-terms.md) and [`references/sources.md`](references/sources.md)
-  unloaded, because the scripts read what a score needs from them. Load one only when someone asks what a question
-  rests on.
+  unloaded, because no answer depends on them; `report.py` reads the grounding table itself. Load one only when someone
+  asks what a question rests on.
 - Run the skill's scripts and read none of their code or tables, because their output is the evidence and reading
   them settles nothing.
 

@@ -10,7 +10,7 @@ August' or 'the new API'. *Scores 0 on:* 'Use the v1 endpoint until the migratio
 **Consistent with itself** (*reading*, weight 3). No two statements in the file contradict each other. Two statements
 contradict when, in one situation, an agent cannot follow both; a general rule beside a stated exception to it, or two
 rules for different situations, do not. *Scores 0 on:* a line leaving the final decision to someone else beside a line
-telling the agent to make that decision. Sources: AN1, GH1.
+telling the agent to make that decision. Sources: AN1, GH1, ST7, ST8.
 
 **Nothing said twice** (*reading*). No sentence restates another sentence or setting in the same file. Two statements
 restate each other when the agent would act the same with either one removed. *Scores 0 on:*
@@ -38,6 +38,8 @@ MUST'. *Scores 0 on:* 'CRITICAL: You MUST run the tests.' Sources: AN5.
 *Places:* Each scale, set of answers or term the file's rules name.
 *Meets it:* The file defines it beside the rule.
 *Example of a low rating:* A rule to rate findings on a named scale that never says what each step means. Evidence: in the record kept while this skill was built, a persona whose scale was named and not defined rated findings more harshly than the version that defined it.
+
+Sources: RE1.
 
 **Answers defined, edge cases included**
 *Scale model:* Frequency.

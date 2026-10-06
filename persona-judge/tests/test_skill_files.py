@@ -12,6 +12,13 @@ TestGroundingT_B: grounding.md's table of each question's support and sources.md
      source key the questions and persona-boundaries.md cite has a row in sources.md.
 definitions.md sits beside the README, outside skill/; persona-boundaries.md holds the terms a review uses, the link
 rule reaches it, and the two files repeat no table row.
+TestEveryLink: every relative link in every Markdown file under skill/ names a file that exists, read from the
+     linking file's own folder.
+TestQuotedNames: a span in single quotes that its sentence calls a step, section, list, heading, question, check,
+     rating or part, by the word just before or just after it, matches a heading, a bold step title or a question
+     title under skill/, word for word.
+TestSkillSourceKeys: every source key cited under skill/ has a row in grounding.md's 'Sources', and every key with a
+     row there is cited under skill/ outside that section.
 
 sample-review.md is read only after its SHA-256 matches the hash it landed with (support.SAMPLE_SHA256).
 
@@ -255,6 +262,120 @@ def cited_texts():
     return texts
 
 
+def every_link_fault(skill_dir):
+    """Every relative link in every Markdown file under skill_dir, read from the linking file's own folder: return a
+    fault for each that names no file or folder."""
+    skill_dir = Path(skill_dir)
+    faults = []
+    for rel in sorted(p.relative_to(skill_dir).as_posix() for p in skill_dir.rglob("*.md")):
+        for target in sorted(link_targets(skill_dir, rel)):
+            if not target.startswith("mailto:") and not (skill_dir / target).exists():
+                faults.append(f"{rel} links {target}, which does not exist")
+    return faults
+
+
+# The words that call a quoted span a name the skill holds: a step, a section and so on.
+NAME_NOUN = r"(?:steps?|sections?|lists?|headings?|questions?|checks?|ratings?|parts?)"
+# A span in single quotes. The opening quote follows no letter, so 'skill's' is no opening; an apostrophe inside the
+# span is one followed by a letter; the span ends at a blank line.
+QUOTED = re.compile(r"(?<![\w'])'([^'\s](?:[^'\n]|\n(?![ \t]*\n)|'(?=\w))*?)'(?!\w)")
+# The noun just before a quoted span, as in 'the step 'Run the script checks''; a step number may stand between.
+NOUN_BEFORE = re.compile(rf"\b({NAME_NOUN})(?:\s+\d+)?,?\s+$", re.IGNORECASE)
+# The noun just after a quoted span, as in 'the 'Sources' section'.
+NOUN_AFTER = re.compile(rf"^\s+({NAME_NOUN})\b", re.IGNORECASE)
+
+
+def prose_only(text):
+    """text with code blocks blanked and inline code replaced by a placeholder, keeping every line in its place."""
+    text = re.sub(r"^```.*?^```", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.MULTILINE | re.DOTALL)
+    return re.sub(r"`[^`\n]*`", "`code`", text)
+
+
+def held_names(skill_dir):
+    """The names a quoted span may point to: every Markdown heading, and every bold title that opens a line or a list
+    item, as the steps and the questions are titled, with its closing full stop left off."""
+    names = set()
+    for path in Path(skill_dir).rglob("*.md"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            heading = re.match(r"#+\s+(.+?)\s*$", line)
+            if heading:
+                names.add(" ".join(heading.group(1).split()))
+            bold = re.match(r"\s*(?:\d+\.\s+|[-*]\s+)?\*\*(.+?)\*\*", line)
+            if bold:
+                names.add(" ".join(bold.group(1).split()).rstrip("."))
+    return names
+
+
+def quoted_names(skill_dir):
+    """Every quoted span under skill_dir that the word just before or just after it calls a step, section, list,
+    heading, question, check, rating or part, as (file, line, noun, name)."""
+    skill_dir = Path(skill_dir)
+    found = []
+    for path in sorted(skill_dir.rglob("*.md")):
+        text = prose_only(path.read_text(encoding="utf-8"))
+        for m in QUOTED.finditer(text):
+            noun = NOUN_BEFORE.search(text[max(0, m.start() - 40):m.start()]) or NOUN_AFTER.match(text[m.end():])
+            if noun:
+                found.append((path.relative_to(skill_dir).as_posix(), text.count("\n", 0, m.start()) + 1,
+                              noun.group(1).lower(), " ".join(m.group(1).split())))
+    return found
+
+
+def quoted_name_faults(skill_dir):
+    """The quoted-name rule: return a fault for each quoted name that matches no heading, bold step title or question
+    title under skill_dir."""
+    names = held_names(skill_dir)
+    return [f"{rel}:{line}: the {noun} '{name}' matches no heading, bold step title or question title"
+            for rel, line, noun, name in quoted_names(skill_dir) if name not in names]
+
+
+# The section of grounding.md that gives the skill's own source keys their rows.
+SKILL_SOURCES_SECTION = "Sources"
+# A run of keys, such as 'ST1 to ST4', which cites every key between the two.
+KEY_RANGE = re.compile(r"\b([A-Z]{2})(\d+) to \1(\d+)\b")
+
+
+def cited_keys(text):
+    """The source keys text cites, a run such as 'ST1 to ST4' counted as every key in it."""
+    keys = set(SOURCE_KEY.findall(text))
+    for prefix, low, high in KEY_RANGE.findall(text):
+        keys |= {f"{prefix}{n}" for n in range(int(low), int(high) + 1)}
+    return keys
+
+
+def skill_key_faults(skill_dir):
+    """The skill's own source keys, both ways: every key cited under skill_dir has a row in grounding.md's 'Sources',
+    and every key with a row there is cited under skill_dir outside that section. Return a list of faults."""
+    skill_dir = Path(skill_dir)
+    grounding = skill_dir / "references" / "grounding.md"
+    text = grounding.read_text(encoding="utf-8")
+    section = re.search(rf"^## {SKILL_SOURCES_SECTION}\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if not section:
+        return [f"references/grounding.md has no '{SKILL_SOURCES_SECTION}' section"]
+    first_line = text.count("\n", 0, section.start(1)) + 1
+    rows = {}
+    for n, line in enumerate(section.group(1).splitlines(), first_line):
+        key = re.match(r"\|\s*([A-Z]{2}\d+)\s*\|", line)
+        if key:
+            rows[key.group(1)] = n
+    cited = {}
+    for path in sorted(p for p in skill_dir.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+        rel = path.relative_to(skill_dir).as_posix()
+        try:
+            body = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if path == grounding:
+            body = body[:section.start(1)] + body[section.end(1):]
+        for key in cited_keys(body):
+            cited.setdefault(key, rel)
+    faults = [f"{cited[key]} cites {key}, which has no row in grounding.md's '{SKILL_SOURCES_SECTION}'"
+              for key in sorted(cited) if key not in rows]
+    faults += [f"references/grounding.md:{rows[key]}: {key} has a row in '{SKILL_SOURCES_SECTION}', and nothing under "
+               "skill/ outside that section cites it" for key in sorted(rows) if key not in cited]
+    return faults
+
+
 def need(path):
     if not Path(path).exists():
         raise unittest.SkipTest(f"{Path(path).relative_to(ROOT)} is not yet in place; this check waits for it")
@@ -491,6 +612,96 @@ class TestGroundingT_B(ScratchCase):
             key_faults(cited, self.sources),
             ["questions/score.md cites ZZ1, which has no row in sources.md",
              "persona-boundaries.md cites AN9, which has no row in sources.md"],
+        )
+
+
+class TestEveryLink(ScratchCase):
+    """Every link in every Markdown file under skill/, references included, names a file that exists."""
+
+    def test_real_files(self):
+        self.assertEqual(every_link_fault(SKILL), [])
+
+    def test_control(self):
+        skill = self.tmp / "skill"
+        (skill / "references" / "questions").mkdir(parents=True)
+        (skill / "reviewer.md").write_text("Read [`references/a.md`](references/a.md).\n")
+        (skill / "references" / "a.md").write_text("See [`b.md`](b.md) and [the guide](https://example.com/guide).\n")
+        (skill / "references" / "b.md").write_text("Then [`questions/c.md`](questions/c.md).\n")
+        (skill / "references" / "questions" / "c.md").write_text("Back to [`../a.md`](../a.md).\n")
+        self.assertEqual(every_link_fault(skill), [])
+        # A reference linking a file that has left the folder, as grounding.md once linked vendor-terms.md.
+        (skill / "references" / "b.md").write_text("Then [`questions/c.md`](questions/c.md) and "
+                                                   "[`vendor-terms.md`](vendor-terms.md).\n")
+        self.assertEqual(every_link_fault(skill), ["references/b.md links references/vendor-terms.md, which does not exist"])
+
+
+class TestQuotedNames(ScratchCase):
+    """A quoted name that its sentence calls a step, section and so on matches a heading, a bold step title or a
+    question title, word for word."""
+
+    def test_real_files(self):
+        self.assertEqual(quoted_name_faults(SKILL), [])
+
+    def test_control(self):
+        skill = self.tmp / "skill"
+        (skill / "references").mkdir(parents=True)
+        (skill / "reviewer.md").write_text(
+            "# Reviewer\n\n## Before you return\n\nCheck once more.\n\n## Steps\n\n"
+            "1. **Run the script checks.** Run `check.py`.\n2. **Answer every other question.** Answer it.\n"
+        )
+        (skill / "references" / "q.md").write_text("**One job.** The persona does one thing.\n")
+        (skill / "references" / "a.md").write_text(
+            "Run it again at the step 'Run the script checks', as the 'Before you return' section says; the\n"
+            "question 'One job' applies. A quotation such as 'Run the tests' is no name.\n"
+        )
+        self.assertEqual(
+            quoted_names(skill),
+            [("references/a.md", 1, "step", "Run the script checks"),
+             ("references/a.md", 1, "section", "Before you return"),
+             ("references/a.md", 2, "question", "One job")],
+        )
+        self.assertEqual(quoted_name_faults(skill), [])
+        # The step's name with one word changed.
+        (skill / "references" / "a.md").write_text("Run it again at the step 'Run the script check'.\n")
+        self.assertEqual(
+            quoted_name_faults(skill),
+            ["references/a.md:1: the step 'Run the script check' matches no heading, bold step title or question title"],
+        )
+
+
+class TestSkillSourceKeys(ScratchCase):
+    """The skill's own source keys, in grounding.md's 'Sources', match the keys cited under skill/, both ways. The
+    tests of the plugin root's sources.md, in TestGroundingT_B, stay as they are."""
+
+    def scratch_skill(self, cited, rows):
+        """A scratch skill folder whose step cites the keys in cited and whose grounding.md gives rows to the keys in
+        rows, with a run 'ST1 to ST3' cited in grounding.md outside 'Sources'."""
+        skill = self.tmp / "skill"
+        (skill / "steps").mkdir(parents=True, exist_ok=True)
+        (skill / "references").mkdir(exist_ok=True)
+        (skill / "steps" / "answer.md").write_text(f"Sources: {', '.join(cited)}.\n")
+        table = "".join(f"| {key} | A source | 1 October 2026 |\n" for key in rows)
+        (skill / "references" / "grounding.md").write_text(
+            "# Grounding\n\n## Each question's support\n\nThe case rests on ST1 to ST3.\n\n"
+            f"## Sources\n\n### Vendor documentation\n\n| Key | Source | Read |\n|---|---|---|\n{table}"
+        )
+        return skill
+
+    def test_real_files(self):
+        self.assertEqual(skill_key_faults(SKILL), [])
+
+    def test_control_cited_key_without_a_row(self):
+        skill = self.scratch_skill(["AN1", "AN2"], ["AN1", "AN2", "ST1", "ST2", "ST3"])
+        self.assertEqual(skill_key_faults(skill), [])
+        skill = self.scratch_skill(["AN1", "AN2", "ZZ9"], ["AN1", "AN2", "ST1", "ST2", "ST3"])
+        self.assertEqual(skill_key_faults(skill), ["steps/answer.md cites ZZ9, which has no row in grounding.md's 'Sources'"])
+
+    def test_control_row_nothing_cites(self):
+        skill = self.scratch_skill(["AN1", "AN2"], ["AN1", "AN2", "ST1", "ST2", "ST3", "ZZ8"])
+        self.assertEqual(
+            skill_key_faults(skill),
+            ["references/grounding.md:18: ZZ8 has a row in 'Sources', and nothing under skill/ outside that section "
+             "cites it"],
         )
 
 

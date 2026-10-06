@@ -62,4 +62,5 @@ do what the file says:
 | Enforceable rules enforced | a rule left to prose binds weakly | study (ST4); vendor rule (AN1) |
 
 Every other check counts 1 and every rating 0 to 6. The report gives the total at equal weights beside the weighted
-total, so a reader sees how much the weights move it.
+total, so a reader sees how much the weights move it: weights are a judgement, and equal weights predict about as
+well (SC2, SC3).

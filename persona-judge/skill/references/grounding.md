@@ -29,7 +29,7 @@ built. Reading alone means no source was found, and the question rests on the au
 | Rules held in the persona | persona | rating, frequency | AN1, RE1 | vendor rule and record | Anthropic | none |
 | Directions for when nobody answers | persona | rating, frequency | RE1 | record; the run that tested it was inconclusive | none | none |
 | Rules used in every act come first | persona | rating, frequency | ST5 | study | none | none |
-| Tools explained | persona | rating, frequency; follows 'Declares its tools' | GO3 | vendor rule | Google | none |
+| Tools explained | persona | rating, quality; follows 'Declares its tools' | GO3 | vendor rule | Google | none |
 | Commands given exactly | persona | rating, frequency | GH3 | vendor rule, Matt Nigh's analysis of 2,500 files | GitHub | none |
 | The description says when to choose it | persona | rating, quality | AN3, GO2, OA3, GO3 | vendor rule | Anthropic, Google, OpenAI | none |
 | An identity that does the work | persona | rating, quality | ST2 | study | none | GH3 opens its examples with 'You are an expert' |

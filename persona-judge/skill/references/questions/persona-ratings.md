@@ -27,10 +27,14 @@ Sources: RE1.
 Sources: ST5.
 
 **Tools explained** 
-*Scale model:* Frequency. 
-*Places:* Each tool the file names whose use its rules limit: a tool that can do something a rule forbids, such as a shell in a persona that must change no file. A tool the rules leave as its harness describes it needs no explanation, because the harness already gives its use. 
-*Meets it:* The file says when and why the agent uses it within that limit. Whether a setting keeps the tool within the limit is for 'Enforceable rules enforced'. 
-*Example of a low rating:* A shell granted to a reviewer with no word on which commands it runs. 
+*Scale model:* Quality. Rates how well the file explains each tool whose use its rules limit, such as a shell in a persona that must change no file. A tool the rules leave as its harness describes it needs no explanation. With several such tools, rate the one the file explains least, because one unexplained tool is enough to misuse. Whether a setting holds the limit is for 'Enforceable rules enforced'. 
+*Exceptional:* Names the task the tool serves, when to use it and why, states the limit with the tool, and says what to do when the tool fails or is refused. 
+*Excellent:* Names the task, when and why, and states the limit with the tool. 
+*Very good:* Names the task, when and why; the limit appears only as a separate rule, such as 'never change code'. 
+*Good:* Names the task with either when or why, not both. 
+*Fair:* Names the task alone, such as 'use Bash to run the tests'. 
+*Poor:* Names the tool in the prose with no task. 
+*Very poor:* Grants the tool in a setting and never mentions it in the prose. 
 
 Sources: GO3.
 

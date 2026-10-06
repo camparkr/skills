@@ -43,7 +43,7 @@ PROSE_COUNTS = {
 
 # A rating as the parts now lay it out: the bold title alone on its line, then the '*Scale model:*' line, which may
 # carry a further sentence. The tests that plant a fault in a rating start from this one.
-TOOLS_RATING = "**Tools explained** \n*Scale model:* Frequency. "
+TOOLS_RATING = "**Tools explained** \n*Scale model:* Quality. "
 
 
 def load_module():
@@ -446,11 +446,11 @@ class TestRatingLayout(ScratchCase):
         shutil.copytree(QUESTIONS, folder)
         part = part_holding(folder, TOOLS_RATING)
         text = part.read_text(encoding="utf-8")
-        part.write_text(text.replace(TOOLS_RATING, "**Tools explained** (*frequency*). "), encoding="utf-8")
+        part.write_text(text.replace(TOOLS_RATING, "**Tools explained** (*quality*). "), encoding="utf-8")
         # The rewrite joins two lines, so the lines of the questions after it move; the line is left out.
         shape = lambda qs: [(x.title, x.section, x.kind, x.scale, x.weight, x.file) for x in qs.questions]  # noqa: E731
         self.assertEqual(shape(q.load(folder)), shape(live))
-        part.write_text(text.replace(TOOLS_RATING, "**Tools explained** (*quality*). "), encoding="utf-8")
+        part.write_text(text.replace(TOOLS_RATING, "**Tools explained** (*frequency*). "), encoding="utf-8")
         self.assertNotEqual(shape(q.load(folder)), shape(live))
 
     def test_fields_and_sources_are_not_questions(self):
@@ -556,10 +556,7 @@ def full_record(qs, path):
         elif q.scale == "quality":
             out.append({"question": q.title, "scale": "quality", "point": qs.scales["quality"].top})
         else:
-            answer = {"question": q.title, "scale": q.scale, "places": [{"file": path, "line": 9, "quote": helper_lines[9], "meets": True}]}
-            if q.title == "Tools explained":
-                answer["places"] = [{"file": path, "line": 4, "quote": "tools: Read, Grep, Edit", "meets": True}]
-            out.append(answer)
+            out.append({"question": q.title, "scale": q.scale, "places": [{"file": path, "line": 9, "quote": helper_lines[9], "meets": True}]})
     return {
         "path": path,
         "branches": {"delegated": True, "harness": "Claude Code", "settings": ["tools"]},

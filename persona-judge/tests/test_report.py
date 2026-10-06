@@ -145,8 +145,8 @@ def helper_review(path=HELPER, **extra):
             "places": [place(11, "If the scope is unclear, ask.", False, f, "Nothing covers a run with no one to ask.")],
         },
         "Tools explained": {
-            "scale": "frequency",
-            "places": [place(4, "tools: Read, Grep, Edit", False, f, "Three tools are named with no word on when to use them.")],
+            "scale": "quality", "point": 0,
+            "findings": [finding(4, "tools: Read, Grep, Edit", "Three tools are named with no word on when to use them.", f)],
         },
         "The description says when to choose it": {
             "scale": "quality", "point": 2,
@@ -188,7 +188,10 @@ def doc_writer_review():
     """A clean review of .claude/agents/doc-writer.md: every question that applies at its top."""
     f = ".claude/agents/doc-writer.md"
     answers = {
-        "Tools explained": {"scale": "frequency", "places": [place(7, "Read `CHANGELOG.md` when the user asks", True, f)]},
+        "Tools explained": {
+            "scale": "quality", "point": QS.scales["quality"].top,
+            "subject": {"file": f, "line": 7, "quote": "Read `CHANGELOG.md` when the user asks"},
+        },
         "Answers defined, edge cases included": {
             "scale": "frequency", "subject": {"file": f, "line": 9, "quote": "When the changelog is empty"},
             "places": [place(9, "say there is nothing to report", True, f)],
@@ -242,7 +245,9 @@ def complete_review(consistent=0):
     f = ".claude/agents/release-checker.md"
     subject = lambda n, q: {"file": f, "line": n, "quote": q}  # noqa: E731
     answers = {
-        "Tools explained": {"scale": "frequency", "places": [place(10, "Always run `pytest -v tests/`", True, f)]},
+        "Tools explained": {
+            "scale": "quality", "point": QS.scales["quality"].top, "subject": subject(10, "Always run `pytest -v tests/`"),
+        },
         "Commands given exactly": {
             "scale": "frequency", "subject": subject(10, "run `pytest -v tests/`"),
             "places": [place(10, "run `pytest -v tests/`", True, f)],
@@ -601,8 +606,8 @@ class TestWhatAppliesT_W(ReportCase):
     def test_rates_tools_explained_after_declares_scored_0(self):
         entry = triage_review()
         entry["questions"].append({
-            "question": "Tools explained", "scale": "frequency",
-            "places": [place(6, "Label each issue with one area.", True, ".github/agents/triage.agent.md")],
+            "question": "Tools explained", "scale": "quality", "point": QS.scales["quality"].top,
+            "subject": {"file": ".github/agents/triage.agent.md", "line": 6, "quote": "Label each issue with one area."},
         })
         out = self.faults(entry)
         self.assertIn("'Tools explained'", out)
@@ -977,8 +982,8 @@ class TestSpreadOverFilesT13(ReportCase):
                     "places": [place(4, "Low: the change reads poorly and works.", False, scale, "Nothing says what to return when there is no finding.")],
                 },
                 "Tools explained": {
-                    "scale": "frequency", "subject": {"file": main, "line": 4, "quote": "tools: Read, Grep"},
-                    "places": [place(4, "tools: Read, Grep", True, main)],
+                    "scale": "quality", "point": QS.scales["quality"].top,
+                    "subject": {"file": main, "line": 4, "quote": "tools: Read, Grep"},
                 },
                 "Shows an example": {"does_not_apply": reason("Shows an example")},
             },

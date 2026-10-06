@@ -61,7 +61,7 @@ Lines that lowered the score
    Directions for when nobody answers. Nothing covers a run with no one to ask.
    Sources: RE1
 4. .claude/agents/helper.md, line 4: 'tools: Read, Grep, Edit'
-   Tools explained. Edit is granted while line 9 forbids editing, and nothing says when or why the agent uses it.
+   Tools explained. Edit is granted in the tools setting and never mentioned in the prose.
    Sources: GO3
 5. .claude/agents/helper.md, line 3: 'description: Reviews pull requests for style problems.'
    The description says when to choose it. It names the task in its own terms, not the requests a user would type, and says nothing of what it is not for.
@@ -103,7 +103,7 @@ Boundaries in three tiers                  yes 1
 Rules held in the persona                  6 of 6   always
 Directions for when nobody answers         0 of 6   never
 Rules used in every act come first         6 of 6   always
-Tools explained                            0 of 6   never
+Tools explained                            0 of 6   very poor
 Commands given exactly                     does not apply
 The description says when to choose it     3 of 6   good
 An identity that does the work             4 of 6   very good

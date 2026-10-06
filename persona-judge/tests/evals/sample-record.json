@@ -123,13 +123,13 @@
           }
         },
         {
-          "scale": "frequency",
-          "places": [
+          "scale": "quality",
+          "point": 0,
+          "findings": [
             {
               "line": 4,
               "quote": "tools: Read, Grep, Edit",
-              "meets": false,
-              "note": "Edit is granted while line 9 forbids editing, and nothing says when or why the agent uses it.",
+              "note": "Edit is granted in the tools setting and never mentioned in the prose.",
               "file": ".claude/agents/helper.md"
             }
           ],

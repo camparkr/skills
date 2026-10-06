@@ -1,8 +1,8 @@
 # Persona boundaries
 
 This file says what a persona is, what it is not, and what the persona controls, for the reviewer to load when
-`reviewer.md`'s step 'Answer every other question' says. Source keys refer to [`sources.md`](sources.md), which you open
-only when someone asks for a source.
+`../steps/answer.md` says. Source keys refer to [`sources.md`](sources.md), which you open only when someone asks for a
+source.
 
 ## Terms
 
@@ -21,8 +21,8 @@ Answer each question yes or no, in order, and follow the line your answer gives:
 0. Does the file only bundle other things, with no effect of its own? Yes: place each thing inside it by these
    questions, from question 1. No: go to 1.
 1. Does it define an agent of its own, as `questions/scales.md` defines a persona, whose text frames every act of
-   that agent, rather than being taken up for one task? Project instructions and output styles do not define an agent,
-   so they do not. Yes: it is a persona, whatever the file is called. Stop. No: go to 2.
+   that agent, rather than being taken up for one task? Yes: it is a persona, whatever the file is called. Stop. No: go
+   to 2.
 2. It is not a persona: set it aside, with the reason the neighbours below give.
 
 ## Neighbours of a persona
@@ -44,7 +44,5 @@ Each row names something a reader may mistake for a persona, or for the persona'
 
 ## Bound parts
 
-A persona's settings belong to it, but the harness enforces them, not the model. *Persona-judge* checks that they agree
-with the prose, and that the permissions they grant fit the job. What a setting points to, such as a hook script or a
-server, is not part of the review. A hook or a setting holds a rule whatever the model decides; prose does not, which
-is why 'Enforceable rules enforced' looks for one. Sources: AN1, AN2, AN3, GO2.
+A persona's settings belong to it, but the harness enforces them, not the model. What a setting points to, such as a
+hook script or a server, is not part of the review. Sources: AN1, AN2, AN3, GO2.

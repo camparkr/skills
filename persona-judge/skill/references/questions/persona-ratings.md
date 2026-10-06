@@ -32,7 +32,7 @@ Sources: ST5.
 *Good:* Names the task with either when or why, not both. 
 *Fair:* Names the task alone, such as 'use Bash to run the tests'. 
 *Poor:* Names the tool in the prose with no task. 
-*Very poor:* Grants the tool in a setting and never mentions it in the prose. 
+*Very poor:* Grants the tool in a setting, and the prose names neither the tool nor any use of it, such as a command it runs. 
 
 Sources: GO3.
 

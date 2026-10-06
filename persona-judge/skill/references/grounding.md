@@ -1,8 +1,13 @@
 # Grounding
 
 What each of *persona-judge*'s questions rests on: its sources, the kind of evidence behind it and the words it quotes.
-Load this file when a reader asks why a question exists or how strong its support is. Each key's full reference is in
-`sources.md`, at the plugin's root.
+Load this file when a reader asks why a question exists or how strong its support is. Each key's full reference is under 'Sources', below.
+
+## Contents
+
+- each question's support, a table of its sources and evidence;
+- what each source says, by question; and
+- sources, every key with where to read it and when.
 
 ## Each question's support
 
@@ -54,7 +59,7 @@ The scales come from SC1. The case for reviewing a persona rests on ST1 to ST4 a
 
 The words each question rests on, quoted from its sources; the questions keep only the keys.
 
-- **A dedicated persona.** Sources: GH4, GO2 and AN6, whose words are in `vendor-terms.md` at the plugin's root, 'Context, not a persona'.
+- **A dedicated persona.** Sources: GitHub, a custom agent is a 'Specialist persona with its own instructions, tool restrictions, and context' (GH4); Google, 'Each subagent has its own system prompt and persona' (GO2); Anthropic, an output style 'sets Claude's role, tone, and response format' (AN6).
 - **Bound parts agree with the prose.** Sources: Anthropic, 'Permission rules are enforced by Claude Code, not by the model' (AN2); the subagent fields `tools`, `disallowedTools`, `permissionMode` and `hooks` (AN3).
 - **Permissions fit the job.** Sources: OpenAI, a subagent needs 'a tool surface that matches that job' (OA2); Anthropic, 'If you leave it unset, the subagent inherits the main conversation's permission mode' (AN3).
 - **Needs no context it is not given.** Sources: Anthropic, 'Each subagent starts with a fresh, isolated context window. It doesn't see your conversation history, the skills you've already invoked, or the files Claude has already read' (AN3); Google, 'Each subagent runs in its own isolated context loop' (GO2).
@@ -71,7 +76,7 @@ The words each question rests on, quoted from its sources; the questions keep on
 - **Rules used in every act come first.** Source: 'earlier-listed instructions' are followed more reliably as instructions accumulate (ST5).
 - **Tools explained.** Source: Google, 'Don't just list tools; explain *when* and *why* the agent should use them' (GO3).
 - **Commands given exactly.** Source: GitHub, 'Put relevant executable commands in an early section … Include flags and options, not just tool names' (GH3).
-- **The description says when to choose it.** Sources: AN3, in `vendor-terms.md` at the plugin's root, 'What the vendors say a persona has'; Gemini CLI's main agent 'decides whether an agent is a relevant expert based on the agent's description' (GO2). Also: OpenAI, 'Front-load the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (OA3); Google, 'specific enough to differentiate it from peers' (GO3).
+- **The description says when to choose it.** Sources: 'Claude uses each subagent's description to decide when to delegate tasks' (AN3); Gemini CLI's main agent 'decides whether an agent is a relevant expert based on the agent's description' (GO2). Also: OpenAI, 'Front-load the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (OA3); Google, 'specific enough to differentiate it from peers' (GO3).
 - **An identity that does the work.** Source: persona cues unrelated to the task cost agents up to 26.2% of their performance (ST2).
 - **No time-sensitive statements.** Source: Anthropic, 'Avoid time-sensitive information' (AN4).
 - **Consistent with itself.** Source: Anthropic, 'if two instructions contradict each other, Claude may pick one arbitrarily' (AN1). Also: GitHub, 'Whenever possible, try to avoid providing conflicting sets of instructions' (GH1).
@@ -83,6 +88,72 @@ The words each question rests on, quoted from its sources; the questions keep on
 - **What to do, not what to avoid.** Source: Anthropic, on steering output format, 'Tell Claude what to do instead of what not to do' (AN5).
 - **Reasons given.** Source: Anthropic, 'Providing context or motivation behind your instructions, such as explaining to Claude why such behavior is important, can help Claude better understand your goals' (AN5).
 - **Each instruction stands alone.** Source: GitHub, 'The instructions you add to your custom instruction file(s) should be short, self-contained statements' (GH1).
-- **Bound parts, in `persona-boundaries.md`.** AN2, as quoted under 'Bound parts agree with the prose'; CLAUDE.md files are 'context, not enforced configuration', and hooks 'apply regardless of what Claude decides to do' (AN1); AN3 on a subagent's body, in [`vendor-terms.md`](vendor-terms.md); 'Subagents are exposed to the main agent as a tool of the same name' (GO2).
+- **Bound parts, in `persona-boundaries.md`.** AN2, as quoted under 'Bound parts agree with the prose'; CLAUDE.md files
+  are 'context, not enforced configuration', and hooks 'apply regardless of what Claude decides to do' (AN1); a
+  subagent's body 'becomes the system prompt that guides the subagent's behavior' (AN3); 'Subagents are exposed to the
+  main agent as a tool of the same name' (GO2).
 - **Pointers carry their triggers, the build's record.** In the record kept while this skill was built, a pointer that said when to open its file was followed in three runs of three, and an index nothing pointed to was never read (RE1).
 - **No facts the project already holds, a contrary source.** GitHub's guide (GH3) recommends listing the file structure; this question reads it the other way, as Anthropic's trim does (AN1).
+
+## Sources
+
+Every key above, with where to read it and when it was read.
+
+### Vendor documentation
+
+| Key | Source | Read |
+|---|---|---|
+| AN1 | Anthropic, 'How Claude remembers your project', <https://code.claude.com/docs/en/memory> | 1 October 2026 |
+| AN2 | Anthropic, 'Configure permissions', <https://code.claude.com/docs/en/permissions> | 1 October 2026 |
+| AN3 | Anthropic, 'Subagents', <https://code.claude.com/docs/en/sub-agents> | 3 October 2026 |
+| AN4 | Anthropic, 'Skill authoring best practices', <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices> | 2 October 2026 |
+| AN5 | Anthropic, 'Prompting best practices', <https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices> | 2 October 2026 |
+| AN6 | Anthropic, 'Output styles', <https://code.claude.com/docs/en/output-styles> | 1 October 2026 |
+| OA1 | OpenAI, 'Custom instructions with AGENTS.md', <https://learn.chatgpt.com/docs/agent-configuration/agents-md> | 2 October 2026 |
+| OA2 | OpenAI, 'Subagents', <https://learn.chatgpt.com/docs/agent-configuration/subagents> | 3 October 2026 |
+| OA3 | OpenAI, 'Build skills', <https://learn.chatgpt.com/docs/build-skills> | 2 October 2026 |
+| GO1 | Google, 'Agent Skill best practices', <https://geminicli.com/docs/cli/skills-best-practices/> | 2 October 2026 |
+| GO2 | Google, Gemini CLI subagents, <https://geminicli.com/docs/core/subagents/>, source at <https://github.com/google-gemini/gemini-cli/blob/main/docs/core/subagents.md> | 3 October 2026 |
+| GO3 | Google, Agent Development Kit, 'LLM Agent', <https://google.github.io/adk-docs/agents/llm-agents/> | 2 October 2026 |
+| GH1 | GitHub, 'About customizing GitHub Copilot responses', <https://docs.github.com/en/copilot/concepts/prompting/response-customization> | 2 October 2026 |
+| GH2 | GitHub, 'Custom agents configuration', <https://docs.github.com/en/copilot/reference/custom-agents-configuration> | 3 October 2026 |
+| GH3 | Matt Nigh, 'How to write a great agents.md: Lessons from over 2,500 repositories', GitHub Blog, 19 November 2025, <https://github.blog/ai-and-ml/github-copilot/how-to-write-a-great-agents-md-lessons-from-over-2500-repositories/> | 2 October 2026 |
+| GH4 | GitHub, customisation cheat sheet, <https://docs.github.com/en/copilot/reference/customization-cheat-sheet> | 1 October 2026 |
+
+### Studies
+
+Each entry rests on its abstract. The arXiv identifier pins the version.
+
+| Key | Source | Read |
+|---|---|---|
+| ST1 | Weinberger and Hozez, 'Prompt-Induced Waste in Coding Agents: Reasoning, Effort, Harness Design, and End-to-End Cost', 2026, <https://arxiv.org/abs/2608.01347> | 1 October 2026 |
+| ST2 | Cao, Sun and Yue, 'From Biased Chatbots to Biased Agents: Examining Role Assignment Effects on LLM Agent Robustness', 2026, <https://arxiv.org/abs/2602.12285> | 1 October 2026 |
+| ST3 | Cheng and Mastropaolo, 'An Empirical Study on the Effects of System Prompts in Instruction-Tuned Models for Code Generation', 2026, <https://arxiv.org/abs/2602.15228> | 1 October 2026 |
+| ST4 | Panavas, Minus, Monton, Ray, Garre, Mehta and Chen, 'HANDBOOK.md: A Benchmark for Long-Context Agentic Instruction Following', 2026, <https://arxiv.org/abs/2607.25398> | 1 October 2026 |
+| ST5 | Jaroslawicz, Whiting, Shah and Maamari, 'How Many Instructions Can LLMs Follow at Once?', 2025, <https://arxiv.org/abs/2507.11538> | 30 September 2026 |
+| ST6 | Gupta, Nair, Wang and Kumar, 'Context Over Content: Exposing Evaluation Faking in Automated Judges', 2026, <https://arxiv.org/abs/2604.15224> | 30 September 2026 |
+| ST7 | McCauley, Kan and Martin, 'IH-Benchmark: A Conflict-Centered Benchmark for Instruction-Hierarchy Robustness in LLM Applications', 2026, <https://arxiv.org/abs/2607.25987> | 3 October 2026 |
+| ST8 | Javed, Fatimah, Bakhtiari, Islam and Fatima, 'PRIME: Evaluating Prompt Resolution Under Incompatible Instructions in LLMs', 2026, <https://arxiv.org/abs/2606.22470> | 3 October 2026 |
+
+### Scale and weights
+
+The words of the two scales are Brown's: the quality scale is his seven-point quality scale, and the frequency words
+come from his frequency and likelihood lists. The share bands and the anchors are this skill's own choice, and no study
+fixes them (SC1).
+
+Dawes's abstract: 'unit (i.e., equal) weighting is quite robust for making such predictions' (SC2). The handbook:
+'Regardless of which method is used, weights are essentially value judgements', and its seventh step is 'Uncertainty
+and sensitivity analysis' (SC3).
+
+| Key | Source | Read |
+|---|---|---|
+| SC1 | Sorrel Brown, 'Likert Scale Examples for Surveys', Iowa State University Extension, December 2010, <https://www.extension.iastate.edu/documents/anr/likertscaleexamplesforsurveys.pdf> | 1 October 2026 |
+| SC2 | Robyn M. Dawes, University of Oregon, 'The Robust Beauty of Improper Linear Models in Decision Making', *American Psychologist*, vol. 34, no. 7, July 1979, pp. 571–582, <https://web.stanford.edu/~knutson/nfc/dawes79.pdf> | 3 October 2026 |
+| SC3 | OECD and the European Commission's Joint Research Centre, *Handbook on Constructing Composite Indicators*, <https://knowledge-for-policy.ec.europa.eu/sites/default/files/jrc47008_handbook_final.pdf> | 3 October 2026 |
+
+### Record of this build
+
+| Key | Source |
+|---|---|
+| RE1 | The record kept while this skill was built: 12 dry runs on one persona file and two rewrites of it, run on two harnesses and judged blind, and a skill review of three versions of the file |
+| RE2 | The instruction-file linters surveyed while this skill was built, which check for placeholders; no primary source is quoted |

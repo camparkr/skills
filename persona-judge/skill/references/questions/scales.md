@@ -2,18 +2,14 @@
 
 The questions *persona-judge* asks of a persona file and the formula that turns the answers into a score are in the
 files of this folder, each read at the step of `reviewer.md` that uses it. This file holds the scales. Each source is
-cited by its key; `sources.md`, at the plugin's root beside this skill, gives its full reference and the date it was
-read.
+cited by its key; [`../grounding.md`](../grounding.md) gives its full reference, which you open only when someone asks
+for a source.
 
-A persona is a dedicated agent: a named specialist with its own instructions, and often its own tools and context,
-such as a subagent or a custom agent. It holds instruction, which the model reads and nothing enforces, and it may
-hold bound parts: settings the harness applies (the tools the agent may use, its permission mode) and code the file
-names to run. A persona can be spread over several files, and the review covers all of them.
+A persona is a file that defines an agent of its own. Its prose is instruction, which the model reads and nothing
+enforces; its bound parts are the settings the harness applies, such as `tools` or `permissionMode`, and any code the
+file names to run. It can span several files, and the review covers all of them.
 
 ## Checks and ratings
-
-Some questions have one right answer that a script or a careful reading settles. Others are judged across every
-place in the file they apply to.
 
 **Checks** are met or not. A check is met when nothing in the file contradicts it, and scores its weight, shown as
 'yes 1', or 'yes 3' for the three weighted checks; it is not met when anything does, shown as 'no 0'. Checks marked

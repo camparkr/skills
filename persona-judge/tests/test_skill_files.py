@@ -278,13 +278,13 @@ class TestLinksT_L(ScratchCase):
         self.assertEqual(link_faults(SKILL), [])
 
     def test_sample_content(self):
-        """The sample's content: every skill file it links exists, and it names sources.md for its source keys."""
+        """The sample's content: every skill file it links exists, and it links grounding.md, whose Sources give its keys."""
         sample_text()
         files = model_read_files(SKILL)
         named = {Path(f).name: f for f in files}
         targets = links(SKILL / SAMPLE)
         linked = [named[t] if t in named else t for t in targets if t in named or t in files]
-        self.assertIn("`sources.md`", (SKILL / SAMPLE).read_text(encoding="utf-8"))
+        self.assertIn("references/grounding.md", linked)
         for rel in linked:
             self.assertTrue((SKILL / rel).is_file(), rel)
 

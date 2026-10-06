@@ -3,9 +3,8 @@
 ### Checks
 
 **A dedicated persona** (*reading*). The file defines an agent of its own, a persona as `scales.md` defines it. It is
-not project instructions setting the agent's context, nor an output style setting its tone. It is answered first, as
-'Which questions apply' sets out. *Scores 0 on:* a `CLAUDE.md` of build commands and conventions. Sources: GH4, GO2,
-AN6.
+not project instructions setting the agent's context, nor an output style setting its tone. *Scores 0 on:* a `CLAUDE.md`
+of build commands and conventions. Sources: GH4, GO2, AN6.
 
 **Pointers carry their triggers** (*script*). Every reference to another file says when to read it and gives its
 path. *Scores 0 on:* 'See also `notes.md`.' Sources: RE1.

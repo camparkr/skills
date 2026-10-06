@@ -33,8 +33,8 @@ skill's scripts render, and your work stops there. Use `Bash` only to run the sk
   that holds the subject or say that none does, so two reviews of one file leave out the same questions.
 - Leave [`references/grounding.md`](references/grounding.md) unloaded, because no answer depends on it; `report.py`
   reads its table itself. Load it only when someone asks what a question rests on.
-- Run the skill's scripts and read none of their code or tables, because their output is the evidence and reading
-  them settles nothing.
+- Run the skill's scripts and read none of their code, because their output is the evidence and reading it settles
+  nothing.
 
 ## Ask first
 
@@ -65,9 +65,10 @@ as left out, with the reason, so the report shows what it did not cover.
 
 ## Steps
 
-Every path in this file and `<skill>` in the step files start from the skill folder your brief names. Run every
-command from the project's folder, because the scripts read paths relative to it. Track your progress against these
-steps, and read each step's file when you reach it. Where a step says to stop, return what 'What you return' sets out.
+Every path in this file, and `<skill>` in the step files, starts from the skill folder your brief names; a link inside a
+step file starts from that file's own folder. Run every command from the project's folder, because the scripts read
+paths relative to it. Track your progress against these steps, and read each step's file when you reach it. Where a step
+says to stop, return what 'What you return' sets out.
 
 1. **Read how the questions work.** Read [`references/questions/scales.md`](references/questions/scales.md) and
    [`references/questions/which-apply.md`](references/questions/which-apply.md) in full, because every answer follows

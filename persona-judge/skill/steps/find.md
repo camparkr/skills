@@ -18,5 +18,5 @@ TEXT
 It lists each persona with its kind and its branches, as 'Which questions apply' defines them, and each file it sets
 aside, with the reason.
 
-On exit 2, a path or the list unreadable, or exit 3, no persona found, stop, because a review of part of the input
-would read as a review of all of it.
+Exit 0 means it found at least one persona. On exit 2, a path or the list unreadable, or exit 3, no persona found, stop,
+because a review of part of the input would read as a review of all of it.

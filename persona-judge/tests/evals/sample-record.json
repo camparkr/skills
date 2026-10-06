@@ -17,15 +17,7 @@
           "score": 1
         },
         {
-          "score": 0,
-          "findings": [
-            {
-              "line": 9,
-              "quote": "Never edit files; report what you find in a list.",
-              "note": "A tools setting without Edit would enforce this, and Edit is granted instead.",
-              "file": ".claude/agents/helper.md"
-            }
-          ],
+          "score": 1,
           "question": "Enforceable rules enforced"
         },
         {

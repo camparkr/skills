@@ -1,7 +1,7 @@
 ## Score
 
-Each check counts its weight or 0, and each rating counts its point, from 0 to 6. Each section has a subtotal, given as
-'x out of y', where y is the section's points less those of the questions that do not apply.
+Each section has a subtotal, given as 'x out of y', where y is the section's points less those of the questions that do
+not apply.
 
 The report gives, in this order:
 

@@ -33,7 +33,7 @@ the review, not the record: stop.
 Run `python3 <skill>/scripts/report.py render - <<'RECORD'` with the validated record, and add `--summary` before the
 `-` when there is more than one persona. Return the report it prints.
 
-On exit 2, when `render` refuses the record, fix each fault it lists and render again, at most three renders after the
-first; then stop, as for `validate`. On exit 3, no persona got a total because each was empty, set aside or had no
-question apply: stop, because there is no score to report.
+On exit 2, treat the refusal as `validate`'s: fix each fault and render again, within the same three reruns. On exit 3,
+no persona got a total because each was empty, set aside or had no question apply: stop, because there is no score to
+report.
 

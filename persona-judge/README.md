@@ -1,5 +1,7 @@
 # persona-judge
 
+[![Watch 'The Mask and the Machine', a video introduction to persona-judge, on YouTube](https://i.ytimg.com/vi/1Q_Qlfc756Y/hqdefault.jpg)](https://youtu.be/1Q_Qlfc756Y)
+
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
 ![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20CLI-lightgrey.svg)

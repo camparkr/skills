@@ -1,11 +1,11 @@
-# setup.ps1 - link the persona-judge skill into Claude Code on Windows, without admin rights.
+# setup.ps1 links the persona-judge skill into Claude Code on Windows, without admin rights.
 # Safe to run twice. Usage: powershell -ExecutionPolicy Bypass -File setup.ps1 [-DryRun] [-Uninstall]
 
 param([switch]$DryRun, [switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 
-# The skill folder is skill\, beside this script at the repository root.
+# The skill folder is skill\, beside this script at the plugin root.
 $SkillDir = (Join-Path $PSScriptRoot 'skill').TrimEnd('\')
 if (-not (Test-Path (Join-Path $SkillDir 'SKILL.md'))) {
     [Console]::Error.WriteLine("No SKILL.md in $SkillDir; run this script from the repository root it came with.")

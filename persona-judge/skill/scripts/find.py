@@ -30,7 +30,7 @@ delegated when its location says so, or, elsewhere, when its frontmatter holds b
 standing otherwise, and its basis says the kind was inferred. Session text is never delegated.
 
 Each persona's three branches are printed for the record: delegated (with 'folder' or 'front matter'), the
-harness its path names, and the settings it holds, the fields review-questions.md's settings row names. Each persona also lists the files its body names
+harness its path names, and the settings it holds, the fields the review questions' settings row names. Each persona also lists the files its body names
 that exist (candidates, which may load with it) and the files the list loads with it.
 
 Output, one line per file, separated by tabs: for a persona, its path, kind, harness ('-' for none), delegated
@@ -49,11 +49,13 @@ import subprocess
 import sys
 from fnmatch import fnmatchcase
 
+# Write no bytecode beside the scripts: a review changes no file, and an import would otherwise leave __pycache__.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import personafile  # noqa: E402
 import questions  # noqa: E402
 
-# Exit codes, as the docstring states them (build specification §3b).
+# Exit codes, as the docstring states them.
 EXIT_FOUND = 0
 EXIT_USAGE = 2
 EXIT_NONE = 3
@@ -61,8 +63,8 @@ EXIT_NONE = 3
 STANDING, DELEGATED = "standing", "delegated"
 PERSONA = "persona"
 
-# Dedicated personas, reviewed: the pattern, the kind and the harness (build specification §3b, round 3;
-# vision v5, SI-1 and SI-11). A pattern matches the end of a file's path; '*' matches within one name and
+# Dedicated personas, reviewed: the pattern, the kind and the harness. Each is a folder a harness reads agent
+# definitions from, so a file there is a persona by where it sits. A pattern matches the end of a file's path; '*' matches within one name and
 # '**' any number of folders.
 DEDICATED = (
     (".claude/agents/*.md", "subagent", "Claude Code"),
@@ -71,8 +73,8 @@ DEDICATED = (
     (".github/agents/*.agent.md", "custom agent", "GitHub Copilot"),
 )
 
-# Set aside, each with the reason printed (build specification §3b; vision v5, §1, SI-1, SI-11), matched at
-# any depth. The table is read before the dedicated one, so a README.md or SKILL.md inside an agents folder is
+# Set aside, each with the reason printed, matched at any depth: none of these defines a dedicated persona, and
+# each reason says what the file is instead. The table is read before the dedicated one, so a README.md or SKILL.md inside an agents folder is
 # set aside.
 INSTRUCTIONS_REASON = "project instructions: context for the agent, not a dedicated persona"
 SET_ASIDE = (
@@ -94,15 +96,15 @@ SET_ASIDE = (
 # The harnesses a dedicated location names; a file elsewhere has no known harness.
 KNOWN_HARNESSES = tuple(h for _, _, h in DEDICATED)
 
-# The project's list, at the project root unless --list names another (build specification §3b, A-28).
+# The project's list, at the project root unless --list names another.
 LIST_NAME = "personas.txt"
 LIST_COMMENT = "#"
 
-# Neither returned nor set aside: command files and indexes (specification A-2).
+# Neither returned nor set aside: command files and indexes.
 NEITHER_NAMES = ("index.md",)
 COMMAND_FOLDERS = (".claude/commands",)
 SKIP_FOLDERS = (".git", "node_modules")
-# Extensions a named folder falls back to when neither table matches a file in it (A-4).
+# Extensions a named folder falls back to when neither table matches a file in it.
 FALLBACK_EXTENSIONS = (".md", ".mdc", ".toml")
 
 
@@ -182,12 +184,13 @@ def same(a, b):
     return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
 
 
-# How the delegated branch was read, printed beside its answer (build specification §3b, round 4).
+# How the delegated branch was read, printed beside its answer.
 BY_FOLDER, BY_FRONT_MATTER = "folder", "front matter"
 
 
 def infer_delegated(pf):
-    """Whether a persona outside the dedicated locations is delegated, from its frontmatter (A-5)."""
+    """Whether a persona outside the dedicated locations is delegated, from its frontmatter: a harness chooses an
+    agent by its name and description, so a file holding both is taken as delegated."""
     if pf.frontmatter.get("name") and pf.frontmatter.get("description"):
         return True, "inferred: its frontmatter holds name and description"
     return False, "inferred: its frontmatter does not hold both name and description"
@@ -195,7 +198,7 @@ def infer_delegated(pf):
 
 def settings_held(pf):
     """The settings branch: the fields the file holds that grant or restrict what the agent can do, in the order
-    review-questions.md's settings row names them (read at run time, never written here)."""
+    the review questions' settings row names them (read at run time, never written here)."""
     fields = questions.load_cached().settings_fields
     return [f for f in fields if f in pf.unparsed or pf.field_text(f) is not None]
 
@@ -315,7 +318,7 @@ def classify(path, shown, base, root, listing):
     }
 
 
-# Session text is never delegated: nothing chooses it (build specification §3b, round 4).
+# Session text is never delegated: nothing chooses it.
 SESSION_BASIS = "session text: nothing chooses it, so it is not delegated"
 
 

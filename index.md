@@ -13,3 +13,5 @@ The repository holds two skills:
   what the change would break, with the skill's files listed in `dry-run/index.md`; and
 - `persona-judge/`, which reviews dedicated agent personas and scores each out of five stars, quoting every
   line that lowered the score, with the skill's files listed in `persona-judge/index.md`.
+
+`.claude-plugin/marketplace.json` lists the skills that also install as Claude Code plugins: `persona-judge`.

@@ -21,12 +21,20 @@ cd skills/dry-run
 ./setup.sh             # link the skill into Claude Code, Codex and Gemini, where installed
 ```
 
+In Claude Code, *persona-judge* also installs as a plugin from this repository's marketplace:
+
+```text
+/plugin marketplace add camparkr/skills
+/plugin install persona-judge@camparkr-skills
+```
+
 Each skill's README covers the skill's purpose, its audience and its use.
 
 ## Layout
 
-Each skill folder holds the skill itself in `skill/`, which is what the installers link, beside a README,
-an index and the installers. The `index.md` file here lists every skill.
+Each skill folder holds the skill itself in `skill/`, which is
+what the installers link, beside a README, an index and the installers. `.claude-plugin/marketplace.json` lists the
+skills that also install as Claude Code plugins. The `index.md` file here lists every skill.
 
 ## Licence
 

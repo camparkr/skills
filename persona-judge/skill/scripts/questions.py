@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""questions.py: read review-questions.md under its markup contract, and give every question, weight, scale and
-table the other scripts score with.
+"""questions.py: read the review questions under their markup contract, and give every question, weight, scale
+and table the other scripts score with.
 
 Usage:
-  questions.py [FILE] [--format text|json]
+  questions.py [PATH] [--format text|json]
 
-FILE defaults to references/review-questions.md beside this folder. No script holds a question, a count of
-questions or a count of points: report.py and check.py read them through this module each time they run, so a
-change to the questions needs no change to the scripts.
+The review questions are the parts in references/questions/ beside this folder, read as one text: each part named
+in PARTS, in that order, stripped of leading and trailing newlines, joined with one blank line between them, and ended
+with a newline. PATH defaults to that folder; it may name another folder of parts, or a single file read as it
+stands. No script holds a question, a count of questions or a count of points: report.py and check.py read them
+through this module each time they run, so a change to the questions needs no change to the scripts.
 
 The contract, the only markup read:
   question sections   a level-2 heading ending 'questions', such as '## Persona questions'; its label drops
@@ -15,7 +17,11 @@ The contract, the only markup read:
   groups              '### Checks' and '### Ratings' within a question section
   a check             a paragraph opening '**Title** (*script*).' or '**Title** (*reading*).', with ', weight N'
                       inside the brackets for a weight above 1
-  a rating            a paragraph opening '**Title** (*scale*).', the scale defined under 'Scales'
+  a rating            a bold title alone on its line, '**Title**', then a line opening '*Scale model:* Name.', the
+                      scale one defined under '### <Name> scale'; any further sentence on that line, such as
+                      'Follows ...' or 'Applies to ...', stays part of the question. Its fields run, a line each,
+                      until a blank line; a 'Sources:' paragraph after them belongs to the question above it. The
+                      earlier layout, a paragraph opening '**Title** (*scale*).', is read the same
   the root question   the first check of the first question section
   scales              within '## Checks and ratings', a heading '### <Name> scale' and a table whose first two
                       columns are Point and Word; a third column, 'Share of places that meet the question', gives
@@ -33,10 +39,12 @@ reason; and each harness exception must name a harness as find.py names it.
 Output: the questions, sections, weights, scales, tables and points, as text or, with --format json, as one JSON
 object.
 
-Exit codes: 0 the file meets the contract; 2 it does not, with the line and what was expected, or a usage error.
+Exit codes: 0 the questions meet the contract; 2 they do not, naming the part file, its line and what was expected,
+or a usage error.
 This script changes no file.
 """
 
+import errno
 import json
 import os
 import re
@@ -44,17 +52,33 @@ import sys
 from dataclasses import dataclass, field
 from fractions import Fraction
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-REVIEW_QUESTIONS = os.path.join(HERE, "..", "references", "review-questions.md")
+# Write no bytecode beside the scripts: a review changes no file, and the import of find.py inside load() would
+# otherwise leave __pycache__.
+sys.dont_write_bytecode = True
 
-# Exit codes, as the docstring states them (build specification §3e).
+HERE = os.path.dirname(os.path.abspath(__file__))
+# The folder of parts that, joined in the order PARTS gives, make the review questions.
+REVIEW_QUESTIONS = os.path.join(HERE, "..", "references", "questions")
+PART_SUFFIX = ".md"
+# The parts, in the order they are joined; no name carries a number, so this list alone sets the order. A folder
+# must hold exactly these parts.
+PARTS = (
+    "scales.md",
+    "which-apply.md",
+    "persona-checks.md",
+    "persona-ratings.md",
+    "instruction-writing.md",
+    "score.md",
+)
+
+# Exit codes, as the docstring states them.
 EXIT_OK = 0
 EXIT_REFUSED = 2
 
 CHECK, RATING = "check", "rating"
 SCRIPT, READING = "script", "reading"
 CHECK_KINDS = (SCRIPT, READING)
-# The branch keys the contract names, in the order a question's first reason is taken (§3e).
+# The branch keys the contract names, in the order a question's first reason is taken.
 BRANCH_KEYS = ("delegated", "harness", "settings")
 # The headings and table columns the contract names.
 SECTION_SUFFIX = " questions"
@@ -78,6 +102,9 @@ REASON_COLUMN = "Reason printed"
 
 CHECK_MARK = re.compile(r"^\*\*([^*]+)\*\* \(\*(script|reading)\*(?:, weight (\d+))?\)\.(?:\s|$)")
 RATING_MARK = re.compile(r"^\*\*([^*]+)\*\* \(\*([a-z]+)\*\)\.(?:\s|$)")
+# A rating's title alone on its line, and the scale model line under it; the scale is named in any case.
+RATING_TITLE = re.compile(r"^\*\*([^*]+)\*\*\s*$")
+SCALE_MODEL = re.compile(r"^\*Scale model:\* ([A-Za-z]+)\.(?:\s|$)")
 SCALE_HEADING = re.compile(r"^### (\w+) scale\s*$")
 # The band forms the contract lists: each gives (low, low included, high, high included) as percentages.
 BAND_FORMS = (
@@ -92,7 +119,7 @@ BAND_FORMS = (
 
 
 class ContractError(Exception):
-    """review-questions.md breaks the contract; the message names the line and what was expected."""
+    """The review questions break the contract; the message names the part file, its line and what was expected."""
 
     def __init__(self, name, line, problem, expected):
         self.line = line
@@ -106,7 +133,8 @@ class Question:
     kind: str  # 'script', 'reading' or 'rating'
     scale: str = None  # a rating's scale
     weight: int = 1  # a check's weight
-    line: int = 0
+    line: int = 0  # the line in its part file
+    file: str = ""  # the part file that holds it
 
 
 @dataclass
@@ -114,7 +142,8 @@ class Scale:
     name: str
     words: dict  # point -> word
     bands: list = None  # [(point, low, low included, high, high included)] for a share-based scale
-    line: int = 0
+    line: int = 0  # the line in its part file
+    file: str = ""  # the part file that holds it
 
     @property
     def top(self):
@@ -213,21 +242,66 @@ def _paragraph_starts(lines, start, end):
     return [i for i in range(start, end) if lines[i].strip() and (i == start or not lines[i - 1].strip())]
 
 
+def part_files(path=REVIEW_QUESTIONS):
+    """The part files in the folder at path, in the order PARTS gives. A part PARTS names that the folder lacks cannot
+    be read; a part the folder holds that PARTS does not name breaks the contract, so no part is left out unseen."""
+    for name in PARTS:
+        if not os.path.isfile(os.path.join(path, name)):
+            raise FileNotFoundError(errno.ENOENT, f"no part {name} in the folder", os.fspath(path))
+    extra = sorted(n for n in os.listdir(path) if n.endswith(PART_SUFFIX) and n not in PARTS)
+    if extra:
+        raise ContractError(extra[0], 1, "a part questions.py's list of parts does not name",
+                            f"only the parts {', '.join(PARTS)}")
+    return [os.path.join(path, n) for n in PARTS]
+
+
+def read_text(path=REVIEW_QUESTIONS):
+    """The review questions as one text, and for each of its lines the part file and line it came from.
+
+    A folder's parts are joined in the order PARTS gives: each stripped of leading and trailing newlines, one blank line between
+    them, a newline at the end. A single file is read as it stands. The blank line between two parts is placed just
+    after the earlier part's last line."""
+    if not os.path.isdir(path):
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        name = os.path.basename(os.fspath(path))
+        return text, [(name, n) for n in range(1, len(text.splitlines()) + 1)]
+    pieces, places = [], []
+    for part in part_files(path):
+        with open(part, encoding="utf-8") as fh:
+            raw = fh.read()
+        piece = raw.strip("\n")
+        name, lead = os.path.basename(part), len(raw) - len(raw.lstrip("\n"))
+        count = len(piece.split("\n"))
+        if pieces:
+            last_name, last_line = places[-1]
+            places.append((last_name, last_line + 1))
+        places.extend((name, lead + n) for n in range(1, count + 1))
+        pieces.append(piece)
+    return "\n\n".join(pieces) + "\n", places
+
+
 def load(path=REVIEW_QUESTIONS):
-    """Read review-questions.md under the contract; raise ContractError naming the line when it breaks it."""
-    name = os.path.basename(os.fspath(path))
-    with open(path, encoding="utf-8") as fh:
-        lines = fh.read().splitlines()
+    """Read the review questions under the contract; raise ContractError naming the part file and its line when they
+    break it."""
+    text, places = read_text(path)
+    lines = text.splitlines()
+
+    def at(index):
+        """The part file and line for a line index of the joined text."""
+        if not places:
+            return os.path.basename(os.fspath(path)), 1
+        return places[min(max(index, 0), len(places) - 1)]
 
     def fail(index, problem, expected):
-        raise ContractError(name, index + 1, problem, expected)
+        raise ContractError(*at(index), problem, expected)
 
     headings = [(i, l[3:].strip()) for i, l in enumerate(lines) if l.startswith("## ")]
     bounds = {h: (i, headings[k + 1][0] if k + 1 < len(headings) else len(lines)) for k, (i, h) in enumerate(headings)}
 
     # Scales.
     if SCALES_SECTION not in bounds:
-        raise ContractError(name, 1, f"no '## {SCALES_SECTION}' section", f"a '## {SCALES_SECTION}' section holding the scales")
+        fail(0, f"no '## {SCALES_SECTION}' section", f"a '## {SCALES_SECTION}' section holding the scales")
     s0, s1 = bounds[SCALES_SECTION]
     scales = {}
     for i in range(s0, s1):
@@ -262,10 +336,10 @@ def load(path=REVIEW_QUESTIONS):
                          "'more than none, below B%'")
         if not words:
             fail(hline - 1, f"the {scale_name} scale's table has no rows", "one row per point")
-        scales[scale_name] = Scale(scale_name, words, bands, i + 1)
+        scales[scale_name] = Scale(scale_name, words, bands, at(i)[1], at(i)[0])
 
     # Questions.
-    questions, sections, seen = [], [], {}
+    questions, sections, seen, index_of = [], [], {}, {}
     for h, (h0, h1) in bounds.items():
         if not h.endswith(SECTION_SUFFIX):
             continue
@@ -292,24 +366,34 @@ def load(path=REVIEW_QUESTIONS):
                 weight = int(m.group(3)) if m.group(3) else 1
                 if m.group(3) and weight < 2:
                     fail(i, f"the check '{m.group(1)}' is marked weight {weight}", "', weight N' only for a weight above 1")
-                q = Question(m.group(1), label, m.group(2), None, weight, i + 1)
+                q = Question(m.group(1), label, m.group(2), None, weight, at(i)[1], at(i)[0])
             else:
                 m = RATING_MARK.match(line)
-                if not m:
-                    fail(i, f"the rating '{line[:60]}' has no scale mark",
-                         "'**Title** (*scale*).', the scale one defined under '### <Name> scale'")
-                q = Question(m.group(1), label, RATING, m.group(2), 1, i + 1)
+                if m:
+                    title, scale = m.group(1), m.group(2)
+                else:
+                    m = RATING_TITLE.match(line)
+                    model = SCALE_MODEL.match(lines[i + 1]) if m and i + 1 < h1 else None
+                    if not model:
+                        fail(i, f"the rating '{line[:60]}' has no '*Scale model:*' line under its title",
+                             "the bold title alone on its line, then '*Scale model:* Name.', naming a scale defined "
+                             "under '### <Name> scale'")
+                    title, scale = m.group(1), model.group(1).lower()
+                q = Question(title, label, RATING, scale, 1, at(i)[1], at(i)[0])
             if q.title in seen:
-                fail(i, f"the title '{q.title}' is given twice (first at line {seen[q.title]})", "each question's title once")
-            seen[q.title] = i + 1
+                first_file, first_line = seen[q.title]
+                fail(i, f"the title '{q.title}' is given twice (first at {first_file}, line {first_line})",
+                     "each question's title once")
+            seen[q.title] = at(i)
+            index_of[q.title] = i
             questions.append(q)
     if not questions:
-        raise ContractError(name, 1, "no question section", "a '## … questions' section with '### Checks'")
+        fail(0, "no question section", "a '## … questions' section with '### Checks'")
     if questions[0].kind not in CHECK_KINDS:
-        fail(questions[0].line - 1, f"the first question, '{questions[0].title}', is a rating", "the root question to be a check")
+        fail(index_of[questions[0].title], f"the first question, '{questions[0].title}', is a rating", "the root question to be a check")
     for q in questions:
         if q.kind == RATING and q.scale not in scales:
-            fail(q.line - 1, f"the rating '{q.title}' names the scale '{q.scale}', which the file never defines",
+            fail(index_of[q.title], f"the rating '{q.title}' names the scale '{q.scale}', which the file never defines",
                  f"one of the scales defined under '## {SCALES_SECTION}': {', '.join(sorted(scales))}")
     for label in sections:
         if not any(q.section == label for q in questions):
@@ -319,7 +403,7 @@ def load(path=REVIEW_QUESTIONS):
 
     # The tables of what applies.
     if APPLY_SECTION not in bounds:
-        raise ContractError(name, 1, f"no '## {APPLY_SECTION}' section", "the section holding the branch table")
+        fail(0, f"no '## {APPLY_SECTION}' section", "the section holding the branch table")
     a0, a1 = bounds[APPLY_SECTION]
     found = {}
     for hline, header, rows in _tables(lines, a0, a1):
@@ -350,7 +434,7 @@ def load(path=REVIEW_QUESTIONS):
         return title
 
     if "branches" not in found:
-        raise ContractError(name, a0 + 1, "no branch table", f"a table with the columns {', '.join(BRANCH_COLUMNS)}")
+        fail(a0, "no branch table", f"a table with the columns {', '.join(BRANCH_COLUMNS)}")
     branches = {}
     for rline, cells in found["branches"]:
         key = cells[0]
@@ -393,9 +477,16 @@ def load(path=REVIEW_QUESTIONS):
 _CACHE = {}
 
 
+def _stamp(path):
+    """The modification times that tell whether the questions at path have changed: each part's, for a folder."""
+    if not os.path.isdir(path):
+        return (os.path.getmtime(path),)
+    return tuple((p, os.path.getmtime(p)) for p in part_files(path))
+
+
 def load_cached(path=REVIEW_QUESTIONS):
-    """load(), once per path and modification time in one run."""
-    key = (os.path.abspath(path), os.path.getmtime(path))
+    """load(), once per path and modification times in one run."""
+    key = (os.path.abspath(path), _stamp(path))
     if key not in _CACHE:
         _CACHE[key] = load(path)
     return _CACHE[key]
@@ -407,7 +498,7 @@ def as_dict(qs):
         "root": qs.root,
         "questions": [
             {"title": q.title, "section": q.section, "kind": q.kind, "scale": q.scale, "weight": q.weight,
-             "points": qs.points(q.title), "line": q.line}
+             "points": qs.points(q.title), "file": q.file, "line": q.line}
             for q in qs.questions
         ],
         "scales": {
@@ -442,7 +533,7 @@ def main(argv):
         paths.append(argv[i])
         i += 1
     if len(paths) > 1:
-        print("questions.py: name one file, or none for references/review-questions.md", file=sys.stderr)
+        print("questions.py: name one folder of parts or one file, or none for references/questions/", file=sys.stderr)
         return EXIT_REFUSED
     path = paths[0] if paths else REVIEW_QUESTIONS
     try:

@@ -1,7 +1,7 @@
 # persona-judge
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.0-green.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20CLI-lightgrey.svg)
 ![Format](https://img.shields.io/badge/format-Agent%20Skill-green.svg)
 
@@ -25,10 +25,11 @@ behave:
 - **Standing instructions bind weakly.** Under long policy documents, the best agent passed 36.2% of trials. Agents
   also 'report compliance they did not achieve' (Panavas et al. 2026).
 - **A total alone predicts little.** While this skill was built, two versions of one persona scored one point apart
-  on a skill rubric. Blind judges still preferred the same version in every pair.
+  on a skill rubric. Blind judges still preferred the same version in every pair run on Claude Code.
+  [`evidence.md`](evidence.md) summarises that record: how it was gathered, what it found and where it falls short.
 
-So *persona-judge* quotes every line that lowered the score: the stars summarise, and the lines show what to act on. The full sources, with the date each was read, are in
-`skill/references/bibliography.md`.
+So *persona-judge* quotes every line that lowered the score: the stars summarise, and the lines show what to act on. The
+full sources, with the date each was read, are in `skill/references/sources.md`.
 
 ## How the reviewer scores
 
@@ -57,14 +58,15 @@ what the file says:
 - a setting that permits what the prose forbids, because the harness enforces the setting; and
 - a must-always rule left to prose with no hook or setting behind it, because a rule left to prose binds weakly.
 
-Each weight rests on vendor guidance or a published study, cited in `skill/references/bibliography.md`. Research on
-scoring finds equal weights a sound default, and different weights defensible only where their reason is stated, so the
-report also gives the total at equal weights. Two other faults that can break an agent, a pointer to a file with no word
-on when to read it and a reliance on context the agent never sees, count 1 until a study measures their effect.
+Each weight rests on vendor guidance or a published study, cited in `skill/references/grounding.md`.
+Research on scoring finds equal weights a sound default, and different weights defensible only where their reason is
+stated, so the report also gives the total at equal weights. Two other faults that can break an agent, a pointer to a
+file with no word on when to read it and a reliance on context the agent never sees, count 1 until a study measures
+their effect.
 
 **Measured against the vendors' own definitions.** Anthropic, OpenAI, Google and GitHub each describe what a persona
 has: its own instructions, tools, permissions and context, a description that decides when it is chosen, and a result
-it returns. The bibliography maps each of these to the questions that ask about it.
+it returns. `skill/references/vendor-terms.md` maps each of these to the questions that ask about it.
 
 ## Scoring well
 
@@ -108,7 +110,30 @@ Every line that works against the agent costs marks. A file loses them for:
 - praise in place of an identity, such as 'You are a world-class expert'; and
 - a description that names a role and no task, such as 'A helpful reviewer'.
 
-The full questions, their scales and the scoring formula are in `skill/references/review-questions.md`.
+The full questions, their scales and the scoring formula are in
+`skill/references/questions/`.
+
+## How it differs from other persona checks
+
+Linters for agent instruction files check form: front matter, length, token budget, references to files that do not
+exist, duplicated text, contradictory 'always' and 'never' lines, and secrets. AgentLinter, agenteval's lint rules,
+cclint and prompt-lint are examples. Claude Code's `/doctor prompt-audit` looks for instructions written for older
+models, references to files or commands that do not exist, and files that contradict each other, and proposes edits.
+
+*Persona-judge* checks those faults too, without a model, and then reviews what a linter cannot read:
+
+- where each rule the persona applies in every act sits: in the text the agent loads, or only in a file it points to;
+- whether each pointer says when to read its file;
+- whether the description tells the harness when to choose the agent;
+- whether the settings the harness enforces agree with the prose, such as a persona told never to edit files whose
+  tool list includes an editing tool;
+- whether the persona's remit fits the other personas beside it, reported apart from the score; and
+- the persona as a whole: its main file and every file it loads.
+
+It scores each persona out of the points that apply, by a formula the report states, quotes every line that lowered
+the score and names the source behind each question. It runs in its own agent, changes no file and proposes no
+wording, so the review stays separate from the next draft. In a survey of public tools made on 30 September 2026, none
+checked where a persona's rules sit, and none was a judge of personas rather than a linter of files.
 
 ## Other tools
 
@@ -121,8 +146,9 @@ The full questions, their scales and the scoring formula are in `skill/reference
 - a run of the agent on a real task, for how it behaves; and
 - you, for the next draft, since *persona-judge* offers no wording of its own.
 
-`skill/references/definitions.md` sets out what each term means, the theatre picture the terms come from, and each
-neighbour of a persona with where its review belongs.
+`skill/references/persona-boundaries.md` sets out what each term means in a review, and how to tell a
+persona from each neighbour. [`definitions.md`](definitions.md), beside this file, sets the terms in an analogy from the
+Greek theatre, with the sense of each Greek word.
 
 ## Sample review
 
@@ -140,17 +166,40 @@ quoted with its question. Last come the yes or no for every check and the points
 
 ## Install
 
-```bash
-./setup.sh --dry-run   # show what would change
-./setup.sh             # link into Claude Code, Codex and Gemini, where installed
+The skill's scripts need Python 3.11 or later, run as `python3`, and nothing beyond its standard library. Check with
+`python3 --version`. On Windows, the Microsoft Store's Python provides `python3`; the python.org installer provides
+`py` and `python` only, so add `python3` to the path or use the Store's Python.
+
+**Claude Code, as a plugin.** The plugin installs the skill and the reviewer as an agent whose tools Claude Code
+enforces, with a hook that lets the reviewer's shell run only the skill's scripts:
+
+```text
+/plugin marketplace add camparkr/skills
+/plugin install persona-judge@camparkr-skills
 ```
 
-On Windows, for Claude Code, run `powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun`, then run the
-command again without `-DryRun`. Neither script overwrites anything. `--uninstall` (`-Uninstall` on Windows) removes
-only the links the script made.
+**Codex and Gemini CLI, or Claude Code without the plugin.** From this folder:
+
+```bash
+./setup.sh --dry-run   # show what would change
+./setup.sh             # link the skill, and for Codex and Gemini CLI the reviewer agent, where each is installed
+```
+
+Codex runs the reviewer agent in a read-only sandbox, unless the session that starts it runs with `--yolo` or a wider
+`/permissions` setting, which Codex applies to the agent too. Gemini CLI gives it read, list, search and shell tools and
+none that writes a file. For Gemini CLI, `setup.sh` also installs a policy file,
+`~/.gemini/policies/persona-judge.toml`, that lets the reviewer agent's shell run only `python3 --version` and the
+skill's scripts, and refuses its other commands, in YOLO mode too; Gemini CLI reads policy files only from that folder,
+not from a project. The policy refuses `<` and `>` in a command, apart from the opening of the one heredoc that passes a
+record, so in Gemini CLI save pasted text that holds them to a file and name the file. On Windows, for Claude Code, run
+`powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun`, then run the command again without `-DryRun`. Neither
+script overwrites a file it did not make; `setup.sh` refreshes its own policy file when the skill moves. `--uninstall`
+(`-Uninstall` on Windows) removes only the links and the policy file the script made.
 
 ## Use
 
 Ask your agent to review its instructions, or type `/persona-judge`. It reviews every persona file in the project. To
-review less, name files or folders, or paste instruction text into the session. Each review runs in a subagent
-briefed with `skill/agents/reviewer.md`, so your session's own instructions stay out of it.
+review less, name files or folders, or paste instruction text into the session. Each review runs in its own agent:
+the installed reviewer where there is one, or a subagent briefed with `skill/reviewer.md`, so your
+session's own instructions stay out of it. Only the installed reviewer has a setting that stops it changing a file;
+a subagent briefed with `reviewer.md` holds to that rule by its instructions alone, and the skill tells you so.

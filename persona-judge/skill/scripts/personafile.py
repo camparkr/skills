@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 SESSION_TEXT = "<session text>"
 
 # Bound parts: the settings and named code a harness applies, as the union of the fields recorded for
-# Claude Code, Gemini CLI and Codex (persona synthesis, conclusion 3; build specification §3a).
+# Claude Code, Gemini CLI and Codex.
 BOUND_PART_FIELDS = (
     "tools",
     "disallowedTools",
@@ -36,11 +36,10 @@ BOUND_PART_FIELDS = (
 TOML_PROSE_FIELD = "developer_instructions"
 
 # A path a line names: in backticks, or as a Markdown link's target, ending in a file extension of one to
-# five letters or digits (build specification §3c, the missing-path kind).
+# five letters or digits. The missing-path check reads these.
 BACKTICK_PATH = re.compile(r"`([^`\s]+\.[A-Za-z0-9]{1,5})`")
 LINK_PATH = re.compile(r"\]\(([^)\s#]+\.[A-Za-z0-9]{1,5})(?:#[^)]*)?\)")
-# Characters that make a backticked string a pattern, a placeholder or an address rather than a path
-# (build specification §3e, adopted from round 1).
+# Characters that make a backticked string a pattern, a placeholder or an address rather than a path.
 NOT_A_PATH = re.compile(r"[*?<>{}$|]|://|^mailto:")
 # The line that opens or closes a fenced code block; what lies between is an example, not an instruction.
 FENCE = re.compile(r"^\s*(```|~~~)")
@@ -63,14 +62,15 @@ def outside_fences(body):
             yield n, text
 
 
-# The mask (build specification §3c, ruling of 3 October 2026): quoted and example text is not the file's own
+# The mask: quoted and example text is not the file's own
 # instruction. Fenced code, Markdown block quotes and quoted spans are replaced by spaces before any check reads
 # the body, so every line keeps its number and its length.
 BLOCK_QUOTE = re.compile(r"^\s*>")
 # A list item starts a new paragraph: a bullet or a number, then a space.
 LIST_ITEM = re.compile(r"^\s*([-*+]|\d+[.)])\s")
 # Opening marks and, for each, the marks that close it: single marks first, since Australian English quotes with
-# single marks and keeps double marks for a quotation within a quotation (QUOT-001, QUOT-002).
+# single marks and keeps double marks for a quotation within a quotation (the Australian English Writing Skill's
+# rules QUOT-001 and QUOT-002, github.com/australian-english/aus-english-writing-skill).
 OPENING = {"'": "'’", "‘": "'’", '"': '"”', "“": '"”'}
 # What may stand before an opening mark, and after a closing one, besides a space or the paragraph's edge.
 BEFORE_OPENING = "([:"
@@ -152,8 +152,9 @@ def masked_body(pf):
     return list(zip([n for n, _ in pf.body], lines))
 
 
-# A sentence tells the agent to read a path only when a read verb in it is addressed to the agent as an instruction
-# (specification §3c, ruling of 3 October 2026, option 2). The verbs, in their base form only.
+# A sentence tells the agent to read a path only when a read verb in it is addressed to the agent as an
+# instruction; a verb that only describes, as in 'the agent reads the log', makes no pointer. The verbs, in their
+# base form only.
 BASE_VERBS = ("read", "open", "load", "see", "consult", "follow", "refer", "look")
 # After 'you have' or "you've", the past participle counts instead.
 PARTICIPLES = ("read", "opened", "loaded", "seen", "consulted", "followed", "referred", "looked")
@@ -167,13 +168,13 @@ MODALS = ("must", "should", "can", "may", "will", "do", "need to", "have to", "o
 _SENTENCE_MARKER = re.compile(r"^([-*+]|\d+\.)\s+")
 _EMPHASIS = "*_"
 # The opening of a Markdown link, skipped before a sentence's first word: '[Read the guide](guide.md)' counts, its
-# target being the pointer (ruling of 3 October 2026).
+# target being the pointer.
 _LINK_OPEN = "["
-# 'Open' followed by one of these is an adjective, as in 'Open source code', not an instruction (ruling of
-# 3 October 2026); 'Open-source' already fails the word boundary.
+# 'Open' followed by one of these is an adjective, as in 'Open source code', not an instruction;
+# 'Open-source' already fails the word boundary.
 _OPEN_ADJECTIVE = re.compile(r"^open\s+(?:source|sourced)\b", re.IGNORECASE)
-# 'You' counts only where it opens a clause: first in the sentence, or after a comma or one of these words
-# (ruling of 3 October 2026).
+# 'You' counts only where it opens a clause, so 'the files you read' is no instruction: first in the sentence, or
+# after a comma or one of these words.
 CLAUSE_WORDS = ("before", "after", "when", "whenever", "once", "if", "until", "while", "as soon as", "and", "then")
 _CLAUSE_END = re.compile(r"(?:,|\b(?:" + "|".join(w.replace(" ", r"\s+") for w in CLAUSE_WORDS) + r"))\s*$", re.IGNORECASE)
 _LEADING = re.compile(r"^(?:" + "|".join(LEADING_WORDS) + r")\b,?\s*", re.IGNORECASE)
@@ -251,7 +252,7 @@ def addressed(sentence):
 
 
 def _paths_in(text):
-    """(offset, path) for each path in text, in backticks or as a link target, as §3c shapes a pointer."""
+    """(offset, path) for each path in text, in backticks or as a link target: the shapes a pointer takes."""
     found = []
     for m in BACKTICKED.finditer(text):
         ref = m.group(1)
@@ -304,7 +305,7 @@ def pointers(pf):
 
 def resolve_up(ref, folder, root):
     """The absolute path a pointer names when it exists in the file's folder or any folder above it, up to the
-    project root (specification §3c); otherwise None."""
+    project root; otherwise None."""
     ref = ref[2:] if ref.startswith("./") else ref
     if ref.startswith("~"):
         found = os.path.expanduser(ref)

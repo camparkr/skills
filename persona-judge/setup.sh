@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# setup.sh — link the persona-judge skill into each agent harness on this machine.
+# setup.sh links the persona-judge skill, and the reviewer's agent file for Codex and Gemini CLI, into each harness,
+# and installs the Gemini CLI policy that limits the reviewer's shell.
 # Safe to run twice. Usage: setup.sh [--dry-run] [--uninstall] [--harness claude|codex|gemini]
 # Gemini asks for consent, so run from a terminal, or pass --harness claude or codex when unattended.
 
@@ -17,19 +18,28 @@ while [ $# -gt 0 ]; do
 			shift
 			case "$ONLY" in claude|codex|gemini) ;; *) echo "--harness takes claude, codex or gemini" >&2; exit 2 ;; esac
 			;;
-		-h|--help) sed -n '2,4p' "$0"; exit 0 ;;
+		-h|--help) sed -n '2,5p' "$0"; exit 0 ;;
 		*) echo "Unknown option: $1" >&2; exit 2 ;;
 	esac
 	shift
 done
 
-# The skill folder is skill/, beside this script at the repository root.
+# The skill folder is skill/, beside this script at the plugin root.
 SKILL_DIR="$(cd "$(dirname "$0")/skill" 2>/dev/null && pwd -P)" || SKILL_DIR="$(dirname "$0")/skill"
 if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
 	echo "No SKILL.md in $SKILL_DIR; run this script from the repository root it came with." >&2
 	exit 1
 fi
 NAME="persona-judge"
+# The generated agent files for Codex and Gemini CLI; Claude Code gets its agent from the plugin instead.
+ROOT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)"
+CODEX_AGENT="$ROOT_DIR/plugin/harness-agents/codex/$NAME-reviewer.toml"
+GEMINI_AGENT="$ROOT_DIR/plugin/harness-agents/gemini/$NAME-reviewer.md"
+# The Gemini CLI policy, with a placeholder for the skill folder's paths that install_policy fills.
+GEMINI_POLICY="$ROOT_DIR/plugin/harness-agents/gemini/$NAME.toml"
+POLICY_PLACEHOLDER="@SKILL_DIRS@"
+# The first line of every policy file this script writes; a file without it is someone else's and is left alone.
+POLICY_MARK="# Installed by persona-judge's setup.sh; setup.sh --uninstall removes this file."
 case "$SKILL_DIR" in
 	/tmp/*|/private/tmp/*|/var/folders/*)
 		echo "Warning: $SKILL_DIR is a temporary folder; the links break when it is cleared. Run this from a permanent clone." >&2 ;;
@@ -80,6 +90,107 @@ handle() {
 	fi
 }
 
+# Handle one agent file link. $1 label, $2 link path, $3 the generated file it points to.
+# The link is ours only when it points at exactly that file; anything else at the path is left alone.
+handle_file() {
+	local label="$1" link="$2" target="$3"
+	echo "$label: $link"
+	if [ "$UNINSTALL" -eq 1 ]; then
+		if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
+			run rm "$link"
+			RESULTS+=("$label: link ${WOULD}removed")
+		elif [ -e "$link" ] || [ -L "$link" ]; then
+			echo "  left alone: it is not a link to this skill's agent file"
+			RESULTS+=("$label: not ours, left alone")
+		else
+			RESULTS+=("$label: nothing to remove")
+		fi
+		return
+	fi
+	if [ ! -f "$target" ]; then
+		RESULTS+=("$label: no generated file at $target, skipped")
+	elif [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
+		RESULTS+=("$label: already linked, left as is")
+	elif [ -e "$link" ] || [ -L "$link" ]; then
+		echo "  stopped: something else is at this path:"
+		echo "    $(ls -ld "$link")"
+		RESULTS+=("$label: STOPPED, path occupied (see above)")
+	else
+		run mkdir -p "$(dirname "$link")"
+		run ln -s "$target" "$link"
+		RESULTS+=("$label: ${WOULD}linked")
+	fi
+}
+
+# A path as a literal in a regular expression: each character the expression would read as syntax gets a backslash.
+regex_literal() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
+
+# The policy text, with every placeholder replaced by $1. Bash's own replacement would read & and \ in $1, so the
+# text is cut at each placeholder instead.
+fill_policy() {
+	local rest out="" group="$1"
+	rest="$(cat "$GEMINI_POLICY")"
+	while [[ "$rest" == *"$POLICY_PLACEHOLDER"* ]]; do
+		out+="${rest%%"$POLICY_PLACEHOLDER"*}$group"
+		rest="${rest#*"$POLICY_PLACEHOLDER"}"
+	done
+	printf '%s\n%s%s\n' "$POLICY_MARK" "$out" "$rest"
+}
+
+# Install, or with --uninstall remove, the Gemini CLI policy at $1, for the skill linked at $2.
+# Gemini CLI reads policy files only from ~/.gemini/policies/, so the file goes there. Its patterns name the skill
+# folder by both the link Gemini CLI uses and the folder it points to, because the reviewer may be given either.
+install_policy() {
+	local label="Gemini CLI policy" policy="$1" link="$2" group text
+	echo "$label: $policy"
+	if [ "$UNINSTALL" -eq 1 ]; then
+		if [ -f "$policy" ] && [ ! -L "$policy" ] && [ "$(head -n 1 "$policy")" = "$POLICY_MARK" ]; then
+			run rm "$policy"
+			RESULTS+=("$label: file ${WOULD}removed")
+		elif [ -e "$policy" ] || [ -L "$policy" ]; then
+			echo "  left alone: this script did not write it"
+			RESULTS+=("$label: not ours, left alone")
+		else
+			RESULTS+=("$label: nothing to remove")
+		fi
+		return
+	fi
+	if [ ! -f "$GEMINI_POLICY" ]; then
+		RESULTS+=("$label: no policy file at $GEMINI_POLICY, skipped")
+		return
+	fi
+	# A quote, a backslash, a space or a control character in a path cannot be matched as the reviewer types it.
+	case "$SKILL_DIR$link" in
+		*[\'\"\\\ ]*|*[[:cntrl:]]*)
+			echo "  stopped: the skill's path holds a quote, a backslash, a space or a control character"
+			RESULTS+=("$label: STOPPED, path not supported (see above)")
+			return ;;
+	esac
+	group="($(regex_literal "$link")|$(regex_literal "$SKILL_DIR"))"
+	text="$(fill_policy "$group")"
+	if [ -f "$policy" ] && [ ! -L "$policy" ] && [ "$(head -n 1 "$policy")" = "$POLICY_MARK" ]; then
+		if [ "$(cat "$policy")" = "$text" ]; then
+			RESULTS+=("$label: already installed, left as is")
+			return
+		fi
+		RESULTS+=("$label: ${WOULD}refreshed")
+	elif [ -e "$policy" ] || [ -L "$policy" ]; then
+		echo "  stopped: something else is at this path:"
+		echo "    $(ls -ld "$policy")"
+		RESULTS+=("$label: STOPPED, path occupied (see above)")
+		return
+	else
+		RESULTS+=("$label: ${WOULD}installed")
+	fi
+	if [ "$DRY_RUN" -eq 1 ]; then
+		echo "  would write:"
+		printf '%s\n' "$text" | sed 's/^/    /'
+	else
+		mkdir -p "$(dirname "$policy")"
+		printf '%s\n' "$text" > "$policy"
+	fi
+}
+
 wanted() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
 
 if wanted claude; then
@@ -94,6 +205,7 @@ if wanted codex; then
 	CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
 	if command -v codex >/dev/null 2>&1 || [ -d "$CODEX_DIR" ]; then
 		handle "Codex CLI" "$CODEX_DIR/skills/$NAME" "" ""
+		handle_file "Codex CLI agent" "$CODEX_DIR/agents/$NAME-reviewer.toml" "$CODEX_AGENT"
 	else
 		RESULTS+=("Codex CLI: not installed, skipped")
 	fi
@@ -104,6 +216,8 @@ if wanted gemini; then
 	# so run this script from a terminal; unattended, it waits for an answer.
 	if command -v gemini >/dev/null 2>&1; then
 		handle "Gemini CLI" "$HOME/.gemini/skills/$NAME" "gemini skills link" "gemini skills uninstall $NAME"
+		handle_file "Gemini CLI agent" "$HOME/.gemini/agents/$NAME-reviewer.md" "$GEMINI_AGENT"
+		install_policy "$HOME/.gemini/policies/$NAME.toml" "$HOME/.gemini/skills/$NAME"
 	else
 		RESULTS+=("Gemini CLI: not installed, skipped")
 	fi

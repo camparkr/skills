@@ -11,29 +11,32 @@ Usage:
 
 '-' in place of a file reads standard input.
 
-Every question, weight, scale and count comes from review-questions.md, read at run time by questions.py; this
-script holds none. A file that breaks the questions' markup contract stops it with exit 2, naming the line.
+Every question, weight, scale and count comes from the review questions in references/questions/, read at run time by
+questions.py; this script holds none. Questions that break their markup contract stop it with exit 2, naming the
+part file and its line.
 
-The reviewer writes its answers as a review record, one JSON file in the system's temporary folder and never
-inside the reviewed project. 'validate' reads the files the record names, the review questions, the check table
-and the bibliography's grounding table, and lists each fault with the file, the question, the finding's number,
+The reviewer writes its answers as a review record and passes it on standard input with '-', so a review
+writes no file; a path to a record file also works. 'validate' reads the files the record names, the review questions, the check table
+and the grounding table in grounding.md, and lists each fault with the file, the question, the finding's number,
 the field, what is wrong and the fix. Fix the record and run 'validate' again until it exits 0, at most 3
 reruns; past that the fault is in the review, not the record, so return the last messages and no report. Then
-run 'render', which validates again before it prints anything, and delete the record.
+run 'render', which validates again before it prints anything.
 
-The root question, the first check of review-questions.md, is answered first. A file scoring 0 on it is set
+The root question, the first check of the review questions, is answered first. A file scoring 0 on it is set
 aside, with the line behind it, and answers nothing else. A file find.py sets aside is given as set_aside, with
 no answers. Each persona gives its three branches as find.py prints them, which validate checks against the
-files. A question does not apply only for a reason review-questions.md's tables give: a branch at no, a harness
+files. A question does not apply only for a reason the review questions' tables give: a branch at no, a harness
 exception, a following rating whose check scored 0, or a content test whose subject the file does not hold. Mark
 such a question with does_not_apply and that reason, or leave it out where the branches, the rows or the
 exception decide it; answer every question that applies. For a content-test question, give the subject line that
-holds what it tests for, or mark it as not applying.
+holds what it tests for, or mark it as not applying. Give each persona a fit entry, because every report carries
+one: a finding on how its remit sits with the nearby files, or a statement that nothing was found.
 
 The script, not the reviewer, sets each check marked script from check.py's rows on every file of the persona (a
-script check that applies and that no row reaches scores 1), sets each frequency rating's point from its places,
+script check that applies and that no row reaches scores 1; a field-missing row, such as the one behind 'Declares
+its tools', runs on the persona's main file only, since a file it loads holds no front matter), sets each frequency rating's point from its places,
 computes the subtotals, the total, the total at equal weights and the stars, prints each finding's sources from the
-bibliography's grounding table and prints the report. The formula, from the review questions: each check counts
+grounding table in grounding.md and prints the report. The formula, from the review questions: each check counts
 its weight or 0, and each rating its point; the points possible are every check's weight and every rating scale's
 top point; a question that does not apply leaves both x and y; each section's subtotal is x out of y; the two add
 to the total; the stars are x divided by y, times 5, rounded to the nearest half star, a half rounding up.
@@ -44,7 +47,7 @@ subtotal; the persona, its kind, its branches and the files reviewed and left ou
 each with its reason, and, when more than half the points possible do not apply, a line saying the file says
 little; the lines that lowered the score, each with its file, line, question, note, rule and
 sources; each section's checks as 'yes' with the weight or 'no 0' and its ratings as their point with the word;
-the fit with neighbouring files, when the record gives it; the formula with the weights; the total at equal
+the fit with neighbouring files; the formula with the weights; the total at equal
 weights; the stars line; and the closing lines. A file set aside prints its path, 'set aside' and the reason.
 
 Exit codes:
@@ -54,7 +57,7 @@ Exit codes:
   verify    0 every printed subtotal, total and star line matches its checks and ratings, and the thin-file line
             is printed exactly when more than half the points possible do not apply; 1 one or more do
             not, each named; 2 the report cannot be parsed
-  any       2 review-questions.md breaks its markup contract, naming the line
+  any       2 the review questions break their markup contract, naming the part file and its line
 This script changes no file.
 """
 
@@ -65,6 +68,8 @@ import re
 import sys
 from fractions import Fraction
 
+# Write no bytecode beside the scripts: a review changes no file, and an import would otherwise leave __pycache__.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check  # noqa: E402
 import find  # noqa: E402
@@ -73,16 +78,19 @@ import questions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REFERENCES = os.path.join(HERE, "..", "references")
-REVIEW_QUESTIONS = os.path.join(REFERENCES, "review-questions.md")
-BIBLIOGRAPHY = os.path.join(REFERENCES, "bibliography.md")
+# The folder of parts questions.py joins into the review questions.
+REVIEW_QUESTIONS = os.path.join(REFERENCES, "questions")
+# The file whose table names each question's sources, under GROUNDING_SECTION.
+GROUNDING = os.path.join(REFERENCES, "grounding.md")
+GROUNDING_SECTION = "Each question's support"
 
-# Exit codes, as the docstring states them (build specification §3e).
+# Exit codes, as the docstring states them.
 EXIT_OK = 0
 EXIT_MISMATCH = 1
 EXIT_REFUSED = 2
 EXIT_NO_SCORE = 3
 
-# Past three reruns of validate, a fault is in the review, not the record (build specification §3e).
+# Past three reruns of validate, a fault is in the review, not the record, so the caller stops rerunning.
 MAX_VALIDATE_RERUNS = 3
 
 SCRIPT, READING, RATING = questions.SCRIPT, questions.READING, questions.RATING
@@ -94,7 +102,7 @@ EQUAL_WEIGHT = 1
 # places: U+2605 for a full star, U+00BD for a half and U+2606 for an empty place.
 STAR_PLACES = 5
 FULL_STAR, HALF_STAR, EMPTY_STAR = "★", "½", "☆"
-# The formula line shows x / y * 5 to two places (build specification §3e, item 9).
+# The formula line shows x / y * 5 to two places, so a reader can check the stars by hand.
 FORMULA_PLACES = 2
 # Three spaces between the longest question title and its answer, so the answers align in one column.
 COLUMN_GAP = 3
@@ -120,17 +128,23 @@ DO_NOT_APPLY_HEADING = "Do not apply:"
 DO_NOT_APPLY_NONE = "Do not apply: none."
 DOES_NOT_APPLY = "does not apply"
 # Printed under 'Do not apply' when the points that do not apply exceed THIN_SHARE of the points possible, which
-# the file derives; the share is the ruling's, not a count of questions or points (ruling of 4 October 2026).
+# the file derives. The share is a fixed half, never a count of questions or points, so it holds when the file
+# gains or loses a question.
 THIN_LINE = "Most questions do not apply: this file says little, and the score covers only what it says."
 THIN_SHARE = Fraction(1, 2)
 BRANCHES_PREFIX = "Branches: "
 NO_TOTAL = "no stars and no total"
-# A question with no sources in the grounding table rests on the reading alone (build specification §3e).
+# A question with no sources in the grounding table rests on the reading alone.
 NO_SOURCES = "none"
 NO_SOURCES_LINE = "Sources: none, reading alone"
-# The record's key for a question that does not apply, and the keys round 3 used, now refused.
+# The record's key for a question that does not apply, and the keys earlier versions used, now refused.
 DNA_KEY = "does_not_apply"
 OLD_KEYS = ("not_scored", "not_rated")
+# What validate asks for when a persona entry has no fit.
+FIT_MISSING = (
+    "fit: missing; every report carries a fit entry; add a finding on how its remit sits with the nearby files, or "
+    "a statement that nothing was found"
+)
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -175,15 +189,17 @@ def weights_phrase(qs):
 
 
 # ---------------------------------------------------------------------------------------------------
-# The bibliography
+# The grounding table
 
 
-def load_grounding(path=BIBLIOGRAPHY):
-    """bibliography.md's grounding table as {question: its sources cell}, such as 'AN1, GH1' or 'none'."""
-    text = open(path, encoding="utf-8").read()
-    m = re.search(r"^## Grounding\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+def load_grounding(path=GROUNDING):
+    """grounding.md's table of each question's support as {question: its sources cell}, such as 'AN1, GH1' or
+    'none'."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    m = re.search(rf"^## {re.escape(GROUNDING_SECTION)}\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     if not m:
-        raise ValueError("bibliography.md has no '## Grounding' section; no finding's sources can be printed")
+        raise ValueError(f"grounding.md has no '## {GROUNDING_SECTION}' section; no finding's sources can be printed")
     out, header = {}, None
     for line in m.group(1).splitlines():
         if not line.startswith("|") or re.match(r"^\|[\s|:-]+\|$", line):
@@ -196,7 +212,7 @@ def load_grounding(path=BIBLIOGRAPHY):
         if row.get("Question") and "Sources" in row:
             out[row["Question"]] = row["Sources"]
     if not out:
-        raise ValueError("bibliography.md's grounding table has no rows; no finding's sources can be printed")
+        raise ValueError("grounding.md's table of each question's support has no rows; no finding's sources can be printed")
     return out
 
 
@@ -317,10 +333,16 @@ def finding(p, title, where, item, faults):
     }
 
 
+def read_file(path):
+    """The text of the file at path, closing the file once it is read."""
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
 def load_record(arg):
     """Read a record from a path or '-'. Return (record, faults)."""
     try:
-        raw = sys.stdin.read() if arg == "-" else open(arg, encoding="utf-8").read()
+        raw = sys.stdin.read() if arg == "-" else read_file(arg)
     except OSError as exc:
         return None, [f"cannot read {arg}: {exc.strerror}; check the path"]
     if not raw.strip():
@@ -467,7 +489,7 @@ def validate(record, table, grounding, qs=None):
             title = q.get("question")
             if title not in qs.by_title:
                 faults.append(
-                    f"{path}, '{title}', question: is not a question in review-questions.md; "
+                    f"{path}, '{title}', question: is not one of the review questions; "
                     f"use one of its bold titles word for word"
                 )
                 continue
@@ -478,22 +500,27 @@ def validate(record, table, grounding, qs=None):
             if old:
                 faults.append(
                     f"{path}, '{title}', {old[0]}: refused; a question that does not apply is marked {DNA_KEY} with a "
-                    f"reason review-questions.md gives, and every other question is answered"
+                    f"reason the review questions give, and every other question is answered"
                 )
                 continue
             answers[title] = q
         if not root_answer(p, answers, faults):
             continue
+        if p.fit is None:
+            faults.append(f"{path}, {FIT_MISSING}")
         check_branches(p, entry, faults)
         rows = []
         for shown, f in p.files.items():
-            rows += check.check_one(shown, f, p.header["kind"], p.header["delegated"], p.header.get("harness"), table, top)
+            # A field the persona declares lives in its main file's front matter; a file it loads has none, so
+            # check.py runs a field-missing row on the main file only, as it does for a persona the list names.
+            rows += check.check_one(shown, f, p.header["kind"], p.header["delegated"], p.header.get("harness"), table, top,
+                                    main=shown == path)
         resolved = {}
         # Checks first, so a rating that follows a check can read its score.
         for q in sorted(qs.questions, key=lambda q: q.kind == RATING):
             if q.title not in grounding:
                 faults.append(
-                    f"{path}, '{q.title}', question: bibliography.md's grounding table does not hold it, so its "
+                    f"{path}, '{q.title}', question: grounding.md's table of each question's support does not hold it, so its "
                     f"sources cannot be printed; the grounding table needs a row for it"
                 )
             own_rows = [r for r in rows if r["question"] == q.title]
@@ -586,7 +613,7 @@ def resolve(p, q, answer, rows, resolved, faults):
             )
         elif given_dna is not None and given_dna != reason:
             faults.append(
-                f"{path}, '{title}', {DNA_KEY}: '{given_dna}', but review-questions.md gives '{reason}' here; "
+                f"{path}, '{title}', {DNA_KEY}: '{given_dna}', but the review questions give '{reason}' here; "
                 f"give that reason"
             )
         out[DNA_KEY] = reason
@@ -691,7 +718,7 @@ def resolve(p, q, answer, rows, resolved, faults):
 
 def resolve_script(p, out, answer, rows, faults):
     """A check marked script takes its score from check.py's rows alone, on every file of the persona; one that
-    applies and that no row reaches scores 1, since nothing contradicts it (build specification §3d, §3e)."""
+    applies and that no row reaches scores 1, since nothing contradicts it."""
     path, title = p.path, out["title"]
     scored = [r for r in rows if r["score"] is not None]
     zero = [r for r in scored if r["score"] == check.ZERO]
@@ -1076,7 +1103,7 @@ def verify(text, qs=None):
         parts = {s: recompute(qs, rows[s]) for s in sections}
         equal = {s: recompute(qs, rows[s], equal=True) for s in sections}
         if not all(parts.values()):
-            differ(f"{path}: a check prints a weight other than the one review-questions.md gives it, or a rating's top point differs")
+            differ(f"{path}: a check prints a weight other than the one the review questions give it, or a rating's top point differs")
             continue
         x, y = sum(v[0] for v in parts.values()), sum(v[1] for v in parts.values())
         ex, ey = sum(v[0] for v in equal.values()), sum(v[1] for v in equal.values())
@@ -1184,14 +1211,14 @@ SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "persona-judge review record",
     "description": (
-        "Written by the reviewer to one file in the system's temporary folder, never inside the reviewed "
-        "project. Paths are relative to root. One entry per persona, and one per file find.py sets aside. For "
-        "each persona, give its branches as find.py prints them and answer the questions of "
-        "review-questions.md by their bold titles, the root question (the file's first check) first: a 0 there "
+        "Composed by the reviewer and passed to report.py on standard input, so a review writes no file. "
+        "Paths are relative to root. One entry per persona, and one per file find.py sets aside. For "
+        "each persona, give its branches as find.py prints them and answer "
+        "the review questions by their bold titles, the root question (their first check) first: a 0 there "
         "sets the file aside, and the entry then holds that answer alone. A check marked script may be left out: "
         "check.py's rows set it. A question that does not apply is marked does_not_apply with the reason the "
-        "file's tables print. Every finding and place names its file and quotes its line word for word with its "
-        "number. The report prints each finding's sources from bibliography.md and orders the findings by "
+        "review questions' tables print. Every finding and place names its file and quotes its line word for word with its "
+        "number. The report prints each finding's sources from grounding.md and orders the findings by "
         "question, then file, then line."
     ),
     "type": "object",
@@ -1240,7 +1267,7 @@ SCHEMA = {
                             "0. A rating on a scale with bands: scale and places. A rating on another scale: scale, "
                             "point and, below its top point, findings. A content-test question that applies also "
                             "gives its subject. A question that does not apply: does_not_apply with the reason "
-                            "review-questions.md prints; one the branches, an exception or the rows remove may also "
+                            "the review questions print; one the branches, an exception or the rows remove may also "
                             "be left out."
                         ),
                         "items": {
@@ -1249,7 +1276,7 @@ SCHEMA = {
                             "properties": {
                                 "question": {"type": "string"},
                                 "score": {"enum": [0, 1], "description": "Checks only."},
-                                "scale": {"type": "string", "description": "Ratings only: the scale review-questions.md names."},
+                                "scale": {"type": "string", "description": "Ratings only: the scale the review questions name."},
                                 "point": {"type": "integer", "minimum": 0,
                                           "description": "Ratings on a scale without bands only; the others are counted."},
                                 "subject": {
@@ -1258,7 +1285,7 @@ SCHEMA = {
                                     "required": ["file", "line", "quote"],
                                     "properties": {"file": FILE_REF, "line": {"type": "integer", "minimum": 1}, "quote": {"type": "string"}},
                                 },
-                                "does_not_apply": {"type": "string", "description": "The reason review-questions.md prints for it here."},
+                                "does_not_apply": {"type": "string", "description": "The reason the review questions print for it here."},
                                 "places": {
                                     "type": "array",
                                     "description": "Frequency ratings: every place the question applies to, in any file of the persona.",
@@ -1280,7 +1307,11 @@ SCHEMA = {
                     },
                     "fit": {
                         "type": "object",
-                        "description": "Fit with neighbouring files, apart from the score; only when neighbours were supplied.",
+                        "description": (
+                            "Fit with neighbouring files, apart from the score. Required for every persona not set "
+                            "aside and not empty: a finding on how its remit sits with the nearby files, or a "
+                            "statement that nothing was found."
+                        ),
                         "properties": {
                             "statement": {"type": "string"},
                             "findings": {
@@ -1329,7 +1360,7 @@ def main(argv):
         return EXIT_REFUSED
     if cmd == "verify" and len(args) == 1:
         try:
-            text = sys.stdin.read() if args[0] == "-" else open(args[0], encoding="utf-8").read()
+            text = sys.stdin.read() if args[0] == "-" else read_file(args[0])
         except OSError as exc:
             print(f"report.py: cannot read {args[0]}: {exc.strerror}; check the path", file=sys.stderr)
             return EXIT_REFUSED
@@ -1348,7 +1379,7 @@ def main(argv):
         table = check.load_table(check.DEFAULT_TABLE)
         grounding = load_grounding()
     except (OSError, ValueError, check.TableError) as exc:
-        print(f"report.py: cannot load the check table or the bibliography: {exc}", file=sys.stderr)
+        print(f"report.py: cannot load the check table or grounding.md: {exc}", file=sys.stderr)
         return EXIT_REFUSED
     record, faults = load_record(args[0])
     prepared = []

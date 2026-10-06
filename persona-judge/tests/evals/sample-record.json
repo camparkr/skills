@@ -1,1 +1,366 @@
-{"root": "/tmp/claude-502/persona-judge-test-4ko89uop/si11-anasr8ez", "files": [{"path": ".claude/agents/helper.md", "questions": [{"question": "A dedicated persona", "score": 1}, {"question": "Permissions fit the job", "score": 1}, {"question": "Needs no context it is not given", "score": 1}, {"score": 0, "findings": [{"line": 9, "quote": "Never edit files; report what you find in a list.", "note": "A tools setting without Edit would enforce this, and Edit is granted instead.", "file": ".claude/agents/helper.md"}], "question": "Enforceable rules enforced"}, {"question": "No procedure for one kind of task", "score": 1}, {"question": "No facts the project already holds", "score": 1}, {"question": "No pressure from consequences", "score": 1}, {"question": "One job", "score": 1}, {"question": "States its output", "score": 1}, {"question": "Boundaries in three tiers", "score": 1}, {"scale": "frequency", "places": [{"line": 9, "quote": "Never edit files; report what you find in a list.", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 10, "quote": "Rate each finding high, medium or low.", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 11, "quote": "If the scope is unclear, ask.", "meets": true, "file": ".claude/agents/helper.md"}], "question": "Rules held in the persona", "subject": {"file": ".claude/agents/helper.md", "line": 9, "quote": "Never edit files; report what you find in a list."}}, {"scale": "frequency", "places": [{"line": 11, "quote": "If the scope is unclear, ask.", "meets": false, "note": "Nothing covers a run with no one to ask.", "file": ".claude/agents/helper.md"}], "question": "Directions for when nobody answers", "subject": {"file": ".claude/agents/helper.md", "line": 11, "quote": "If the scope is unclear, ask."}}, {"scale": "frequency", "places": [{"line": 9, "quote": "Never edit files", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 10, "quote": "Rate each finding high, medium or low.", "meets": true, "file": ".claude/agents/helper.md"}], "question": "Rules used in every act come first", "subject": {"file": ".claude/agents/helper.md", "line": 9, "quote": "Never edit files"}}, {"scale": "frequency", "places": [{"line": 4, "quote": "tools: Read, Grep, Edit", "meets": false, "note": "Three tools are named with no word on when to use them.", "file": ".claude/agents/helper.md"}], "question": "Tools explained", "subject": {"file": ".claude/agents/helper.md", "line": 4, "quote": "tools: Read, Grep, Edit"}}, {"question": "Commands given exactly", "does_not_apply": "no command to run"}, {"scale": "quality", "point": 2, "findings": [{"line": 3, "quote": "Reviews pull requests for style problems.", "note": "It names a subject and no task.", "file": ".claude/agents/helper.md"}], "question": "The description says when to choose it"}, {"scale": "quality", "point": 4, "findings": [{"line": 7, "quote": "You review code for style and report what you find.", "note": "It states the work and not where it stops.", "file": ".claude/agents/helper.md"}], "question": "An identity that does the work"}, {"question": "Consistent with itself", "score": 1}, {"question": "Nothing said twice", "score": 1}, {"question": "Leaves known things unsaid", "score": 1}, {"question": "Shows an example", "does_not_apply": "no instruction to give output in a particular form"}, {"scale": "frequency", "places": [{"line": 10, "quote": "Rate each finding high, medium or low.", "meets": false, "note": "The scale is named and never defined.", "file": ".claude/agents/helper.md"}], "question": "Terms defined where they are used", "subject": {"file": ".claude/agents/helper.md", "line": 10, "quote": "Rate each finding high, medium or low."}}, {"scale": "frequency", "places": [{"line": 10, "quote": "high, medium or low", "meets": false, "note": "Nothing says what to return when nothing is found.", "file": ".claude/agents/helper.md"}, {"line": 7, "quote": "report what you find", "meets": true, "file": ".claude/agents/helper.md"}], "question": "Answers defined, edge cases included", "subject": {"file": ".claude/agents/helper.md", "line": 10, "quote": "Rate each finding high, medium or low."}}, {"question": "Its own criteria met", "does_not_apply": "no criterion set for the work"}, {"scale": "frequency", "places": [{"line": 9, "quote": "Never edit files", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 10, "quote": "Rate each finding high, medium or low.", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 11, "quote": "If the scope is unclear, ask.", "meets": false, "note": "Whether the scope is unclear is not something an observer can see.", "file": ".claude/agents/helper.md"}], "question": "Instructions an observer can check", "subject": {"file": ".claude/agents/helper.md", "line": 9, "quote": "Never edit files"}}, {"scale": "frequency", "places": [{"line": 7, "quote": "You review code for style and report what you find.", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 9, "quote": "Never edit files", "meets": false, "note": "It says what to avoid, not what to do instead.", "file": ".claude/agents/helper.md"}, {"line": 10, "quote": "Rate each finding high, medium or low.", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 11, "quote": "If the scope is unclear, ask.", "meets": true, "file": ".claude/agents/helper.md"}], "question": "What to do, not what to avoid", "subject": {"file": ".claude/agents/helper.md", "line": 7, "quote": "You review code for style and report what you find."}}, {"scale": "frequency", "places": [{"line": 9, "quote": "Never edit files", "meets": false, "note": "The rule gives no reason.", "file": ".claude/agents/helper.md"}], "question": "Reasons given", "subject": {"file": ".claude/agents/helper.md", "line": 9, "quote": "Never edit files"}}, {"scale": "frequency", "places": [{"line": 9, "quote": "Never edit files", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 10, "quote": "Rate each finding high, medium or low.", "meets": true, "file": ".claude/agents/helper.md"}, {"line": 11, "quote": "If the scope is unclear, ask.", "meets": true, "file": ".claude/agents/helper.md"}], "question": "Each instruction stands alone", "subject": {"file": ".claude/agents/helper.md", "line": 9, "quote": "Never edit files"}}], "fit": {"findings": [{"file": "CLAUDE.md", "line": 6, "quote": "Rate each change as small, medium or large in the pull request.", "note": "The project rates changes on its own scale, beside the persona's high, medium or low."}]}, "branches": {"delegated": true, "harness": "Claude Code", "settings": ["tools"]}}, {"path": "CLAUDE.md", "set_aside": true}]}
+{
+  "root": "set-by-the-tests",
+  "files": [
+    {
+      "path": ".claude/agents/helper.md",
+      "questions": [
+        {
+          "question": "A dedicated persona",
+          "score": 1
+        },
+        {
+          "question": "Permissions fit the job",
+          "score": 1
+        },
+        {
+          "question": "Needs no context it is not given",
+          "score": 1
+        },
+        {
+          "score": 0,
+          "findings": [
+            {
+              "line": 9,
+              "quote": "Never edit files; report what you find in a list.",
+              "note": "A tools setting without Edit would enforce this, and Edit is granted instead.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Enforceable rules enforced"
+        },
+        {
+          "question": "No procedure for one kind of task",
+          "score": 1
+        },
+        {
+          "question": "No facts the project already holds",
+          "score": 1
+        },
+        {
+          "question": "No pressure from consequences",
+          "score": 1
+        },
+        {
+          "question": "One job",
+          "score": 1
+        },
+        {
+          "question": "States its output",
+          "score": 1
+        },
+        {
+          "question": "Boundaries in three tiers",
+          "score": 1
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 9,
+              "quote": "Never edit files; report what you find in a list.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 10,
+              "quote": "Rate each finding high, medium or low.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 11,
+              "quote": "If the scope is unclear, ask.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Rules held in the persona",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 9,
+            "quote": "Never edit files; report what you find in a list."
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 11,
+              "quote": "If the scope is unclear, ask.",
+              "meets": false,
+              "note": "Nothing covers a run with no one to ask.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Directions for when nobody answers",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 11,
+            "quote": "If the scope is unclear, ask."
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 9,
+              "quote": "Never edit files",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 10,
+              "quote": "Rate each finding high, medium or low.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Rules used in every act come first",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 9,
+            "quote": "Never edit files"
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 4,
+              "quote": "tools: Read, Grep, Edit",
+              "meets": false,
+              "note": "Edit is granted while line 9 forbids editing, and nothing says when or why the agent uses it.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Tools explained",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 4,
+            "quote": "tools: Read, Grep, Edit"
+          }
+        },
+        {
+          "question": "Commands given exactly",
+          "does_not_apply": "no command to run"
+        },
+        {
+          "scale": "quality",
+          "point": 3,
+          "findings": [
+            {
+              "line": 3,
+              "quote": "Reviews pull requests for style problems.",
+              "note": "It names the task in its own terms, not the requests a user would type, and says nothing of what it is not for.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "The description says when to choose it"
+        },
+        {
+          "scale": "quality",
+          "point": 4,
+          "findings": [
+            {
+              "line": 7,
+              "quote": "You review code for style and report what you find.",
+              "note": "It states the work and not where it stops.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "An identity that does the work"
+        },
+        {
+          "question": "Consistent with itself",
+          "score": 1
+        },
+        {
+          "question": "Nothing said twice",
+          "score": 1
+        },
+        {
+          "question": "Leaves known things unsaid",
+          "score": 1
+        },
+        {
+          "question": "Shows an example",
+          "does_not_apply": "no instruction to give output in a particular form"
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 10,
+              "quote": "Rate each finding high, medium or low.",
+              "meets": false,
+              "note": "The scale is named and never defined.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Terms defined where they are used",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 10,
+            "quote": "Rate each finding high, medium or low."
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 10,
+              "quote": "high, medium or low",
+              "meets": false,
+              "note": "Nothing says what each level means or what to return when nothing is found.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Answers defined, edge cases included",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 10,
+            "quote": "Rate each finding high, medium or low."
+          }
+        },
+        {
+          "question": "Its own criteria met",
+          "does_not_apply": "no criterion set for the work"
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 9,
+              "quote": "Never edit files",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 10,
+              "quote": "Rate each finding high, medium or low.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 11,
+              "quote": "If the scope is unclear, ask.",
+              "meets": false,
+              "note": "Whether the scope is unclear is not something an observer can see.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Instructions an observer can check",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 9,
+            "quote": "Never edit files"
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 7,
+              "quote": "You review code for style and report what you find.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 9,
+              "quote": "Never edit files",
+              "meets": false,
+              "note": "It says what to avoid, not what to do instead.",
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 10,
+              "quote": "Rate each finding high, medium or low.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 11,
+              "quote": "If the scope is unclear, ask.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "What to do, not what to avoid",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 7,
+            "quote": "You review code for style and report what you find."
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 9,
+              "quote": "Never edit files",
+              "meets": false,
+              "note": "The rule gives no reason.",
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Reasons given",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 9,
+            "quote": "Never edit files"
+          }
+        },
+        {
+          "scale": "frequency",
+          "places": [
+            {
+              "line": 9,
+              "quote": "Never edit files",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 10,
+              "quote": "Rate each finding high, medium or low.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            },
+            {
+              "line": 11,
+              "quote": "If the scope is unclear, ask.",
+              "meets": true,
+              "file": ".claude/agents/helper.md"
+            }
+          ],
+          "question": "Each instruction stands alone",
+          "subject": {
+            "file": ".claude/agents/helper.md",
+            "line": 9,
+            "quote": "Never edit files"
+          }
+        }
+      ],
+      "fit": {
+        "findings": [
+          {
+            "file": "CLAUDE.md",
+            "line": 6,
+            "quote": "Rate each change as small, medium or large in the pull request.",
+            "note": "The project rates changes on its own scale, beside the persona's high, medium or low."
+          }
+        ]
+      },
+      "branches": {
+        "delegated": true,
+        "harness": "Claude Code",
+        "settings": [
+          "tools"
+        ]
+      }
+    },
+    {
+      "path": "CLAUDE.md",
+      "set_aside": true
+    }
+  ]
+}

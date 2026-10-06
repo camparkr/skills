@@ -1,15 +1,16 @@
-"""Tests for check.py, the true/false checks run from a table (SI-2, SI-10), to the round-3 table: a harness
-column, and rows for 'Declares its tools', 'Plain emphasis' and 'No placeholders'."""
+"""Tests for check.py, the true/false checks run from a table, to the current table: a harness column, and rows
+for 'Declares its tools', 'Plain emphasis' and 'No placeholders'."""
 
 import hashlib
 import json
 import shutil
 import subprocess
+import sys
 import unittest
 
 from support import REFERENCES, ROOT, SCRIPTS, ScratchCase, make_fixtures, run
 
-# Exit codes check.py promises (specification §3c).
+# Exit codes check.py promises in its docstring.
 ALL_ONE, SOME_ZERO, ERROR, NOTHING = 0, 1, 2, 3
 
 TABLE = REFERENCES / "failures.tsv"
@@ -37,7 +38,7 @@ def table_row(*cells):
 
 
 class TestT2(ScratchCase):
-    """T-2: a planted path scores 0; the clean file scores 1; a new row needs no code change."""
+    """A missing path: a planted path scores 0; the clean file scores 1; a new row needs no code change."""
 
     def test_planted_path(self):
         proj = self.project("si2-planted")
@@ -61,7 +62,7 @@ class TestT2(ScratchCase):
         with table.open("a", encoding="utf-8") as fh:
             fh.write(table_row(
                 "PJ-900", "No time-sensitive statements", "line-pattern", "any", "", "", "because it is uncommon",
-                "", "", "test row", "the phrase planted for T-2",
+                "", "", "test row", "the phrase this test plants",
             ) + "\n")
         proc = run("check.py", "--table", table, "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, SOME_ZERO, proc.stdout + proc.stderr)
@@ -69,7 +70,7 @@ class TestT2(ScratchCase):
         self.assertEqual({p.name: sha(p) for p in SCRIPTS.glob("*.py")}, before)
 
     def test_new_harness_default_needs_no_code_change(self):
-        """T-2 (4): a new row in a copy of harness-defaults.tsv scores PJ-005 0 and names the row."""
+        """A new row in a copy of harness-defaults.tsv scores PJ-005 0 and names the row."""
         proj = self.project("si2-clean")
         before = {p.name: sha(p) for p in SCRIPTS.glob("*.py")}
         folder = self.tmp / "tables"
@@ -155,7 +156,7 @@ class TestSeedRows(ScratchCase):
         # Each row applies to its own harness only.
         self.assertIsNone(got[("PJ-009", ".claude/agents/planner.md")])
         self.assertIsNone(got[("PJ-008", ".github/agents/triage.agent.md")])
-        # A Codex custom agent is not scored on 'Declares its tools' (A-27).
+        # A Codex custom agent is not scored on 'Declares its tools': failures.tsv has no Codex row for it.
         for rid in ("PJ-008", "PJ-009", "PJ-010"):
             self.assertIsNone(got[(rid, ".codex/agents/reviewer.toml")], rid)
         # A 0 quotes the line that names the agent, since the missing field has no line of its own.
@@ -191,7 +192,7 @@ class TestSeedRows(ScratchCase):
             self.assertEqual(got[(rid, ".claude/agents/tester.md")], 1, rid)
 
     def test_spread_over_files(self):
-        """T-13: a listed persona's files are checked with it, under the persona's kind and harness."""
+        """A listed persona's files are checked with it, under the persona's kind and harness."""
         proj = self.project("si13")
         proc = run("check.py", "--format", "json", cwd=proj)
         paths = {r["path"] for r in json.loads(proc.stdout)}
@@ -252,8 +253,8 @@ def zeros(proc):
 
 
 class TestTQ(ScratchCase):
-    """T-Q: check.py reads quoted and example text as masked, and scores only real pointers (specification §3c and
-    §8, ruling of 3 October 2026). Each case scores 1; each control is still caught."""
+    """Quoted text: check.py reads quoted and example text as masked, and scores only real pointers, so a persona is
+    not marked down for the examples it quotes. Each case scores 1; each control is still caught."""
 
     def checked(self, project, *paths):
         proc = run("check.py", *paths, "--format", "json", cwd=self.project(project))
@@ -283,20 +284,30 @@ class TestTQ(ScratchCase):
             self.assertEqual(got[(rid, ".claude/agents/linter.md")], 1, rid)
 
     def test_case_5_pointer_from_the_skill_root(self):
-        """A pointer named from the skill's root, as agents/reviewer.md names references/review-questions.md."""
+        """A pointer named from the skill's root, as reviewer.md names references/questions/scales.md."""
         got = scores(self.checked("tq-skill-root", "skill/agents/judge.md"))
         self.assertEqual(got[("PJ-001", "skill/agents/judge.md")], 1)
 
     def test_case_6_the_frozen_files(self):
-        """The frozen review-questions.md and agents/reviewer.md give no row at 0 on either file (§8, T-Q, as
-        revised for the read-verb rule, 3 October 2026), and so none of §3c's five rows."""
+        """review-questions.md and agents/reviewer.md as they stood at commit 1764a6c give no row at 0 on either file,
+        and so none at the five places listed below."""
         questions, reviewer = "skill/references/review-questions.md", "skill/agents/reviewer.md"
         frozen = {
             questions: "aea58eacbcc15b29345865cd2897f942617a092cf705bff155fffe2005ede835",
             reviewer: "77c42965947cef7cad6009fb49fd8395cdd367bf487c3676b9ff005ab5fd379f",
         }
-        # Case (6) is defined on the files at 1764a6c; round 4 ratified a new review-questions.md, so the files are
+        # Case (6) is defined on the files at 1764a6c; review-questions.md has changed since, so the files are
         # read from Git at that commit into a scratch copy of the skill, never from the working tree.
+        # A release archive or a copy without .git, or a clone that lacks the commit, cannot read them; the case is then
+        # skipped with its reason, since it tests files that are not there to test.
+        try:
+            have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", "1764a6c^{commit}"], capture_output=True)
+        except OSError:
+            self.skipTest("case 6 reads its files from Git at commit 1764a6c, and git is not installed")
+        if have.returncode != 0:
+            self.skipTest(
+                "case 6 reads its files from Git at commit 1764a6c, and this copy has no Git history holding that commit"
+            )
         tree = self.tmp / "at-1764a6c"
         tree.mkdir()
         archive = subprocess.run(["git", "-C", str(ROOT), "archive", "1764a6c", "--", "."], capture_output=True, check=True)
@@ -322,8 +333,8 @@ class TestTQ(ScratchCase):
         self.assertEqual(scores(self.checked("tq-c8"))[("PJ-001", ".claude/agents/builder.md")], 1)
 
     def test_case_9_another_file_reads_it(self):
-        """review-questions.md line 92's sentence: 'tells Claude in words to read `AGENTS.md`' is not addressed to
-        the agent."""
+        """grounding.md's sentence, under 'Leaves the harness's work to the harness': 'tells Claude in words to read
+        `AGENTS.md`' is not addressed to the agent."""
         self.assertEqual(scores(self.checked("tq-c9"))[("PJ-001", ".claude/agents/explainer.md")], 1)
 
     def test_case_10_read_after_to(self):
@@ -342,7 +353,7 @@ class TestTQ(ScratchCase):
 
     def test_case_13_link_first(self):
         """'[Read the guide](missing.md) before you rate.': a sentence opening with a link counts; the target is the
-        pointer (ruling of 3 October 2026)."""
+        pointer."""
         got = zeros(self.checked("tq-c13"))
         self.assertEqual(got[("PJ-001", ".claude/agents/guide-reader.md")], [7])
 
@@ -376,7 +387,7 @@ class TestTQ(ScratchCase):
 
 
 class TestBranchesT_W(ScratchCase):
-    """T-W: check.py prints the three branches for each persona, as find.py does (specification §3c, round 4)."""
+    """check.py prints the three branches for each persona, as find.py does."""
 
     def test_text_and_json(self):
         proj = self.project("branches")
@@ -391,7 +402,7 @@ class TestBranchesT_W(ScratchCase):
             self.assertEqual(r["branches"], {"delegated": True, "harness": "Codex", "settings": ["sandbox_mode"]})
 
     def test_rows_read_the_weighted_titles(self):
-        """The check table's questions are matched against review-questions.md's titles, weight marks included."""
+        """The check table's questions are matched against the review questions' titles, weight marks included."""
         proc = run("check.py", cwd=self.project("si2-clean"))
         self.assertEqual(proc.returncode, ALL_ONE, proc.stderr)
 
@@ -443,7 +454,7 @@ class TestRejects(ScratchCase):
         self.assertEqual(run("check.py", cwd=self.project("likeness")).returncode, NOTHING)
 
     def test_old_header(self):
-        """Round 2's ten-column header, with no harness column, is a table error naming line 1."""
+        """The older ten-column header, with no harness column, is a table error naming line 1."""
         table = self.tmp / "old.tsv"
         table.write_text(
             "id\tquestion\tkind\tapplies_to\tfield\tpattern\tunless\tdata\tsource\tmessage\n", encoding="utf-8"
@@ -469,7 +480,8 @@ class TestRejects(ScratchCase):
         self.assertIn("script", proc.stderr)
 
     def test_new_script_checks_are_accepted(self):
-        """The three checks marked script in round 3 may each have a row."""
+        """The three newer checks marked script, 'Declares its tools', 'Plain emphasis' and 'No placeholders', may each
+        have a row."""
         proc = self.checked(self.bad_table(
             table_row("PJ-901", "Declares its tools", "field-missing", "delegated", "Claude Code", "tools", "", "", "", "s", "m"),
             table_row("PJ-902", "Plain emphasis", "line-pattern", "any", "", "", "x", "", "", "s", "m"),
@@ -552,7 +564,7 @@ class TestRejects(ScratchCase):
 
 class TestSeedTable(unittest.TestCase):
     def test_seed_rows(self):
-        """Round 3's rows: PJ-004 withdrawn and its ID not reused; PJ-008 to PJ-012 added, each naming its harness."""
+        """The seed rows: PJ-004 withdrawn and its ID not reused; PJ-008 to PJ-012 added, each naming its harness."""
         lines = TABLE.read_text(encoding="utf-8").splitlines()
         self.assertEqual(lines[0].split("\t"), HEADER)
         rows = [l.split("\t") for l in lines[1:]]
@@ -592,6 +604,106 @@ class TestSeedTable(unittest.TestCase):
             [(r[0], r[1]) for r in rows],
             [("HD-001", "Claude Code"), ("HD-002", "Codex"), ("HD-003", "Gemini CLI")],
         )
+
+
+class TestFieldChecksOnTheMainFile(ScratchCase):
+    """A persona spread over files, as report.py scores it: a field-missing row, such as PJ-008 'Declares its tools', runs on a persona's main
+    file only. A persona the project's list names with extra files is checked over all of them, but the extra files
+    hold no front matter of their own, so a missing tools field there says nothing about the persona."""
+
+    SECTIONS = "# Sections\n\nKeep each section of a report under ten lines.\n"
+
+    def listed_project(self, main_text):
+        proj = self.tmp / "listed"
+        files = {
+            ".claude/agents/releaser.md": main_text,
+            ".claude/agents/release/sections.md": self.SECTIONS,
+            "personas.txt": ".claude/agents/releaser.md .claude/agents/release/sections.md\n",
+        }
+        for rel, text in files.items():
+            (proj / rel).parent.mkdir(parents=True, exist_ok=True)
+            (proj / rel).write_text(text, encoding="utf-8")
+        return proj
+
+    def checked(self, main_text):
+        proc = run("check.py", "--format", "json", cwd=self.listed_project(main_text))
+        self.assertIn(proc.returncode, (ALL_ONE, SOME_ZERO), proc.stdout + proc.stderr)
+        return proc
+
+    def test_tools_declared_on_the_main_file(self):
+        proc = self.checked("---\nname: releaser\ndescription: Drafts release notes.\ntools: Read, Grep\n---\n\n"
+                            "You draft release notes from the merged changes.\n")
+        got = scores(proc)
+        self.assertEqual(got[("PJ-008", ".claude/agents/releaser.md")], 1)
+        self.assertIsNone(got[("PJ-008", ".claude/agents/release/sections.md")])
+        self.assertEqual(proc.returncode, ALL_ONE, proc.stdout)
+
+    def test_no_field_row_at_0_on_the_extra_file(self):
+        """With the persona's tools missing, only the main file scores 0 on PJ-008."""
+        got = scores(self.checked("---\nname: releaser\ndescription: Drafts release notes.\n---\n\n"
+                                  "You draft release notes from the merged changes.\n"))
+        self.assertIsNone(got[("PJ-008", ".claude/agents/release/sections.md")])
+
+    def test_control_tools_missing_on_the_main_file(self):
+        """Control: a listed persona with no tools field still scores 0 on PJ-008, quoting its main file's name line."""
+        proc = self.checked("---\nname: releaser\ndescription: Drafts release notes.\n---\n\n"
+                            "You draft release notes from the merged changes.\n")
+        self.assertEqual(scores(proc)[("PJ-008", ".claude/agents/releaser.md")], 0)
+        self.assertEqual(row_for(proc, "PJ-008", ".claude/agents/releaser.md")["line"], 2)
+        self.assertEqual(proc.returncode, SOME_ZERO)
+
+
+@unittest.skipUnless(shutil.which("git"), "git is not installed, and these tests call it to build their copies")
+class TestCase6WithoutHistory(ScratchCase):
+    """Case 6 reads its files from Git at 1764a6c. In a copy with no .git, or in a repository without that commit, it
+    is skipped with a stated reason instead of erroring; in this repository, with the commit, it runs. These tests
+    call git themselves, so they are skipped when git is not installed."""
+
+    CASE = "test_check.TestTQ.test_case_6_the_frozen_files"
+
+    def copy(self):
+        """A copy of the skill folder with no .git above it, as a release archive gives it."""
+        dest = self.tmp / "persona-judge"
+        shutil.copytree(ROOT, dest, ignore=shutil.ignore_patterns("__pycache__", ".git"))
+        return dest
+
+    def run_case(self, folder):
+        return subprocess.run(
+            [sys.executable, "-m", "unittest", "-v", self.CASE], cwd=folder / "tests", capture_output=True, text=True,
+            timeout=120,
+        )
+
+    def assert_skipped(self, proc):
+        out = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0, out)
+        self.assertIn("skipped", out)
+        self.assertIn("1764a6c", out)
+        self.assertNotIn("Error", out)
+
+    def test_no_git(self):
+        folder = self.copy()
+        probe = subprocess.run(["git", "-C", str(folder), "rev-parse", "--git-dir"], capture_output=True, text=True)
+        if probe.returncode == 0:
+            self.skipTest(f"the scratch folder {folder} lies inside a Git repository, so it cannot stand for a copy without one")
+        self.assert_skipped(self.run_case(folder))
+
+    def test_commit_missing(self):
+        folder = self.copy()
+        for args in (["init", "-q"], ["add", "-A"],
+                     ["-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "copy"]):
+            subprocess.run(["git", "-C", str(folder), *args], check=True, capture_output=True)
+        self.assert_skipped(self.run_case(folder))
+
+    def test_control_runs_with_the_commit(self):
+        """Control: in this repository the commit is present, so case 6 runs and passes, and is not skipped."""
+        have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", "1764a6c^{commit}"], capture_output=True)
+        if have.returncode != 0:
+            self.skipTest("this copy holds no commit 1764a6c, so the control cannot run here")
+        proc = self.run_case(ROOT)
+        out = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0, out)
+        self.assertIn("... ok", out)
+        self.assertNotIn("skipped", out)
 
 
 if __name__ == "__main__":

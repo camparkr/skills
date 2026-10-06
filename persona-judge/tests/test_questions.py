@@ -1,9 +1,11 @@
-"""T-K: questions.py reads review-questions.md at run time under its markup contract (specification §3e and §8,
-ruling of 3 October 2026). No script holds a question, a count of questions or a count of points.
+"""questions.py reads the review questions at run time under the markup contract its docstring sets out: the parts in
+references/questions/, joined in the order questions.py's list of parts gives, with one blank line between them. No script holds a question, a count of
+questions or a count of points.
 
-(1) the frozen file reads as §3e says; (2) the file's prose counts equal the counts questions.py derives; (3) a copy
-that breaks the contract once is refused with exit 2, naming the line and what was expected; (4) a copy with a
-question added in each section and a weight changed is scored by report.py with no script changed.
+(1) a pinned copy of an earlier single file reads as the contract says; (2) the prose counts equal the counts
+questions.py derives; (3) a copy that breaks the contract once is refused with exit 2, naming the part file, its line
+and what was expected; (4) a copy with a question added in each section and a weight changed is scored by report.py
+with no script changed.
 """
 
 import hashlib
@@ -15,27 +17,33 @@ import sys
 import unittest
 from pathlib import Path
 
-from support import REFERENCES, ROOT, SCRIPTS, ScratchCase, make_fixtures
+from support import QUESTIONS, ROOT, SCRIPTS, ScratchCase, make_fixtures, part_holding, question_parts, questions_text
 
-QUESTIONS_MD = REFERENCES / "review-questions.md"
-# A fixture copy of the round-4 file (committed at 146a82a), pinned by its hash, so the tests that check §3e's reading
-# word for word hold while the live file changes (§8, 'Counts in every test and eval': only fixtures pin a known file).
-FIXTURE_MD = make_fixtures.FILES / "review-questions-round-4.fixture"
+# A fixture copy of an earlier version of the questions, from when they were one file (committed at 146a82a), pinned
+# by its hash, so the tests that check the contract's reading word for word hold while the live parts change.
+# questions.py still reads a single file as it stands. Only fixtures pin a known file; every other test reads its
+# counts from the live parts.
+FIXTURE_MD = make_fixtures.FILES / "review-questions-pinned-copy.fixture"
 FIXTURE_SHA256 = "e229cb727fef6a27eeda4ad1514b833d6ce3d64df10dc57cd9530e1e24798b3a"
 
-# The prose counts T-K (2) compares with the derived ones: each pattern held here, in the test, never in a script.
+# The prose counts test (2) compares with the derived ones: each pattern held here, in the test, never in a script.
 # A count written in the prose: digits, or number words, hyphenated or not, up to the hundreds.
 WORD = r"[A-Za-z]+(?:-[A-Za-z]+)?"
 NUMBER = rf"(\d+|{WORD}(?: hundred(?: and {WORD})?)?)"
-# Every pattern reads its number through NUMBER, so a count written in words is found as one in digits.
+# Every pattern reads its number through NUMBER, so a count written in words is found as one in digits. The counts of
+# questions in each section were stated only in the single file's contents list, which the parts do not keep, so no
+# pattern reads them.
 PROSE_COUNTS = {
     "questions": rf"All {NUMBER} questions are asked",
     "possible": rf"{NUMBER} points are possible:",
     "persona points": rf"points are possible: {NUMBER} in the persona section",
     "writing points": rf"and {NUMBER} in instruction writing",
-    "persona questions": rf"persona questions, {NUMBER} questions",
-    "writing questions": rf"instruction-writing questions, {NUMBER} questions",
 }
+
+
+# A rating as the parts now lay it out: the bold title alone on its line, then the '*Scale model:*' line, which may
+# carry a further sentence. The tests that plant a fault in a rating start from this one.
+TOOLS_RATING = "**Tools explained** \n*Scale model:* Frequency. "
 
 
 def load_module():
@@ -105,11 +113,11 @@ def stated_counts(text):
     m = re.search(NUMBER + r" ratings and " + NUMBER + r" checks? apply only where the file holds", folded)
     out["content-test ratings"] = word_number(m.group(1)) if m else None
     out["content-test checks"] = word_number(m.group(2)) if m else None
-    m = re.search(r"The first " + NUMBER + r" are rated on the frequency scale and the last " + NUMBER + r" on the quality scale", folded)
-    out["persona frequency ratings"] = word_number(m.group(1)) if m else None
-    out["persona quality ratings"] = word_number(m.group(2)) if m else None
-    m = re.search(r"All " + NUMBER + r" are rated on the frequency scale", folded)
-    out["writing frequency ratings"] = word_number(m.group(1)) if m else None
+    # The rating sections no longer count their ratings by scale: the persona ratings name the scales they use, and
+    # the instruction-writing ratings say each is rated on the frequency scale.
+    m = re.search(NUMBER + r" scale-rating models: (\w+) and (\w+)\.", folded)
+    out["persona rating scales"] = (word_number(m.group(1)), sorted({m.group(2), m.group(3)})) if m else None
+    out["writing ratings all frequency"] = True if re.search(r"Each is rated on the frequency scale", folded) else None
     return out
 
 
@@ -123,20 +131,19 @@ def derived_counts(qs):
         "possible": qs.possible,
         "persona points": qs.section_points(persona),
         "writing points": qs.section_points(writing),
-        "persona questions": len(in_section(persona)),
-        "writing questions": len(in_section(writing)),
         "weighted checks": len(weighted),
         "weighted points": len({q.weight for q in weighted}) == 1 and weighted[0].weight or None,
         "content-test ratings": sum(1 for q in content if q.kind == "rating"),
         "content-test checks": sum(1 for q in content if q.kind != "rating"),
-        "persona frequency ratings": sum(1 for q in in_section(persona) if q.scale == "frequency"),
-        "persona quality ratings": sum(1 for q in in_section(persona) if q.scale == "quality"),
-        "writing frequency ratings": sum(1 for q in in_section(writing) if q.scale == "frequency"),
+        "persona rating scales": (len({q.scale for q in in_section(persona) if q.kind == "rating"}),
+                                  sorted({q.scale for q in in_section(persona) if q.kind == "rating"})),
+        "writing ratings all frequency": all(q.scale == "frequency" for q in in_section(writing) if q.kind == "rating"),
     }
 
 
 class TestReadsTheFile(unittest.TestCase):
-    """T-K (1): the round-4 file, kept as a fixture copy pinned by its hash, reads as §3e says, word for word."""
+    """(1) An earlier version of the file, kept as a fixture copy pinned by its hash, reads as the contract says, word
+    for word."""
 
     def setUp(self):
         self.assertEqual(hashlib.sha256(FIXTURE_MD.read_bytes()).hexdigest(), FIXTURE_SHA256, "the fixture copy has moved")
@@ -216,14 +223,26 @@ class TestReadsTheFile(unittest.TestCase):
 
 
 class TestLiveFile(unittest.TestCase):
-    """The live review-questions.md meets the contract, and every count the tests use comes from it."""
+    """The live review questions meet the contract, and every count the tests use comes from them."""
 
     def setUp(self):
         self.q = load_module()
-        self.qs = self.q.load(QUESTIONS_MD)
+        self.qs = self.q.load(QUESTIONS)
+
+    def test_reads_the_parts_joined(self):
+        """questions.py reads the parts as the test joins them, and places each line in its part file."""
+        text, places = self.q.read_text(QUESTIONS)
+        self.assertEqual(text, questions_text())
+        self.assertEqual(len(places), len(text.splitlines()))
+        parts = {p.name: p.read_text(encoding="utf-8").splitlines() for p in question_parts()}
+        for line, (name, n) in zip(text.splitlines(), places):
+            if line:
+                self.assertEqual(parts[name][n - 1], line, (name, n))
+        for q in self.qs.questions:
+            self.assertTrue(parts[q.file][q.line - 1].startswith(f"**{q.title}**"), (q.file, q.line))
 
     def test_meets_the_contract(self):
-        proc = run_questions(QUESTIONS_MD, "--format", "json")
+        proc = run_questions(QUESTIONS, "--format", "json")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = json.loads(proc.stdout)
         self.assertEqual(len(data["questions"]), len(self.qs.questions))
@@ -263,12 +282,12 @@ class TestNumberWords(unittest.TestCase):
 
 
 class TestProseCounts(ScratchCase):
-    """T-K (2): every count the prose states equals the count questions.py derives."""
+    """(2) Every count the prose states equals the count questions.py derives."""
 
     def test_prose_counts(self):
         q = load_module()
-        text = QUESTIONS_MD.read_text(encoding="utf-8")
-        stated, derived = stated_counts(text), derived_counts(q.load(QUESTIONS_MD))
+        text = questions_text()
+        stated, derived = stated_counts(text), derived_counts(q.load(QUESTIONS))
         for name, value in stated.items():
             self.assertIsNotNone(value, f"the prose count '{name}' was not found")
         self.assertEqual(stated, derived)
@@ -277,8 +296,8 @@ class TestProseCounts(ScratchCase):
         """A copy with one count changed fails, naming it. The count changed is the one the file states, read with the
         test's own pattern, so the control holds whatever the number of questions."""
         q = load_module()
-        text = QUESTIONS_MD.read_text(encoding="utf-8")
-        derived = derived_counts(q.load(QUESTIONS_MD))
+        text = questions_text()
+        derived = derived_counts(q.load(QUESTIONS))
         m = re.search(raw(PROSE_COUNTS["questions"]), text)
         self.assertIsNotNone(m, "the stated count of questions was not found")
         changed = text[: m.start(1)] + str(derived["questions"] + 1) + text[m.end(1):]
@@ -291,8 +310,8 @@ class TestProseCounts(ScratchCase):
         """A copy with every count in PROSE_COUNTS written in words is read the same. The copy may equal the file, when
         the file already writes its counts in words."""
         q = load_module()
-        text = QUESTIONS_MD.read_text(encoding="utf-8")
-        derived = derived_counts(q.load(QUESTIONS_MD))
+        text = questions_text()
+        derived = derived_counts(q.load(QUESTIONS))
         words = text
         for name, pattern in PROSE_COUNTS.items():
             m = re.search(raw(pattern), words)
@@ -302,37 +321,43 @@ class TestProseCounts(ScratchCase):
 
 
 class TestContractRefused(ScratchCase):
-    """T-K (3): each copy breaks the contract once and is refused with exit 2, naming the line and what was expected."""
+    """(3) Each copy breaks the contract once and is refused with exit 2, naming the part file, its line and what was
+    expected."""
 
     def broken(self, old, new, count=1):
-        text = QUESTIONS_MD.read_text(encoding="utf-8")
-        self.assertIn(old, text)
-        path = self.tmp / "review-questions.md"
+        """Plant the fault in the one part holding old, in a scratch copy of the parts; return the error and where the
+        fault is, as '<part>, line <n>'."""
+        folder = self.tmp / "questions"
+        shutil.copytree(QUESTIONS, folder)
+        path = part_holding(folder, old)
+        text = path.read_text(encoding="utf-8")
         path.write_text(text.replace(old, new, count), encoding="utf-8")
-        line = text[: text.index(old)].count("\n") + 1
-        proc = run_questions(path)
+        where = f"{path.name}, line {text[: text.index(old)].count(chr(10)) + 1}"
+        proc = run_questions(folder)
         self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
-        self.assertRegex(proc.stderr, r"line \d+: ")
+        self.assertRegex(proc.stderr, r"\.md, line \d+: ")
         self.assertIn("expected", proc.stderr)
-        return proc.stderr, line
+        return proc.stderr, where
 
     def test_rating_without_scale_mark(self):
-        err, line = self.broken("**Tools explained** (*frequency*).", "**Tools explained.**")
-        self.assertIn(f"line {line}:", err)
+        """A rating whose title has no '*Scale model:*' line under it is refused at the title's line."""
+        err, where = self.broken(TOOLS_RATING, "**Tools explained** \n")
+        self.assertIn(f"{where}:", err)
+        self.assertIn("*Scale model:*", err)
 
     def test_weight_in_words(self):
-        err, line = self.broken("(*reading*, weight 3). No two statements", "(*reading*, weight three). No two statements")
-        self.assertIn(f"line {line}:", err)
+        err, where = self.broken("(*reading*, weight 3). No two statements", "(*reading*, weight three). No two statements")
+        self.assertIn(f"{where}:", err)
 
     def test_branch_table_without_reason(self):
         old = "| Key | Branch | How it is read | When the answer is no, these do not apply | Reason printed |\n|---|---|---|---|---|"
-        err, line = self.broken(old, "| Key | Branch | How it is read | When the answer is no, these do not apply |\n|---|---|---|---|")
-        self.assertIn(f"line {line}:", err)
+        err, where = self.broken(old, "| Key | Branch | How it is read | When the answer is no, these do not apply |\n|---|---|---|---|")
+        self.assertIn(f"{where}:", err)
         self.assertIn("Reason printed", err)
 
     def test_table_naming_an_unknown_title(self):
-        err, line = self.broken("| Commands given exactly | a command", "| Commands given precisely | a command")
-        self.assertIn(f"line {line}:", err)
+        err, where = self.broken("| Commands given exactly | a command", "| Commands given precisely | a command")
+        self.assertIn(f"{where}:", err)
         self.assertIn("Commands given precisely", err)
 
     def test_duplicate_title(self):
@@ -340,38 +365,41 @@ class TestContractRefused(ScratchCase):
         self.assertIn("Leaves known things unsaid", err)
 
     def test_band_in_no_listed_form(self):
-        err, line = self.broken("| 4 | usually | over 60%, up to 80% |", "| 4 | usually | roughly two thirds |")
-        self.assertIn(f"line {line}:", err)
+        err, where = self.broken("| 4 | usually | over 60%, up to 80% |", "| 4 | usually | roughly two thirds |")
+        self.assertIn(f"{where}:", err)
 
     def test_scale_never_defined(self):
-        err, line = self.broken("**Reasons given** (*frequency*).", "**Reasons given** (*agreement*).")
+        """A '*Scale model:*' line naming no scale defined under '### <Name> scale' is refused at the rating's line."""
+        err, where = self.broken("**Reasons given**\n*Scale model:* Frequency.", "**Reasons given**\n*Scale model:* Agreement.")
+        self.assertIn(f"{where}:", err)
         self.assertIn("agreement", err)
 
     def test_unknown_harness(self):
-        """A harness-exception row naming a harness find.py does not name is refused (the verifier's first gap)."""
-        err, line = self.broken("| Declares its tools | Codex | Codex has no tools field | OA2 |",
+        """A harness-exception row naming a harness find.py does not name is refused: a misspelt
+        harness matches no file, so the exception would never apply."""
+        err, where = self.broken("| Declares its tools | Codex | Codex has no tools field | OA2 |",
                                 "| Declares its tools | Codexx | Codex has no tools field | OA2 |")
-        self.assertIn(f"line {line}:", err)
+        self.assertIn(f"{where}:", err)
         self.assertIn("Codexx", err)
 
     def test_empty_reason(self):
-        """An empty 'Reason printed' cell is refused (the verifier's second gap)."""
-        err, line = self.broken("| Commands given exactly | a command the file tells the agent to run | no command to run |",
+        """An empty 'Reason printed' cell is refused, since the report must say why a question does not apply."""
+        err, where = self.broken("| Commands given exactly | a command the file tells the agent to run | no command to run |",
                                 "| Commands given exactly | a command the file tells the agent to run |  |")
-        self.assertIn(f"line {line}:", err)
+        self.assertIn(f"{where}:", err)
         self.assertIn("Reason printed", err)
 
     def test_empty_branch_reason(self):
-        err, line = self.broken("| One job; States its output; The description says when to choose it | not delegated |",
+        err, where = self.broken("| One job; States its output; The description says when to choose it | not delegated |",
                                 "| One job; States its output; The description says when to choose it |  |")
-        self.assertIn(f"line {line}:", err)
+        self.assertIn(f"{where}:", err)
 
     def test_report_refuses_too(self):
         """report.py and check.py stop with exit 2 when the file they read breaks the contract."""
         skill = self.tmp / "skill"
-        shutil.copytree(ROOT / "skill", skill)
-        path = skill / "references" / "review-questions.md"
-        path.write_text(path.read_text(encoding="utf-8").replace("**Tools explained** (*frequency*).", "**Tools explained.**"), encoding="utf-8")
+        shutil.copytree(ROOT / "skill", skill, ignore=shutil.ignore_patterns("__pycache__"))
+        path = part_holding(skill / "references" / "questions", TOOLS_RATING)
+        path.write_text(path.read_text(encoding="utf-8").replace(TOOLS_RATING, "**Tools explained** \n"), encoding="utf-8")
         record = self.tmp / "r.json"
         record.write_text('{"files": [{"path": "x.md"}]}', encoding="utf-8")
         for args in (["report.py", "validate", str(record)], ["check.py", "-"]):
@@ -380,11 +408,77 @@ class TestContractRefused(ScratchCase):
                 capture_output=True, text=True, cwd=self.tmp,
             )
             self.assertEqual(proc.returncode, 2, args[0] + proc.stdout + proc.stderr)
-            self.assertIn("review-questions.md, line", proc.stderr, args[0])
+            self.assertIn(f"{path.name}, line", proc.stderr, args[0])
+
+
+class TestRatingLayout(ScratchCase):
+    """A rating is a bold title on its own line, then a '*Scale model:*' line naming a scale; any further sentence on
+    that line stays part of the question, and the fields and a 'Sources:' paragraph below it are not questions."""
+
+    def scale_model_lines(self, folder):
+        """Each '*Scale model:*' line in the parts at folder: (part, title above it, its line, the scale it names)."""
+        out = []
+        for part in question_parts(folder):
+            lines = part.read_text(encoding="utf-8").splitlines()
+            for n, line in enumerate(lines):
+                m = re.match(r"^\*Scale model:\* (\w+)\.", line)
+                if m:
+                    title = re.match(r"^\*\*([^*]+)\*\*\s*$", lines[n - 1])
+                    self.assertIsNotNone(title, f"{part.name}, line {n}: no bold title above the scale model line")
+                    out.append((part.name, title.group(1), n, m.group(1).lower()))
+        return out
+
+    def test_every_scale_model_line_is_read(self):
+        """Every rating in the live parts is read with the scale its '*Scale model:*' line names, at its title's line,
+        including those whose line carries 'Follows ...' or 'Applies to ...'; and every rating has such a line."""
+        q = load_module()
+        qs = q.load(QUESTIONS)
+        found = self.scale_model_lines(QUESTIONS)
+        self.assertTrue(found, "no *Scale model:* line in the parts")
+        ratings = [x for x in qs.questions if x.kind == "rating"]
+        self.assertEqual(sorted((r.file, r.title, r.line, r.scale) for r in ratings), sorted(found))
+
+    def test_both_layouts_read_alike(self):
+        """A rating rewritten in the earlier layout, '**Title** (*scale*).', is read as the same question, so the
+        pinned copy of the single file still reads. The control: the same rewrite naming the other scale reads
+        differently."""
+        q = load_module()
+        live = q.load(QUESTIONS)
+        folder = self.tmp / "questions"
+        shutil.copytree(QUESTIONS, folder)
+        part = part_holding(folder, TOOLS_RATING)
+        text = part.read_text(encoding="utf-8")
+        part.write_text(text.replace(TOOLS_RATING, "**Tools explained** (*frequency*). "), encoding="utf-8")
+        # The rewrite joins two lines, so the lines of the questions after it move; the line is left out.
+        shape = lambda qs: [(x.title, x.section, x.kind, x.scale, x.weight, x.file) for x in qs.questions]  # noqa: E731
+        self.assertEqual(shape(q.load(folder)), shape(live))
+        part.write_text(text.replace(TOOLS_RATING, "**Tools explained** (*quality*). "), encoding="utf-8")
+        self.assertNotEqual(shape(q.load(folder)), shape(live))
+
+    def test_fields_and_sources_are_not_questions(self):
+        """A field line or a 'Sources:' paragraph is never read as a question: the questions are exactly the bold
+        titles under '### Checks' and '### Ratings'. The control: a field line made bold is read as a question,
+        and so refused."""
+        q = load_module()
+        qs = q.load(QUESTIONS)
+        text = questions_text()
+        sections = re.findall(r"(?ms)^## [^\n]* questions\s*$(.*?)(?=^## |\Z)", text)
+        self.assertEqual(len(sections), len(qs.sections))
+        self.assertEqual(len(qs.questions), sum(len(re.findall(r"(?m)^\*\*[^*]+\*\*", s)) for s in sections))
+        self.assertIn("\nSources: ", text)
+        folder = self.tmp / "questions"
+        shutil.copytree(QUESTIONS, folder)
+        part = part_holding(folder, "**Reasons given**\n*Scale model:* Frequency.\n")
+        planted = part.read_text(encoding="utf-8").replace(
+            "**Reasons given**\n*Scale model:* Frequency.\n", "**Reasons given**\n*Scale model:* Frequency.\n\n**Places**\n")
+        part.write_text(planted, encoding="utf-8")
+        proc = run_questions(folder)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("Places", proc.stderr)
 
 
 class TestChangeNeedsNoScriptChange(ScratchCase):
-    """T-K (4): one question added in each section and one weight changed; report.py scores and renders a record for the
+    """(4) One question added in each section and one weight changed; report.py scores and renders a record for the
     changed file, its points possible and section points following the change, and no script changes."""
 
     ADD_CHECK = (
@@ -393,25 +487,25 @@ class TestChangeNeedsNoScriptChange(ScratchCase):
         "**Boundaries in three tiers** (*reading*).",
     )
     ADD_RATING = (
-        "**Each instruction stands alone** (*frequency*).",
-        "**Short sentences** (*frequency*). *Places:* each sentence. *Meets it:* it is under 30 words.\n\n"
-        "**Each instruction stands alone** (*frequency*).",
+        "**Each instruction stands alone**\n",
+        "**Short sentences**\n*Scale model:* Frequency.\n*Places:* Each sentence.\n*Meets it:* It is under 30 words.\n\n"
+        "**Each instruction stands alone**\n",
     )
     WEIGHT = ("**Nothing said twice** (*reading*).", "**Nothing said twice** (*reading*, weight 2).")
 
     def test_added_questions_and_weight(self):
         q = load_module()
-        before = q.load(QUESTIONS_MD)
+        before = q.load(QUESTIONS)
         skill = self.tmp / "skill"
-        shutil.copytree(ROOT / "skill", skill)
+        shutil.copytree(ROOT / "skill", skill, ignore=shutil.ignore_patterns("__pycache__"))
         hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((ROOT / "skill" / "scripts").glob("*.py"))}
-        rq = skill / "references" / "review-questions.md"
-        text = rq.read_text(encoding="utf-8")
+        rq = skill / "references" / "questions"
         for old, new in (self.ADD_CHECK, self.ADD_RATING, self.WEIGHT):
+            part = part_holding(rq, old)
+            text = part.read_text(encoding="utf-8")
             self.assertEqual(text.count(old), 1, old)
-            text = text.replace(old, new)
-        rq.write_text(text, encoding="utf-8")
-        bib = skill / "references" / "bibliography.md"
+            part.write_text(text.replace(old, new), encoding="utf-8")
+        bib = skill / "references" / "grounding.md"
         bib_text = bib.read_text(encoding="utf-8")
         anchor = "| Boundaries in three tiers |"
         row = next(l for l in bib_text.splitlines() if l.startswith(anchor))
@@ -472,7 +566,44 @@ def full_record(qs, path):
         "path": path,
         "branches": {"delegated": True, "harness": "Claude Code", "settings": ["tools"]},
         "questions": out,
+        "fit": {"statement": "Nothing was found on how its remit sits with the nearby files."},
     }
+
+
+
+def parts_faults(folder, names):
+    """Faults between questions.py's ordered list of parts and the .md files in folder; empty when they agree."""
+    held = sorted(p.name for p in Path(folder).glob("*.md"))
+    faults = [f"{n} is listed {names.count(n)} times" for n in sorted(set(names)) if names.count(n) > 1]
+    faults += [f"{n} is listed and not in the folder" for n in names if n not in held]
+    faults += [f"{n} is in the folder and not listed" for n in held if n not in names]
+    return faults
+
+
+class TestPartsList(ScratchCase):
+    """questions.py reads the parts from one ordered list of names, so no file name carries a number to set the order.
+    The list and the folder must agree: a part left off the list would drop out of every review unseen."""
+
+    def test_list_matches_the_folder(self):
+        self.assertEqual(parts_faults(QUESTIONS, list(load_module().PARTS)), [])
+
+    def test_control_extra_and_missing_parts(self):
+        folder = self.tmp / "questions"
+        shutil.copytree(QUESTIONS, folder)
+        (folder / "notes.md").write_text("## Notes\n", encoding="utf-8")
+        (folder / "score.md").unlink()
+        self.assertEqual(
+            parts_faults(folder, list(load_module().PARTS)),
+            ["score.md is listed and not in the folder", "notes.md is in the folder and not listed"],
+        )
+
+    def test_control_questions_py_refuses_an_unlisted_part(self):
+        folder = self.tmp / "questions"
+        shutil.copytree(QUESTIONS, folder)
+        (folder / "notes.md").write_text("## Notes\n", encoding="utf-8")
+        proc = run_questions(folder)
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertIn("notes.md, line 1: a part questions.py's list of parts does not name", proc.stderr)
 
 
 if __name__ == "__main__":

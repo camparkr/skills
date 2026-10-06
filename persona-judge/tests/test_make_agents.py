@@ -1,0 +1,201 @@
+"""Tests for tools/make_agents.py, which writes the reviewer's agent file for each harness from reviewer.md.
+
+reviewer.md is the one source of the reviewer's text. The script writes:
+
+- plugin/agents/persona-judge-reviewer.md, the Claude Code plugin agent, with no `hooks` field, since a plugin
+  agent's hooks are ignored and the guard is wired in plugin/hooks/hooks.json;
+- plugin/harness-agents/gemini/persona-judge-reviewer.md, the Gemini CLI agent, with Gemini's read, list, search and
+  shell tools and nothing that writes; and
+- plugin/harness-agents/codex/persona-judge-reviewer.toml, the Codex agent, read-only.
+
+The Gemini and Codex files sit outside plugin/agents/, because Claude Code loads every file in a plugin's agents
+folder, subfolders included. A regeneration into a scratch folder must match the committed files, with a control that
+plants a drift.
+
+Two enforcement tests read the committed files, each with a control that fails: the Codex agent sets
+sandbox_mode = "read-only", and the Gemini agent's tools include no tool that writes a file.
+"""
+
+import subprocess
+import sys
+import tomllib
+import unittest
+from pathlib import Path
+
+from support import PLUGIN, ROOT, SKILL, ScratchCase
+
+TOOL = ROOT / "tools" / "make_agents.py"
+REVIEWER_MD = SKILL / "reviewer.md"
+OUTPUTS = (
+    Path("plugin/agents/persona-judge-reviewer.md"),
+    Path("plugin/harness-agents/gemini/persona-judge-reviewer.md"),
+    Path("plugin/harness-agents/codex/persona-judge-reviewer.toml"),
+)
+GEMINI_TOOLS = ["read_file", "read_many_files", "list_directory", "glob", "grep_search", "run_shell_command"]
+# Gemini CLI's tools that change no file. The shell is among them because the policy file, not the tool list, limits
+# what the reviewer's shell runs; every other tool, such as write_file, replace or save_memory, may write one.
+GEMINI_NON_WRITING = {"read_file", "read_many_files", "list_directory", "glob", "grep_search", "run_shell_command"}
+
+
+def make(out, *extra):
+    if not TOOL.is_file():
+        raise AssertionError(f"make_agents.py is not built: {TOOL}")
+    return subprocess.run([sys.executable, str(TOOL), "--out", str(out), *extra], capture_output=True, text=True,
+                          timeout=60)
+
+
+def reviewer_parts():
+    """(front matter lines, body) of reviewer.md."""
+    text = REVIEWER_MD.read_text(encoding="utf-8")
+    _, front, body = text.split("---\n", 2)
+    return front.splitlines(), body
+
+
+def front_matter(path):
+    """The front matter of a generated Markdown agent as a dict of top-level keys, and the body after it."""
+    text = Path(path).read_text(encoding="utf-8")
+    assert text.startswith("---\n"), path
+    _, front, body = text.split("---\n", 2)
+    fields = {}
+    for line in front.splitlines():
+        if line.startswith("#") or not line.strip():
+            continue
+        key, _, value = line.partition(":")
+        fields[key.strip()] = value.strip()
+    return front.splitlines(), fields, body
+
+
+def drift(committed_root, fresh_root):
+    """The outputs that differ between the committed files and a fresh regeneration."""
+    return [str(rel) for rel in OUTPUTS
+            if not (committed_root / rel).is_file()
+            or (committed_root / rel).read_bytes() != (fresh_root / rel).read_bytes()]
+
+
+class TestMakeAgents(ScratchCase):
+    def fresh(self):
+        out = self.tmp / "fresh"
+        proc = make(out)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return out
+
+    def test_committed_files_match_a_regeneration(self):
+        self.assertEqual(drift(ROOT, self.fresh()), [])
+
+    def test_control_planted_drift(self):
+        fresh = self.fresh()
+        planted = self.tmp / "planted"
+        for rel in OUTPUTS:
+            (planted / rel).parent.mkdir(parents=True, exist_ok=True)
+            (planted / rel).write_bytes((fresh / rel).read_bytes())
+        self.assertEqual(drift(planted, fresh), [])
+        codex = planted / OUTPUTS[2]
+        codex.write_text(codex.read_text(encoding="utf-8").replace("read-only", "workspace-write"), encoding="utf-8")
+        self.assertEqual(drift(planted, fresh), [str(OUTPUTS[2])])
+
+    def test_writes_only_the_three_files(self):
+        fresh = self.fresh()
+        written = sorted(p.relative_to(fresh) for p in fresh.rglob("*") if p.is_file())
+        self.assertEqual(written, sorted(OUTPUTS))
+
+    def test_agents_folder_holds_only_the_claude_agent(self):
+        """Claude Code loads every file under a plugin's agents/, subfolders included."""
+        found = sorted(p.relative_to(ROOT).as_posix() for p in (PLUGIN / "agents").rglob("*") if p.is_file())
+        self.assertEqual(found, ["plugin/agents/persona-judge-reviewer.md"])
+
+    def test_first_comment_says_generated(self):
+        fresh = self.fresh()
+        for rel in OUTPUTS:
+            lines = (fresh / rel).read_text(encoding="utf-8").splitlines()
+            comment = next(l for l in lines if l.startswith("#"))
+            self.assertIn("Generated by tools/make_agents.py", comment, rel)
+            self.assertIn("from skill/reviewer.md", comment, rel)
+
+    def test_claude_agent(self):
+        front, fields, body = front_matter(self.fresh() / OUTPUTS[0])
+        source_front, source_body = reviewer_parts()
+        self.assertEqual(set(fields), {"name", "description", "tools"})
+        self.assertEqual(fields["tools"], "Read, Grep, Glob, Bash")
+        for key in ("name", "description", "tools"):
+            self.assertIn(next(l for l in source_front if l.startswith(key + ":")), front)
+        self.assertEqual(body, source_body)
+
+    def test_gemini_agent(self):
+        front, fields, body = front_matter(self.fresh() / OUTPUTS[1])
+        source_front, source_body = reviewer_parts()
+        self.assertEqual(set(fields), {"name", "description", "tools"})
+        self.assertEqual(fields["tools"], "[" + ", ".join(GEMINI_TOOLS) + "]")
+        self.assertNotIn("write_file", fields["tools"])
+        self.assertNotIn("replace", fields["tools"])
+        for key in ("name", "description"):
+            self.assertIn(next(l for l in source_front if l.startswith(key + ":")), front)
+        self.assertEqual(body, source_body)
+
+    def test_codex_agent(self):
+        data = tomllib.loads((self.fresh() / OUTPUTS[2]).read_text(encoding="utf-8"))
+        source_front, source_body = reviewer_parts()
+        name = next(l for l in source_front if l.startswith("name:")).split(":", 1)[1].strip()
+        description = next(l for l in source_front if l.startswith("description:")).split(":", 1)[1].strip()
+        self.assertEqual(set(data), {"name", "description", "sandbox_mode", "developer_instructions"})
+        self.assertEqual(data["name"], name)
+        self.assertEqual(data["description"], description)
+        self.assertEqual(data["sandbox_mode"], "read-only")
+        self.assertEqual(data["developer_instructions"], source_body)
+
+    def test_help(self):
+        if not TOOL.is_file():
+            raise AssertionError(f"make_agents.py is not built: {TOOL}")
+        proc = subprocess.run([sys.executable, str(TOOL), "--help"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("reviewer.md", proc.stdout)
+
+
+
+def codex_faults(path):
+    """Faults in a Codex agent file's sandbox: empty when it sets sandbox_mode = "read-only"."""
+    try:
+        data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as err:
+        return [f"unreadable: {err}"]
+    mode = data.get("sandbox_mode")
+    return [] if mode == "read-only" else [f"sandbox_mode is {mode!r}, not 'read-only'"]
+
+
+def gemini_tool_faults(path):
+    """Faults in a Gemini CLI agent's tools: empty when it lists its tools and none of them writes a file. An agent
+    with no tool list is given every tool, so a missing list is a fault too."""
+    _, fields, _ = front_matter(path)
+    if "tools" not in fields:
+        return ["no tools field, so the agent is given every tool"]
+    tools = [t.strip() for t in fields["tools"].strip("[]").split(",") if t.strip()]
+    return [f"{t} may write a file" for t in tools if t not in GEMINI_NON_WRITING]
+
+
+class TestEnforcement(ScratchCase):
+    """The settings that enforce the reviewer's rule to change no file, read from the committed agent files."""
+
+    def test_codex_agent_is_read_only(self):
+        self.assertEqual(codex_faults(ROOT / OUTPUTS[2]), [])
+
+    def test_control_codex_workspace_write(self):
+        planted = self.tmp / "codex.toml"
+        text = (ROOT / OUTPUTS[2]).read_text(encoding="utf-8")
+        planted.write_text(text.replace('sandbox_mode = "read-only"', 'sandbox_mode = "workspace-write"'), "utf-8")
+        self.assertEqual(codex_faults(planted), ["sandbox_mode is 'workspace-write', not 'read-only'"])
+        planted.write_text(text.replace('sandbox_mode = "read-only"\n', ""), "utf-8")
+        self.assertEqual(codex_faults(planted), ["sandbox_mode is None, not 'read-only'"])
+
+    def test_gemini_agent_writes_no_file(self):
+        self.assertEqual(gemini_tool_faults(ROOT / OUTPUTS[1]), [])
+
+    def test_control_gemini_writing_tools(self):
+        planted = self.tmp / "gemini.md"
+        text = (ROOT / OUTPUTS[1]).read_text(encoding="utf-8")
+        planted.write_text(text.replace("grep_search,", "grep_search, write_file, replace,"), "utf-8")
+        self.assertEqual(gemini_tool_faults(planted), ["write_file may write a file", "replace may write a file"])
+        planted.write_text(text.replace("tools: [" + ", ".join(GEMINI_TOOLS) + "]\n", ""), "utf-8")
+        self.assertEqual(gemini_tool_faults(planted), ["no tools field, so the agent is given every tool"])
+
+
+if __name__ == "__main__":
+    unittest.main()

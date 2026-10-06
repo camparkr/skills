@@ -1,0 +1,52 @@
+# Gemini CLI policy for the persona-judge reviewer agent: its shell may run only the skill's scripts.
+# setup.sh installs this file in ~/.gemini/policies/, the one folder Gemini CLI reads policy files from, with each
+# placeholder for the skill folder replaced by the installed skill folder's paths, as a group such as (/a|/b). Every rule applies only to calls the reviewer agent makes.
+#
+# Each pattern is matched against the shell command as Gemini CLI encodes it in JSON, after '"command":"'. The '"\x00'
+# at the end of a pattern matches the end of the command, so nothing can follow what the pattern allows. A command
+# holds no ; & | ` $ > < or backslash, so it runs one program, redirects nothing and spans one line, except for one
+# quoted heredoc, whose body holds no > or <.
+
+# python3 --version, which SKILL.md runs to check Python.
+[[rule]]
+toolName = "run_shell_command"
+subagent = "persona-judge-reviewer"
+commandRegex = 'python3 --version"\x00'
+decision = "allow"
+priority = 900
+
+# python3 <skill>/scripts/find.py, check.py or report.py, with no arguments.
+[[rule]]
+toolName = "run_shell_command"
+subagent = "persona-judge-reviewer"
+commandRegex = 'python3 @SKILL_DIRS@/scripts/(find|check|report)\.py"\x00'
+decision = "allow"
+priority = 900
+
+# The same scripts with arguments. Gemini CLI also checks the first line of a heredoc command on its own, such as
+# 'python3 <skill>/scripts/report.py validate', so this rule allows that line too.
+[[rule]]
+toolName = "run_shell_command"
+subagent = "persona-judge-reviewer"
+commandRegex = 'python3 @SKILL_DIRS@/scripts/(find|check|report)\.py [^;&|`$<>\\]*"\x00'
+decision = "allow"
+priority = 900
+
+# The same scripts reading one quoted heredoc, such as python3 <skill>/scripts/report.py validate - <<'RECORD'.
+# allowRedirection keeps Gemini CLI from asking about the heredoc in its default mode; the pattern still refuses any
+# other redirect.
+[[rule]]
+toolName = "run_shell_command"
+subagent = "persona-judge-reviewer"
+commandRegex = '''python3 @SKILL_DIRS@/scripts/(find|check|report)\.py [^;&|`$<>\\]*<<'[A-Za-z_][A-Za-z0-9_]*'\\n[^<>]*"\x00'''
+allowRedirection = true
+decision = "allow"
+priority = 900
+
+# Every other shell command the reviewer agent runs, in every mode, YOLO included.
+[[rule]]
+toolName = "run_shell_command"
+subagent = "persona-judge-reviewer"
+decision = "deny"
+priority = 800
+denyMessage = "persona-judge policy: the reviewer's shell runs only python3 --version and the skill's find.py, check.py and report.py, with no < or > outside the opening of one quoted heredoc; save pasted text that holds them to a file and name the file"

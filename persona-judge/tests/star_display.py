@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the five star lines T-S checks in each harness, as report.py renders them.
+"""Print five star lines, as report.py renders them, to check by eye that each harness displays the stars.
 
 Usage:
   star_display.py            print the five lines
@@ -15,10 +15,12 @@ import sys
 from fractions import Fraction
 from pathlib import Path
 
+# report.py switches bytecode off itself; this script does too, before importing it.
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skill" / "scripts"))
 import report  # noqa: E402
 
-# The star counts T-S names (specification §8, T-S).
+# The star counts to show: none, a lone half, whole stars, whole stars and a half, and all five.
 VALUES = (Fraction(0), Fraction(1, 2), Fraction(3), Fraction(7, 2), Fraction(5))
 
 

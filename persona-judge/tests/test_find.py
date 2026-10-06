@@ -1,6 +1,6 @@
-"""Tests for find.py, discovery and kind (SI-1, SI-11, SI-13), and for personafile.py, the shared reader.
+"""Tests for find.py, discovery and kind, and for personafile.py, the shared reader.
 
-Round 3 (vision v5): the default run reviews dedicated personas only, in .claude/agents/, .gemini/agents/,
+The default run reviews dedicated personas only, in .claude/agents/, .gemini/agents/,
 .codex/agents/ and .github/agents/, and any persona the project's list names; project instructions files,
 output styles, READMEs and skills are set aside, each with its reason.
 """
@@ -11,10 +11,10 @@ import unittest
 
 from support import SCRIPTS, ScratchCase, make_fixtures, run
 
-# Exit codes find.py promises (specification §3b).
+# Exit codes find.py promises in its docstring.
 FOUND, USAGE, NONE = 0, 2, 3
 
-# The reasons the set-aside table prints (specification §3b).
+# The reasons the set-aside table prints.
 INSTRUCTIONS = "project instructions: context for the agent, not a dedicated persona"
 OUTPUT_STYLE = "an output style: it sets the main agent's tone, not a dedicated persona"
 README = "a README: documentation for people, not agent instructions"
@@ -37,7 +37,7 @@ def set_aside(proc):
 
 class TestFindProject(ScratchCase):
     def test_t1_four_named_files(self):
-        """T-1: two dedicated personas are reviewed and named; a CLAUDE.md and an output style are set aside."""
+        """Two dedicated personas are reviewed and named; a CLAUDE.md and an output style are set aside."""
         proj = self.project("si1")
         proc = run(
             "find.py", ".claude/agents/helper.md", ".github/agents/triage.agent.md", "CLAUDE.md",
@@ -57,7 +57,7 @@ class TestFindProject(ScratchCase):
             self.assertIn("delegated", record)
 
     def test_t11_project_without_path(self):
-        """T-11: the three agent files, sorted by path; then the other four set aside, each with its reason."""
+        """The three agent files, sorted by path; then the other four set aside, each with its reason."""
         proj = self.project("si11")
         proc = run("find.py", "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, FOUND, proc.stderr)
@@ -83,7 +83,7 @@ class TestFindProject(ScratchCase):
         self.assertNotIn("docs/api.md", paths)
 
     def test_t11_named_folder(self):
-        """T-11: naming .claude/agents/ gives the two agent files and no others."""
+        """Naming .claude/agents/ gives the two agent files and no others."""
         proj = self.project("si11")
         proc = run("find.py", ".claude/agents/", "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, FOUND, proc.stderr)
@@ -91,11 +91,11 @@ class TestFindProject(ScratchCase):
         self.assertEqual(set_aside(proc), [])
 
     def test_t11_session_text(self):
-        """T-11: '-' reads standard input as one file labelled <session text>, its kind inferred."""
+        """'-' reads standard input as one file labelled <session text>, its kind inferred."""
         text = (make_fixtures.FILES / "helper-agent.fixture").read_text()
         proc = run("find.py", "-", "--format", "json", stdin=text)
         self.assertEqual(proc.returncode, FOUND, proc.stderr)
-        # Session text is never delegated (round 4, the delegated branch).
+        # Session text is never delegated: nothing chooses it.
         self.assertEqual(reviewed(proc), [("<session text>", "persona", None, False)])
         self.assertIn("session text", records(proc)[0]["kind_basis"])
 
@@ -131,7 +131,7 @@ class TestFindProject(ScratchCase):
         self.assertIn("inferred", records(proc)[0]["kind_basis"])
 
     def test_named_folder_with_no_table_match(self):
-        """A-4: a folder with no file matching either table yields its .md, .mdc and .toml files."""
+        """A folder with no file matching either table yields its .md, .mdc and .toml files."""
         proj = self.project("parsing")
         proc = run("find.py", "notes", "--format", "json", cwd=proj)
         self.assertEqual(proc.returncode, FOUND, proc.stderr)
@@ -169,14 +169,14 @@ class TestFindProject(ScratchCase):
         self.assertNotIn(".github/agents/notes.md", paths)
 
     def test_no_backslash_in_output(self):
-        """T-P, the scripts' output: every path uses forward slashes."""
+        """The scripts' output: every path uses forward slashes, on every system."""
         proj = self.project("si13")
         proc = run("find.py", cwd=proj)
         self.assertNotIn("\\", proc.stdout + proc.stderr)
 
 
 class TestSpreadOverFiles(ScratchCase):
-    """T-13: a persona spread over files (vision v5, SI-13)."""
+    """A persona spread over files."""
 
     def persona(self, proc, path):
         return [r for r in records(proc) if r["path"] == path][0]
@@ -188,13 +188,15 @@ class TestSpreadOverFiles(ScratchCase):
         self.assertEqual(
             [r[0] for r in reviewed(proc)], [".claude/agents/stylist.md", "personas/reviewer/reviewer.md"]
         )
-        # Step 1: the files the persona's body refers to that exist, with the line that names each.
+        # 'Settle the files each persona loads', the candidates: the files the persona's body refers to that exist,
+        # with the line that names each.
         stylist = self.persona(proc, ".claude/agents/stylist.md")
         self.assertEqual(
             stylist["candidates"], [{"path": "docs/house-style.md", "line": 9}, {"path": "docs/terms.md", "line": 10}]
         )
         self.assertEqual(stylist["listed"], [])
-        # Step 2: the project's list names a persona outside every location, with the files that load with it.
+        # 'Settle the files each persona loads', the list: the project's list names a persona outside every location,
+        # with the files that load with it.
         listed = self.persona(proc, "personas/reviewer/reviewer.md")
         self.assertEqual(listed["listed"], ["personas/reviewer/scale.md", "personas/reviewer/examples.md"])
         self.assertEqual(listed["list_missing"], [{"path": "personas/reviewer/missing.md", "line": 3}])
@@ -237,7 +239,7 @@ class TestSpreadOverFiles(ScratchCase):
 
 
 class TestBranchesT_W(ScratchCase):
-    """T-W: find.py prints the three branches for each persona (specification §3b, round 4)."""
+    """find.py prints the three branches for each persona: delegated, harness and settings."""
 
     WANT = {
         ".claude/agents/helper.md": (True, "Claude Code", ["tools"], "delegated yes (folder); harness Claude Code; settings tools"),
@@ -267,7 +269,7 @@ class TestBranchesT_W(ScratchCase):
             self.assertEqual(lines[i + 1], f"  branches: {want[3]}", path)
 
     def test_model_only_holds_no_settings(self):
-        """A file holding only `model` has no settings for this branch (A-32)."""
+        """A file holding only `model` has no settings for this branch."""
         _, proc, _ = self.run_branches()
         self.assertEqual([r for r in records(proc) if r["path"] == ".claude/agents/summary-writer.md"][0]["settings"], [])
 
@@ -318,7 +320,7 @@ class TestFindRejects(ScratchCase):
 
 class TestFindChangesNothing(ScratchCase):
     def test_t9_read_only_copy(self):
-        """T-9: find.py runs on a read-only copy and the manifest is unchanged."""
+        """find.py runs on a read-only copy and the manifest is unchanged: it changes no file."""
         proj = self.project("si11")
         before = make_fixtures.manifest(proj)
         self.read_only(proj)
@@ -365,7 +367,7 @@ class TestReader(ScratchCase):
         self.assertTrue(self.pf.read_path(proj / ".claude/agents/blank.md").empty)
 
     def test_mask(self):
-        """The mask (specification §3c): spaces in place of quoted spans, block quotes and fenced code, every line
+        """The mask: spaces in place of quoted spans, block quotes and fenced code, every line
         kept with its number; an apostrophe masks nothing; a span may wrap across lines of one paragraph."""
         text = (
             "Flag 'CRITICAL: You\n"

@@ -1,0 +1,14 @@
+{
+  "name": "camparkr-skills",
+  "description": "Agent skills by camparkr: persona-judge reviews dedicated agent personas and scores each one.",
+  "owner": {
+    "name": "camparkr"
+  },
+  "plugins": [
+    {
+      "name": "persona-judge",
+      "source": "./persona-judge",
+      "description": "Reviews dedicated agent personas, such as Claude Code and Gemini CLI subagents (.claude/agents/*.md, .gemini/agents/*.md) or Codex and GitHub Copilot custom agents (.codex/agents/*.toml, .github/agents/*.agent.md), and scores each out of five stars, quoting every line that lowered the score. Use when someone asks to review, check, audit or score an agent's instructions, or asks why a subagent ignores its rules, misuses its tools or keeps stopping to ask. Triggers: /persona-judge, review a subagent, check agent instructions, score this custom agent, why does the agent ignore this rule. Changes no file and offers no rewrite. Not for project instructions files such as CLAUDE.md or AGENTS.md, output styles, reviewing a skill (use skill-judge), linting settings or hooks, or writing a new prompt."
+    }
+  ]
+}

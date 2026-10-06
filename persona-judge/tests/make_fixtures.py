@@ -41,7 +41,7 @@ EXIT_USAGE = 2
 
 # Each project maps a path inside the scratch folder to a fixture's stem.
 PROJECTS = {
-    # SI-1 (T-1), round 3: two dedicated personas, a project instructions file and an output style.
+    # Discovery: two dedicated personas, a project instructions file and an output style.
     "si1": {
         ".claude/agents/helper.md": "helper-agent",
         ".github/agents/triage.agent.md": "copilot-agent",
@@ -49,8 +49,8 @@ PROJECTS = {
         "docs/api.md": "api-doc",
         ".claude/output-styles/terse.md": "output-style",
     },
-    # SI-11 (T-11) and SI-9 (T-9), round 3: three dedicated personas and four files set aside, beside
-    # files the personas point to.
+    # Discovery and a read-only run: three dedicated personas and four files set aside, beside files the
+    # personas point to.
     "si11": {
         "CLAUDE.md": "claude-md",
         "AGENTS.md": "agents-md",
@@ -62,7 +62,7 @@ PROJECTS = {
         "docs/api.md": "api-doc",
         "CHANGELOG.md": "changelog",
     },
-    # SI-13 (T-13): a persona whose body refers to two files that exist, and a persona the project's list
+    # A persona spread over files: a persona whose body refers to two files that exist, and a persona the project's list
     # names as three files, with a listed path that does not exist.
     "si13": {
         ".claude/agents/stylist.md": "stylist-agent",
@@ -73,7 +73,7 @@ PROJECTS = {
         "personas/reviewer/examples.md": "list-examples",
         "personas.txt": "personas-txt",
     },
-    # SI-2 (T-2): one file with a path planted that does not exist, and the same file without it.
+    # A missing path: one file with a path planted that does not exist, and the same file without it.
     "si2-planted": {".claude/agents/checker.md": "si2-planted"},
     "si2-clean": {".claude/agents/checker.md": "si2-clean"},
     # The likeness fixture: files that look like persona files and are neither reviewed nor set aside.
@@ -90,14 +90,14 @@ PROJECTS = {
         ".codex/agents/reviewer.toml": "codex-agent",
         "notes/odd.md": "odd-frontmatter",
     },
-    # SI-4 (T-4): the subagent behind sample-review.md's example (its round-3 revision awaits).
+    # The subagent behind sample-review.md's example.
     "sample": {".claude/agents/code-reviewer.md": "sample-reviewer"},
-    # The script checks added in round 2: a request the harness already meets, and statements that go
+    # Two script checks: a request the harness already meets, and statements that go
     # out of date; then a look-alike of each that scores 1.
     "time-defaults": {".claude/agents/planner.md": "planner-agent"},
     "time-likeness": {".claude/agents/planner.md": "planner-likeness"},
     "codex-defaults": {".codex/agents/reviewer.toml": "codex-reads-agents"},
-    # Round 3's script checks: 'Declares its tools' in each harness that has a row, 'Plain emphasis' and
+    # More script checks: 'Declares its tools' in each harness that has a row, 'Plain emphasis' and
     # 'No placeholders', then a look-alike that scores 1 on the last two.
     "declares-tools": {
         ".claude/agents/planner.md": "planner-agent",
@@ -111,8 +111,8 @@ PROJECTS = {
     # Two rows scoring 0 on one line, PJ-001 and PJ-002, which the report merges into one finding.
     "pointer": {".claude/agents/pointer.md": "pointer-agent"},
     "emphasis-likeness": {".claude/agents/tester.md": "emphasis-likeness"},
-    # T-Q: quoted and example text is not the file's own instruction, and only a pointer is checked for its path
-    # (specification §3c, ruling of 3 October 2026). Cases (1) to (5), then the controls still caught.
+    # Quoted text: quoted and example text is not the file's own instruction, and only a pointer is checked for
+    # its path. Cases (1) to (5), then the controls still caught.
     "tq-names": {".claude/agents/runner.md": "tq-names"},
     "tq-quoted-pointer": {".claude/agents/rater.md": "tq-quoted-pointer"},
     "tq-quoted-examples": {".claude/agents/linter.md": "tq-quoted-examples"},
@@ -122,28 +122,28 @@ PROJECTS = {
         "skill/references/rules.md": "tq-skill-root-rules",
     },
     "tq-controls": {".claude/agents/checker.md": "tq-controls"},
-    # T-Q cases (7) to (12): a read verb makes a pointer only when it is addressed to the agent as an instruction
-    # (specification §3c, ruling of 3 October 2026, option 2).
+    # Quoted text, cases (7) to (12): a read verb makes a pointer only when it is addressed to the agent as an
+    # instruction.
     "tq-c7": {".claude/agents/namer.md": "tq-c7"},
     "tq-c8": {".claude/agents/builder.md": "tq-c8"},
     "tq-c9": {".claude/agents/explainer.md": "tq-c9"},
     "tq-c10": {".claude/agents/gatherer.md": "tq-c10"},
     "tq-c11": {".claude/agents/scorer.md": "tq-c11"},
     "tq-c12": {".claude/agents/checker.md": "tq-c12"},
-    # T-Q cases (13) to (16) and two more controls (round 4: the three read-verb rulings, 3 October 2026).
+    # Quoted text, cases (13) to (16) and two more controls: a link that opens a sentence, 'you' inside a clause,
+    # 'Open source' and the stated limits.
     "tq-c13": {".claude/agents/guide-reader.md": "tq-c13"},
     "tq-c14": {".claude/agents/row-reader.md": "tq-c14"},
     "tq-c15": {".claude/agents/vendor-reader.md": "tq-c15"},
     "tq-c16": {".claude/agents/limit-reader.md": "tq-c16"},
     "tq-controls-4": {".claude/agents/checker.md": "tq-controls-4"},
-    # The verifier's file with no rule that limits the agent: 'Reasons given' has no place (round 4, the five ratified
-    # content-test rows, 3 October 2026).
+    # A persona with no rule that limits the agent, so 'Reasons given' has no place.
     "no-place": {".claude/agents/zeta.md": "no-place-agent"},
-    # The verifier's one-line persona: an identity and nothing else (small round, 4 October 2026).
+    # A one-line persona: an identity and nothing else.
     "thin": {".claude/agents/reviewer.md": "thin-agent"},
-    # T-10's derived case: a persona to which every question applies (round 4).
+    # A persona to which every question applies, so its score can be worked out by hand from the formula.
     "complete": {".claude/agents/release-checker.md": "complete-agent"},
-    # T-W: the three branches, each at yes and at no (specification §3b and §8, round 4).
+    # The three branches, delegated, harness and settings, each at yes and at no.
     "branches": {
         ".claude/agents/helper.md": "helper-agent",
         ".claude/agents/planner.md": "planner-agent",

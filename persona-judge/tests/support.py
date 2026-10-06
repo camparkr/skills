@@ -1,21 +1,33 @@
-"""Helpers the tests share: run a script, build a scratch project, take a manifest."""
+"""Helpers the tests share: run a script, build a scratch project, take a manifest.
 
-import shutil
-import subprocess
+The tests import the skill's scripts in their own process, so this module switches bytecode off before any test can:
+otherwise the imports would leave __pycache__ in skill/scripts/, a file the skill must never write.
+"""
+
 import sys
-import tempfile
-import unittest
-from pathlib import Path
+
+sys.dont_write_bytecode = True
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+import unittest  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SKILL = ROOT / "skill"
+# The files only the Claude Code plugin uses: its agents, its hook and the other harnesses' agent files.
+PLUGIN = ROOT / "plugin"
 SCRIPTS = SKILL / "scripts"
 REFERENCES = SKILL / "references"
-# sample-review.md with its blocks regenerated for round 4 (162 lines); every test that reads its content checks
-# this first.
+STEPS = SKILL / "steps"
+# The review questions, in parts: joined in the order questions.py's list gives, they make the one text it reads.
+QUESTIONS = REFERENCES / "questions"
+# sample-review.md, pinned by its SHA-256 hash (141 lines); every test that reads its content checks the hash
+# first, so an edit to the sample shows as a moved file rather than as a wrong comparison.
 SAMPLE = REFERENCES / "sample-review.md"
-SAMPLE_SHA256 = "ee3c74133b1909dcb8a779883ba4a4b5fe32dddf7aadc7b111c0b4c9b5922f31"
+SAMPLE_SHA256 = "77345a7e9ce7c0e4bf3825b570748f2d949eb4218402edab6c58061582287fef"
 
 
 def sample_text():
@@ -27,6 +39,35 @@ def sample_text():
     if got != SAMPLE_SHA256:
         raise AssertionError(f"sample-review.md has moved: SHA-256 {got}, expected {SAMPLE_SHA256}")
     return data.decode("utf-8")
+
+
+
+def part_names():
+    """The names of the review questions' parts, in order, from questions.py's one list of them."""
+    sys.path.insert(0, str(SCRIPTS))
+    import questions
+
+    return list(questions.PARTS)
+
+
+def question_parts(folder=QUESTIONS):
+    """The part files of the review questions in folder, in the order questions.py's list gives."""
+    return [Path(folder) / name for name in part_names()]
+
+
+def questions_text(folder=QUESTIONS):
+    """The review questions as one text, joined here and not by questions.py: each part stripped of leading and
+    trailing newlines, one blank line between them, a newline at the end."""
+    return "\n\n".join(p.read_text(encoding="utf-8").strip("\n") for p in question_parts(folder)) + "\n"
+
+
+def part_holding(folder, old):
+    """The one part file in folder that holds old; a test that plants a fault edits that part alone."""
+    holding = [p for p in question_parts(folder) if old in p.read_text(encoding="utf-8")]
+    if len(holding) != 1:
+        raise AssertionError(f"{len(holding)} parts hold {old!r}; expected exactly one")
+    return holding[0]
+
 
 sys.path.insert(0, str(HERE))
 import make_fixtures  # noqa: E402

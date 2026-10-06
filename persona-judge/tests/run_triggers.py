@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""run_triggers.py: measure whether a harness chooses persona-judge for each request in triggers.json (SI-12).
+"""run_triggers.py: measure whether a harness chooses persona-judge for each request in triggers.json.
 
 Usage:
   run_triggers.py --harness claude|codex|gemini [--triggers FILE] [--max-turns N] [--timeout SECONDS]
@@ -9,7 +9,10 @@ Each request runs in a fresh non-interactive session of the harness, in its own 
 under the system's temporary folder, read-only as far as the harness allows, with the skill installed as
 a user installs it (setup.sh). The session runs to its end within the turn limit; it is not stopped at
 the first tool call. The runner reads the session's own output to decide whether persona-judge was
-chosen, counting only tool calls, never the prompt's own words.
+chosen, counting only tool calls, never the prompt's own words. In Claude Code the skill shows as loaded in
+either of two ways: a Skill tool call naming it, or, after a '/persona-judge' request, which loads the
+skill's text with no Skill call, a tool call of any kind that names a file in the skill's folder, such as a
+Read of persona-judge/reviewer.md or a Bash command that prints it.
 
 Skill-creator's run_eval.py and run_loop.py are not used: they install a slash command, not the skill,
 and stop at the first tool call (issue #6253 in anthropics/claude-plugins-official).
@@ -18,8 +21,8 @@ Before measuring, the runner proves its detector: one request names the skill ex
 control cannot choose it. The detector must report the first and not the second, or the harness is not
 measured. --probe runs only that proof.
 
-It first prints the skills installed for the harness and their count; SI-12 asks for at least ten
-others beside persona-judge. It then prints each request's result, the raw counts and, per threshold,
+It first prints the skills installed for the harness and their count; the measure needs at least ten
+others beside persona-judge, so the skill is chosen from among others rather than alone. It then prints each request's result, the raw counts and, per threshold,
 yes or no: at least 8 of the 10 yes-requests choose the skill; at most 1 of the 10 no-requests does.
 Each session's output is kept in the run folder it names, as evidence.
 
@@ -33,6 +36,7 @@ installed, the skill is not installed for it, or the detector was not proven.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -51,12 +55,12 @@ EXIT_NOT_MEASURED = 3
 # --help exits 0, as argparse does.
 EXIT_OK_HELP = 0
 
-# SI-12's thresholds, as ratified: at least 8 of the 10 yes-requests; at most 1 of the 10 no-requests.
+# The thresholds the skill must meet: at least 8 of the 10 yes-requests; at most 1 of the 10 no-requests.
 YES_NEEDED = 8
 NO_ALLOWED = 1
-# skill-creator's trigger-eval format, at the size SI-12's answer key counts.
+# skill-creator's trigger-eval format, with 10 requests that should choose the skill and 10 that should not.
 YES_COUNT = NO_COUNT = 10
-# SI-12 measures the skill 'among others': at least ten other skills installed.
+# The skill is measured among others: at least ten other skills installed.
 OTHERS_NEEDED = 10
 # A session's turn limit and wall-clock limit; enough for a harness to choose and load a skill.
 DEFAULT_MAX_TURNS = 6
@@ -68,6 +72,9 @@ PROBE_YES = {
     "gemini": f"Use the {SKILL_NAME} skill to review the GEMINI.md in this folder.",
 }
 PROBE_NO = "What is 17 plus 25? Answer with the number only."
+# A path into the skill's folder, as a tool call names it: the folder name between path separators. The name alone,
+# as a search pattern or in other words, does not match.
+IN_SKILL_FOLDER = re.compile(rf"(?:^|[/\\\s\"'`=])({re.escape(SKILL_NAME)})[/\\]")
 
 
 def skill_dirs(harness):
@@ -122,6 +129,18 @@ def walk(obj):
             yield from walk(v)
 
 
+def walk_values(obj):
+    """Every string inside obj."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            yield from walk_values(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from walk_values(v)
+
+
 def chosen(harness, output):
     """True when a tool call in the session's output loads persona-judge. The prompt's words never count."""
     for ev in events(output):
@@ -133,7 +152,9 @@ def chosen(harness, output):
                     args = json.dumps(d.get("input", {}))
                     if d.get("name") == "Skill" and SKILL_NAME in args:
                         return True
-                    if d.get("name") == "Read" and f"{SKILL_NAME}/SKILL.md" in args:
+                    # A '/persona-judge' request loads the skill's text with no Skill call; the model then reads a
+                    # file in the skill's folder, through Read, Bash or another tool.
+                    if any(IN_SKILL_FOLDER.search(str(v)) for v in walk_values(d.get("input", {}))):
                         return True
         elif harness == "codex":
             for d in walk(ev):
@@ -195,7 +216,7 @@ def load_triggers(path):
         raise ValueError(f"{path}: expected a JSON array of {{\"query\": text, \"should_trigger\": true or false}}")
     yes = sum(d["should_trigger"] for d in data)
     if yes != YES_COUNT or len(data) - yes != NO_COUNT:
-        raise ValueError(f"{path}: {yes} yes-requests and {len(data) - yes} no-requests; SI-12 counts 10 and 10")
+        raise ValueError(f"{path}: {yes} yes-requests and {len(data) - yes} no-requests; the measure needs 10 of each")
     return data
 
 
@@ -232,7 +253,7 @@ def main(argv):
         print(f"not measured: {SKILL_NAME} is not installed for {args.harness}; run setup.sh first")
         return EXIT_NOT_MEASURED
     if len(others) < OTHERS_NEEDED:
-        print(f"note: fewer than {OTHERS_NEEDED} other skills installed; SI-12 asks for at least {OTHERS_NEEDED}")
+        print(f"note: fewer than {OTHERS_NEEDED} other skills installed; the measure needs at least {OTHERS_NEEDED}")
 
     stamp = time.strftime("%Y%m%dT%H%M%S")
     run_dir = Path(tempfile.gettempdir()) / "persona-judge-triggers" / f"{args.harness}-{stamp}"

@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Can you review .claude/agents/helper.md, .github/agents/triage.agent.md, CLAUDE.md and .claude/output-styles/terse.md? I want to know how well they're written.",
-      "expected_output": "Two reports, on the two dedicated personas, each header naming its kind; CLAUDE.md and the output style set aside, each with its reason (T-1, SI-1).",
+      "expected_output": "Two reports, on the two dedicated personas, each header naming its kind; CLAUDE.md and the output style set aside, each with its reason.",
       "files": [
         "tests/evals/files/helper-agent.fixture",
         "tests/evals/files/copilot-agent.fixture",
@@ -22,7 +22,7 @@
     {
       "id": 2,
       "prompt": "review .claude/agents/helper.md for me, the subagent keeps ignoring its rules and I don't know why",
-      "expected_output": "One report on helper.md: the stars, the total and the two subtotals first, then the files, the quoted lines with their sources, the checks and ratings by section and the formula (T-4, SI-4, SI-13).",
+      "expected_output": "One report on helper.md: the stars, the total and the two subtotals first, then the files, the quoted lines with their sources, the checks and ratings by section and the formula.",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/agents-md.fixture",
@@ -47,7 +47,7 @@
     {
       "id": 3,
       "prompt": "Please review every persona in this repository and give me the scores.",
-      "expected_output": "A summary, three reports and four files set aside; the project's files are unchanged (T-9, SI-9).",
+      "expected_output": "A summary, three reports and four files set aside; the project's files are unchanged.",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/agents-md.fixture",
@@ -68,7 +68,7 @@
     {
       "id": 4,
       "prompt": "Score the helper subagent in .claude/agents/helper.md against the persona review questions and show me how the total was worked out.",
-      "expected_output": "A report whose printed subtotals, total and stars follow from its checks and ratings by the stated formula (T-10, SI-10).",
+      "expected_output": "A report whose printed subtotals, total and stars follow from its checks and ratings by the stated formula.",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/agents-md.fixture",
@@ -89,7 +89,7 @@
     {
       "id": 5,
       "prompt": "Check all the agent definitions in this project, whatever harness they're for, and tell me which ones need the most work.",
-      "expected_output": "A summary of the three dedicated personas, ordered from the lowest score, each report beneath; the other four files set aside with a reason each (T-11, SI-11).",
+      "expected_output": "A summary of the three dedicated personas, ordered from the lowest score, each report beneath; the other four files set aside with a reason each.",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/agents-md.fixture",
@@ -111,7 +111,7 @@
     {
       "id": 6,
       "prompt": "Review only the subagents in .claude/agents/ and nothing else.",
-      "expected_output": "Reports on the two agent files and no others (T-11, SI-11).",
+      "expected_output": "Reports on the two agent files and no others.",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/agents-md.fixture",
@@ -130,7 +130,7 @@
     {
       "id": 7,
       "prompt": "I'm drafting a subagent and haven't saved it yet. Can you review this text?\n\n---\nname: helper\ndescription: Reviews pull requests for style problems.\ntools: Read, Grep, Edit\n---\n\nYou review code for style and report what you find.\n\nNever edit files; report what you find in a list.\nRate each finding high, medium or low.\nIf the scope is unclear, ask.",
-      "expected_output": "One report on the pasted text, labelled <session text> (T-11, SI-11).",
+      "expected_output": "One report on the pasted text, labelled <session text>.",
       "files": [
         "tests/evals/files/claude-md.fixture",
         "tests/evals/files/agents-md.fixture",
@@ -149,7 +149,7 @@
     {
       "id": 8,
       "prompt": "Review the stylist subagent and the reviewer persona listed in personas.txt. I'm here if you need to ask me anything before you start.",
-      "expected_output": "One question before the review, naming the stylist's two candidate files; the listed persona needs none, since the list settles its files (T-13, SI-13, someone to answer).",
+      "expected_output": "One question before the review, naming the stylist's two candidate files; the listed persona needs none, since the list settles its files. Someone is present to answer the question.",
       "files": [
         "tests/evals/files/stylist-agent.fixture",
         "tests/evals/files/house-style.fixture",
@@ -168,7 +168,7 @@
     {
       "id": 9,
       "prompt": "Review the stylist subagent and the reviewer persona listed in personas.txt. This runs unattended: nobody will answer questions.",
-      "expected_output": "Two reports: the stylist reviewed alone, its two candidates named as left out; the listed persona reviewed over its three files, the missing listed path named as left out (T-13, SI-13, unattended).",
+      "expected_output": "Two reports: the stylist reviewed alone, its two candidates named as left out; the listed persona reviewed over its three files, the missing listed path named as left out. The run is unattended, so nothing is asked.",
       "files": [
         "tests/evals/files/stylist-agent.fixture",
         "tests/evals/files/house-style.fixture",

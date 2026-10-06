@@ -26,7 +26,9 @@ Before each persona's rows, one line gives its three branches: delegated, the ha
 the settings it holds, as find.py prints them.
 
 Files set aside (project instructions, output styles, READMEs and skills) are not checked. A persona the
-project's list names is checked over all its files, each under the persona's kind and harness.
+project's list names is checked over all its files, each under the persona's kind and harness, except that a
+field-missing row runs on the main file only and prints '-' for the others: a field the persona declares lives
+in its main file's front matter.
 
 Adding a row of an existing kind to the table needs no code change. A row names one of the checks the
 review questions mark *script*; the checks they mark *reading* are the reviewer's. A row's harness column is
@@ -59,6 +61,8 @@ import os
 import re
 import sys
 
+# Write no bytecode beside the scripts: a review changes no file, and an import would otherwise leave __pycache__.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import find  # noqa: E402
 import personafile  # noqa: E402
@@ -67,9 +71,10 @@ import questions  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_TABLE = os.path.join(HERE, "..", "references", "failures.tsv")
 REFERENCES = os.path.join(HERE, "..", "references")
-REVIEW_QUESTIONS = os.path.join(REFERENCES, "review-questions.md")
+# The folder of parts questions.py joins into the review questions.
+REVIEW_QUESTIONS = os.path.join(REFERENCES, "questions")
 
-# Exit codes, as the docstring states them (build specification §3c).
+# Exit codes, as the docstring states them.
 EXIT_CLEAN = 0
 EXIT_ZERO_FOUND = 1
 EXIT_ERROR = 2
@@ -77,7 +82,7 @@ EXIT_NOTHING = 3
 
 COLUMNS = ["id", "question", "kind", "applies_to", "harness", "field", "pattern", "unless", "data", "source", "message"]
 KINDS = ("line-pattern", "missing-path", "field-and-line", "field-missing", "harness-default")
-# The defaults table a harness-default row reads (build specification §3d).
+# The columns of the defaults table a harness-default row reads.
 DEFAULTS_COLUMNS = ["id", "harness", "default", "pattern", "unless", "source"]
 DEFAULTS_ID_RE = re.compile(r"^HD-\d{3}$")
 # The harnesses find.py names from a file's path; any other file has no known harness.
@@ -90,6 +95,10 @@ ONE, ZERO = 1, 0
 # The frontmatter field whose line a field-missing 0 quotes, since a missing field has no line of its own:
 # the line that names the agent.
 NAME_FIELD = "name"
+# The kinds that run on a persona's main file only: a field the persona must declare, such as tools, lives in its
+# main file's front matter, and a file the persona loads holds none.
+MAIN_FILE_KINDS = ("field-missing",)
+MAIN_FILE_NOTE = "applies to the persona's main file only"
 
 
 class TableError(Exception):
@@ -97,8 +106,8 @@ class TableError(Exception):
 
 
 def check_titles(path=REVIEW_QUESTIONS):
-    """The checks in review-questions.md as {title: 'script' or 'reading'}, read by questions.py under the file's
-    markup contract; a file that breaks the contract is a table error naming its line."""
+    """The checks in the review questions as {title: 'script' or 'reading'}, read by questions.py under their
+    markup contract; questions that break the contract are a table error naming the part file and its line."""
     try:
         qs = questions.load_cached(path)
     except OSError as exc:
@@ -180,7 +189,7 @@ def load_table(path):
             what = "a reading check, which the reviewer answers" if row["question"] in titles else "not a check"
             faults.append(
                 f"{where}, column question: '{row['question']}' is {what}; expected one of the checks marked "
-                f"script in review-questions.md, word for word: {', '.join(t for t, m in titles.items() if m == 'script')}"
+                f"script in the review questions, word for word: {', '.join(t for t, m in titles.items() if m == 'script')}"
             )
         if row["kind"] not in KINDS:
             faults.append(f"{where}, column kind: '{row['kind']}'; expected one of {', '.join(KINDS)}")
@@ -208,7 +217,7 @@ def load_table(path):
                 faults.append(f"{where}, column data: empty; a harness-default row names its defaults table")
             else:
                 # Beside the check table first, so a copied pair of tables reads its own copy; then
-                # references/, where the data column says the defaults table lives (specification §3c).
+                # references/, where the skill keeps its own defaults table.
                 beside = os.path.join(os.path.dirname(os.path.abspath(path)), row["data"])
                 data_path = beside if os.path.exists(beside) else os.path.join(REFERENCES, row["data"])
                 try:
@@ -223,9 +232,12 @@ def load_table(path):
     return out
 
 
-def run_row(row, pf, delegated, root, harness=None):
+def run_row(row, pf, delegated, root, harness=None, main=True):
     """Run one row on one file; return (score, faults, note). Each fault is a dict: line, quote, note and,
-    for a field-and-line row, field_line and field_quote, the line where the field is set."""
+    for a field-and-line row, field_line and field_quote, the line where the field is set. main is False for a
+    file that loads with a persona, where a field-missing row does not apply."""
+    if not main and row["kind"] in MAIN_FILE_KINDS:
+        return None, [], MAIN_FILE_NOTE
     kind = find.DELEGATED if delegated else find.STANDING
     if row["applies_to"] not in ("any", kind):
         return None, [], f"applies to {row['applies_to']} personas only"
@@ -315,18 +327,19 @@ def check_files(records, texts, table, kind_override=None, root=None):
         branches = {"delegated": delegated, "harness": rec.get("harness"), "settings": list(rec.get("settings") or [])}
         line = find.branch_text(dict(rec, delegated=delegated))
         file_root = root or find.project_root(os.getcwd())
-        for shown, pf in files:
-            for r in check_one(shown, pf, rec["kind"], delegated, rec.get("harness"), table, file_root):
+        for i, (shown, pf) in enumerate(files):
+            for r in check_one(shown, pf, rec["kind"], delegated, rec.get("harness"), table, file_root, main=i == 0):
                 r.update(persona=rec["path"], branches=branches, _branch_text=line)
                 results.append(r)
     return results
 
 
-def check_one(shown, pf, kind, delegated, harness, table, root):
-    """Run every row against one file, under its persona's kind, delegation and harness."""
+def check_one(shown, pf, kind, delegated, harness, table, root, main=True):
+    """Run every row against one file, under its persona's kind, delegation and harness; main is False for a file
+    that loads with the persona."""
     results = []
     for row in table:
-        score, faults, note = run_row(row, pf, delegated, root, harness)
+        score, faults, note = run_row(row, pf, delegated, root, harness, main)
         base = {
             "id": row["id"], "path": shown, "kind": kind, "delegated": delegated, "question": row["question"],
             "source": row["source"], "score": score,
@@ -429,7 +442,7 @@ def main(argv):
         shown = set()
         for r in results:
             if r["persona"] not in shown:
-                # The three branches, printed for the record once per persona (specification §3c, round 4).
+                # The three branches, printed once per persona, so the reader sees how each was read.
                 shown.add(r["persona"])
                 print(f"{r['persona']}\tbranches: {r['_branch_text']}")
             print(text_line(r))

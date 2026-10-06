@@ -1,8 +1,8 @@
-"""Tests for report.py: schema, validate, render and verify (SI-4, SI-10, SI-11, SI-13), to the review questions of
-round 4: questions, weights, branches and what applies read from review-questions.md at run time by questions.py.
+"""Tests for report.py: schema, validate, render and verify, to the review questions as questions.py reads them
+from the parts in references/questions/ at run time: questions, weights, branches and what applies.
 
-Every count here comes from the file through questions.py (specification §8, 'Counts in every test and eval'); the
-numbers pinned on purpose are the sample's, which T-4 compares by its hash."""
+Every count here comes from the parts through questions.py, so a change to the questions needs no change to the
+tests; the numbers pinned on purpose are the sample's, which the sample test checks by its hash first."""
 
 import json
 import re
@@ -11,17 +11,17 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from support import REFERENCES, SCRIPTS, ScratchCase, make_fixtures, run, sample_text
+from support import QUESTIONS, REFERENCES, SCRIPTS, ScratchCase, make_fixtures, run, sample_text
 
 sys.path.insert(0, str(SCRIPTS))
 import questions  # noqa: E402
 
-QS = questions.load(REFERENCES / "review-questions.md")
+QS = questions.load(QUESTIONS)
 PERSONA, WRITING = QS.sections
 TITLES = [q.title for q in QS.questions]
 WEIGHTED = [t for t in QS.weights_table]
 
-# Exit codes report.py promises (specification §3e).
+# Exit codes report.py promises in its docstring.
 OK, MISMATCH, REFUSED, NO_SCORE = 0, 1, 2, 3
 
 NO_PREDICTION = "A score does not predict how the agent will behave. The quoted lines are what to act on."
@@ -88,12 +88,16 @@ def with_subject(answer, path):
     return answer
 
 
+# The fit statement a fixture record gives when it supplies no fit of its own.
+NO_FIT = "Nothing was found on how its remit sits with the nearby files."
+
+
 def review(path, answers, branches, removed=(), default_place=None, absent=(), **extra):
     """A record entry: the answers given, and for every other question the persona answers, a reading check met, a
     quality rating at its top point, and a frequency rating with default_place meeting it. A content-test question
     named in absent (the fixture's file does not hold its subject) is marked as not applying, with the reason the
     file prints; any other content-test question gives its subject. Questions in removed, and script checks, are
-    left out. Which questions are content tests is read from review-questions.md, so a new row needs no change
+    left out. Which questions are content tests is read from the review questions, so a new row needs no change
     here."""
     out = []
     for title in TITLES:
@@ -117,6 +121,8 @@ def review(path, answers, branches, removed=(), default_place=None, absent=(), *
         else:
             answer = {"question": title, "scale": q.scale, "places": [place(*default_place, True, path)]}
         out.append(with_subject(answer, path) if title in QS.content_tests else answer)
+    # Every persona entry carries a fit entry, which validate requires; a test that needs another passes its own.
+    extra.setdefault("fit", {"statement": NO_FIT})
     return dict({"path": path, "branches": branches, "questions": out}, **extra)
 
 
@@ -232,7 +238,7 @@ def release_review():
 
 def complete_review(consistent=0):
     """.claude/agents/release-checker.md, to which every question applies: each at its top, except 'Consistent with
-    itself' at the score given (T-10's derived case)."""
+    itself' at the score given, so the expected score can be worked out by hand."""
     f = ".claude/agents/release-checker.md"
     subject = lambda n, q: {"file": f, "line": n, "quote": q}  # noqa: E731
     answers = {
@@ -363,7 +369,7 @@ class TestFormula(unittest.TestCase):
         self.assertEqual(self.r.stars(1, 4), Fraction(3, 2))
 
     def test_star_display_t_s(self):
-        """T-S: the ratified form, code point for code point."""
+        """The star line for 0, 0.5, 3, 3.5 and 5 stars, code point for code point."""
         want = {
             Fraction(0): "☆☆☆☆☆ (0)", Fraction(1, 2): "½☆☆☆☆ (0.5)", Fraction(3): "★★★☆☆ (3)",
             Fraction(7, 2): "★★★½☆ (3.5)", Fraction(5): "★★★★★ (5)",
@@ -372,7 +378,8 @@ class TestFormula(unittest.TestCase):
             self.assertEqual([hex(ord(c)) for c in self.r.star_line(value)], [hex(ord(c)) for c in line], value)
 
     def test_no_question_in_the_script(self):
-        """No script holds a question title (ruling of 3 October 2026)."""
+        """No script holds a question title: the questions live in references/questions/ alone, so editing them needs
+        no code change."""
         for script in SCRIPTS.glob("*.py"):
             text = script.read_text(encoding="utf-8")
             held = [t for t in TITLES if t in text]
@@ -440,7 +447,7 @@ class TestSchemaAndValidate(ReportCase):
         self.answer(entry, "Consistent with itself")["question"] = "Consistent"
         out = self.faults(entry)
         self.assertIn("'Consistent'", out)
-        self.assertIn("review-questions.md", out)
+        self.assertIn("review questions", out)
 
     def test_script_check_against_its_rows(self):
         entry = helper_review()
@@ -531,7 +538,7 @@ class TestSchemaAndValidate(ReportCase):
         del grounding["Reasons given"]
         record = {"root": self.proj.as_posix(), "files": [helper_review()]}
         _, faults = report.validate(record, check.load_table(check.DEFAULT_TABLE), grounding)
-        self.assertTrue(any("'Reasons given'" in f and "bibliography.md" in f for f in faults), faults)
+        self.assertTrue(any("'Reasons given'" in f and "grounding.md" in f for f in faults), faults)
 
     def test_empty_record(self):
         path = self.tmp / "empty.json"
@@ -549,7 +556,8 @@ class TestSchemaAndValidate(ReportCase):
 
 
 class TestWhatAppliesT_W(ReportCase):
-    """T-W: report.py removes exactly the questions the file's tables name, and validate refuses each wrong record."""
+    """report.py removes exactly the questions the file's tables name for each branch, and validate refuses each wrong
+    record."""
 
     def faults(self, entry, project=None):
         path = self.tmp / "faulty.json"
@@ -644,8 +652,8 @@ class TestWhatAppliesT_W(ReportCase):
 
 
 class TestNoPlace(ReportCase):
-    """A frequency rating with no place in the file: with the five ratified content-test rows (3 October 2026), it does not
-    apply, with the reason the file prints, and no script changed. The verifier's file holds no rule that limits the
+    """A frequency rating with no place in the file: under the content tests the review questions list, it does not
+    apply, with the reason the file prints, and no script changed. The test's file holds no rule that limits the
     agent, so 'Reasons given' has no place."""
 
     project_name = "no-place"
@@ -673,7 +681,7 @@ THIN_TEXT = "You are an expert code reviewer who helps with pull requests."
 
 
 def thin_review():
-    """The verifier's one-line persona: an identity and nothing else, so every content test finds no subject."""
+    """A one-line persona: an identity and nothing else, so every content test finds no subject."""
     f = THIN
     answers = {
         "The description says when to choose it": {
@@ -689,8 +697,8 @@ def thin_review():
 
 
 class TestThinFile(ReportCase):
-    """A file that says little: past half the points possible not applying, the report says so under 'Do not apply'
-    (ruling of 4 October 2026). The threshold is half the points the file derives, never a number in code."""
+    """A file that says little: past half the points possible not applying, the report says so under 'Do not apply',
+    so a high score on little text is not read as a good persona. The threshold is half the points the file derives, never a number in code."""
 
     project_name = "thin"
 
@@ -1007,11 +1015,14 @@ class TestNothingApplies(unittest.TestCase):
         self.assertEqual(text.splitlines()[0], NOTHING_APPLIES)
 
 
+# The sample record's root reads 'set-by-the-tests': each test that reads the record sets root to its own fixture
+# project before passing the record to report.py.
 SAMPLE_RECORD = Path(__file__).resolve().parent / "evals" / "sample-record.json"
 
 
 class TestSampleT4(ReportCase):
-    """T-4: sample-review.md's three blocks are report.py's render of tests/evals/sample-record.json, line for line."""
+    """sample-review.md's three blocks are report.py's render of tests/evals/sample-record.json, line for line, so the
+    example a reader sees is what the script prints."""
 
     def test_sample_renders_line_for_line(self):
         want = blocks(sample_text())
@@ -1053,6 +1064,37 @@ class TestSummaryT11(ReportCase):
     def test_all_set_aside(self):
         proc = self.render([set_aside_entry("CLAUDE.md"), set_aside_entry("README.md")], "--summary")
         self.assertEqual(proc.returncode, NO_SCORE, proc.stderr)
+
+
+def with_resource_warnings(script, *args):
+    """Run a Python script with the warning for a file left open shown; return the finished process."""
+    import subprocess
+
+    return subprocess.run([sys.executable, "-W", "always::ResourceWarning", str(script), *map(str, args)],
+                          capture_output=True, text=True, timeout=60)
+
+
+class TestFilesClosed(ReportCase):
+    """report.py closes a record or a report it reads by path: with the warning for a file left open shown,
+    'validate' on a record and 'verify' on a report print none. The control: a script that leaves a file open prints
+    the warning, so the test can see one."""
+
+    def test_record_and_report_closed(self):
+        record = self.write([helper_review()])
+        rendered = run("report.py", "render", record)
+        self.assertEqual(rendered.returncode, OK, rendered.stderr)
+        report = self.tmp / "report.md"
+        report.write_text(rendered.stdout, encoding="utf-8")
+        for args in (("validate", record), ("verify", report)):
+            proc = with_resource_warnings(SCRIPTS / "report.py", *args)
+            self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+            self.assertNotIn("ResourceWarning", proc.stderr, args[0])
+
+    def test_control(self):
+        leaky = self.tmp / "leaky.py"
+        leaky.write_text("import sys\nopen(sys.argv[1], encoding='utf-8').read()\n", encoding="utf-8")
+        proc = with_resource_warnings(leaky, leaky)
+        self.assertIn("ResourceWarning", proc.stderr)
 
 
 class TestVerifyT10(ReportCase):
@@ -1157,6 +1199,147 @@ class TestVerifyT10(ReportCase):
         sample_text()
         ok = run("report.py", "verify", REFERENCES / "sample-review.md")
         self.assertEqual(ok.returncode, OK, ok.stdout + ok.stderr)
+
+
+class TestFieldChecksOnTheMainFile(ReportCase):
+    """A persona spread over files: a check on a front-matter field, such as 'Declares its tools', is scored from the persona's main file
+    only. A file the persona loads holds no front matter of its own, so its missing tools field says nothing about the
+    persona. The case: PJ-008 used to score a loaded file 0, quoting its '# Sections' heading as the line with no tools
+    field."""
+
+    LOADED = ".claude/agents/helper/sections.md"
+    LOADED_TEXT = "# Sections\n\nKeep each section of a report under ten lines.\n"
+
+    def loaded(self, entry, path=None):
+        target = self.proj / (path or self.LOADED)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(self.LOADED_TEXT, encoding="utf-8")
+        entry["loaded_with"] = [{"path": path or self.LOADED, "reason": "the persona's text tells the agent to read it"}]
+        return entry
+
+    def test_tools_declared_on_the_main_file(self):
+        """helper.md declares 'tools: Read, Grep, Edit' on line 4; the loaded file has no tools field, and the check
+        still scores 1 with no finding on the loaded file."""
+        entry = self.loaded(helper_review())
+        entry["questions"].append({"question": "Declares its tools", "score": 1})
+        proc = run("report.py", "validate", self.write([entry]))
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        proc = self.render([self.loaded(helper_review())])
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        out = proc.stdout
+        self.assertRegex(out, rf"(?m)^Declares its tools +yes {QS.by_title['Declares its tools'].weight}$")
+        self.assertNotIn(f"{self.LOADED}, line 1: '# Sections'", out)
+        self.assertNotIn("PJ-008", out)
+
+    def test_control_tools_missing_on_the_main_file(self):
+        """Control: triage.agent.md declares no tools, so 'Declares its tools' still scores 0 from PJ-010, quoting the
+        main file's line 2, with a loaded file beside it."""
+        loaded = ".github/agents/triage/sections.md"
+        proc = self.render([self.loaded(triage_review(), loaded)])
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        out = proc.stdout
+        self.assertRegex(out, r"(?m)^Declares its tools +no  0$")
+        self.assertIn("1. .github/agents/triage.agent.md, line 2: 'name: triage'", out)
+
+    def test_no_field_finding_on_the_loaded_file(self):
+        """With the persona's tools missing, the finding quotes the main file once and never the loaded file."""
+        loaded = ".github/agents/triage/sections.md"
+        out = self.render([self.loaded(triage_review(), loaded)]).stdout
+        self.assertNotIn(f"{loaded}, line 1:", out)
+        self.assertEqual(out.count("Rule PJ-010."), 1, out)
+
+
+class TestChecksReachLoadedFiles(ReportCase):
+    """reviewer.md's step 'Run the script checks' runs check.py on every file 'Settle the files each persona loads'
+    settled for a persona, so the checks reach the files it loads. The case: helper.md tells its agent to read a
+    second file in every review, and that second file holds a placeholder. check.py, run on both files, scores 'No placeholders' 0 on the second file, and report.py scores the
+    persona's check 0. The control: the same persona with a clean second file scores 1."""
+
+    LOADED = ".claude/agents/helper/scale.md"
+    POINTER = f"Read `{LOADED}` in full at the start of every review."
+    PLANTED = "# Scale\n\nTODO: define high, medium and low.\n"
+    CLEAN = "# Scale\n\nHigh means the change breaks the build.\n"
+    TITLE = "No placeholders"
+
+    def persona(self, loaded_text):
+        """helper.md with the pointer added after its last line, and the file it points to; return the record entry."""
+        main = self.proj / HELPER
+        text = main.read_text(encoding="utf-8")
+        main.write_text(text + ("" if text.endswith("\n") else "\n") + self.POINTER + "\n", encoding="utf-8")
+        loaded = self.proj / self.LOADED
+        loaded.parent.mkdir(parents=True, exist_ok=True)
+        loaded.write_text(loaded_text, encoding="utf-8")
+        entry = helper_review()
+        entry["loaded_with"] = [{"path": self.LOADED, "reason": "the persona's text tells the agent to read it in every review"}]
+        return entry
+
+    def placeholder_rows(self):
+        """check.py on both files, as 'Run the script checks' says: the 'No placeholders' rows, by file."""
+        # find.py lists the second file as one the persona may load, so 'Settle the files each persona loads' settles it.
+        found = run("find.py", HELPER, "--format", "json", cwd=self.proj)
+        self.assertEqual(found.returncode, OK, found.stderr)
+        self.assertEqual([c["path"] for c in json.loads(found.stdout)[0]["candidates"]], [self.LOADED])
+        proc = run("check.py", HELPER, self.LOADED, "--format", "json", cwd=self.proj)
+        # Exit 1 either way: helper.md's own 'Never edit files' beside 'tools: Read, Grep, Edit' scores PJ-003 0.
+        self.assertEqual(proc.returncode, MISMATCH, proc.stdout + proc.stderr)
+        rows = [r for r in json.loads(proc.stdout) if r["question"] == self.TITLE]
+        self.assertEqual(sorted(r["path"] for r in rows), sorted([HELPER, self.LOADED]))
+        return {r["path"]: r for r in rows}
+
+    def test_placeholder_in_the_loaded_file_reaches_the_score(self):
+        entry = self.persona(self.PLANTED)
+        rows = self.placeholder_rows()
+        self.assertEqual(rows[HELPER]["score"], 1)
+        self.assertEqual((rows[self.LOADED]["score"], rows[self.LOADED]["line"]), (0, 3))
+        proc = self.render([entry])
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        self.assertRegex(proc.stdout, rf"(?m)^{self.TITLE} +no  0$")
+        self.assertIn(f"{self.LOADED}, line 3: 'TODO: define high, medium and low.'", proc.stdout)
+
+    def test_control_clean_loaded_file(self):
+        entry = self.persona(self.CLEAN)
+        rows = self.placeholder_rows()
+        self.assertEqual((rows[HELPER]["score"], rows[self.LOADED]["score"]), (1, 1))
+        proc = self.render([entry])
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+        self.assertRegex(proc.stdout, rf"(?m)^{self.TITLE} +yes {QS.by_title[self.TITLE].weight}$")
+        self.assertNotIn(f"{self.LOADED}, line", proc.stdout)
+
+
+class TestFitRequiredSI3(ReportCase):
+    """Every persona report carries a fit entry, a finding or a statement that nothing was found; validate refuses
+    a persona entry without one and says which to add."""
+
+    def test_persona_with_no_fit_refused(self):
+        entry = helper_review()
+        entry.pop("fit", None)
+        path = self.write([entry])
+        proc = run("report.py", "validate", path)
+        self.assertEqual(proc.returncode, REFUSED, proc.stdout + proc.stderr)
+        out = proc.stdout
+        self.assertIn(f"{HELPER}, fit: missing", out)
+        self.assertIn("a finding", out)
+        self.assertIn("a statement that nothing was found", out)
+        render = run("report.py", "render", path)
+        self.assertEqual(render.returncode, REFUSED)
+        self.assertEqual(render.stdout, "")
+
+    def test_control_persona_with_a_fit_statement(self):
+        entry = helper_review(fit={"statement": "Nothing was found on how its remit sits with the nearby files."})
+        proc = run("report.py", "validate", self.write([entry]))
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+
+    def test_control_files_set_aside_need_no_fit(self):
+        proc = run("report.py", "validate", self.write([set_aside_entry("CLAUDE.md")]))
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
+
+    def test_sample_record_has_a_fit_entry(self):
+        record = json.loads(SAMPLE_RECORD.read_text(encoding="utf-8"))
+        record["root"] = self.proj.as_posix()
+        path = self.tmp / "sample-record.json"
+        path.write_text(json.dumps(record), encoding="utf-8")
+        proc = run("report.py", "validate", path)
+        self.assertEqual(proc.returncode, OK, proc.stdout + proc.stderr)
 
 
 if __name__ == "__main__":

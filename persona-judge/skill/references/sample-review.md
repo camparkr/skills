@@ -1,20 +1,9 @@
 # Sample review
 
-This file shows the form of every report. Load it when you write a report, and match its order and wording.
+This file shows the form of every report. Load it when you compose the review record, and match its order and
+wording, because the scripts render the report from the record and every report must read the same way.
 
-Every report opens with the stars, the total and the two subtotals; the total line gives the points possible and those
-that do not apply. The persona's branches and the questions that do not apply, each with its reason, come next, then
-each line that lowered the score, with its file, line, question, note and sources; a script check also names its rule.
-Then come the checks and ratings by section, the fit with neighbouring files, which does not count towards the score,
-the formula with its weights, and the total at equal weights. Source keys refer to `bibliography.md`.
-
-## Contents
-
-The file holds three sections:
-
-- persona reviewed, the subagent file the example reviews;
-- report, the report the script printed for it; and
-- edge cases, what a report says when the usual form does not fit.
+Source keys refer to [`sources.md`](sources.md), which you open only when someone asks for a source.
 
 ## Persona reviewed
 
@@ -40,15 +29,15 @@ If the scope is unclear, ask.
 
 ```text
 Summary: 1 persona reviewed, lowest total first; 1 file set aside
-.claude/agents/helper.md   subagent    ★★★☆☆ (3)     55 out of 98
+.claude/agents/helper.md   subagent    ★★½☆☆ (2.5)   53 out of 98
 CLAUDE.md                  set aside   project instructions: context for the agent, not a dedicated persona
 ```
 
 ```text
-★★★☆☆ (3)
-Total: 55 out of 98 (111 possible, less 13 that do not apply)
-Persona: 30 out of 54
-Instruction writing: 25 out of 44
+★★½☆☆ (2.5)
+Total: 53 out of 98 (111 possible, less 13 that do not apply)
+Persona: 31 out of 54
+Instruction writing: 22 out of 44
 
 Review: .claude/agents/helper.md (subagent, Claude Code)
 Branches: delegated yes (folder); harness Claude Code; settings tools
@@ -72,10 +61,10 @@ Lines that lowered the score
    Directions for when nobody answers. Nothing covers a run with no one to ask.
    Sources: RE1
 4. .claude/agents/helper.md, line 4: 'tools: Read, Grep, Edit'
-   Tools explained. Three tools are named with no word on when to use them.
+   Tools explained. Edit is granted while line 9 forbids editing, and nothing says when or why the agent uses it.
    Sources: GO3
 5. .claude/agents/helper.md, line 3: 'description: Reviews pull requests for style problems.'
-   The description says when to choose it. It names a subject and no task.
+   The description says when to choose it. It names the task in its own terms, not the requests a user would type, and says nothing of what it is not for.
    Sources: AN3, GO2, OA3, GO3
 6. .claude/agents/helper.md, line 7: 'You review code for style and report what you find.'
    An identity that does the work. It states the work and not where it stops.
@@ -84,7 +73,7 @@ Lines that lowered the score
    Terms defined where they are used. The scale is named and never defined.
    Sources: RE1
 8. .claude/agents/helper.md, line 10: 'Rate each finding high, medium or low.'
-   Answers defined, edge cases included. Nothing says what to return when nothing is found.
+   Answers defined, edge cases included. Nothing says what each level means or what to return when nothing is found.
    Sources: none, reading alone
 9. .claude/agents/helper.md, line 11: 'If the scope is unclear, ask.'
    Instructions an observer can check. Whether the scope is unclear is not something an observer can see.
@@ -116,7 +105,7 @@ Directions for when nobody answers         0 of 6   never
 Rules used in every act come first         6 of 6   always
 Tools explained                            0 of 6   never
 Commands given exactly                     does not apply
-The description says when to choose it     2 of 6   fair
+The description says when to choose it     3 of 6   good
 An identity that does the work             4 of 6   very good
 
 Instruction writing
@@ -128,7 +117,7 @@ Plain emphasis                             yes 1
 No placeholders                            yes 1
 Shows an example                           does not apply
 Terms defined where they are used          0 of 6   never
-Answers defined, edge cases included       3 of 6   about half the time
+Answers defined, edge cases included       0 of 6   never
 Its own criteria met                       does not apply
 Instructions an observer can check         4 of 6   usually
 What to do, not what to avoid              4 of 6   usually
@@ -139,9 +128,9 @@ Fit with neighbouring files, apart from the score
 1. CLAUDE.md, line 6: 'Rate each change as small, medium or large in the pull request.'
    The project rates changes on its own scale, beside the persona's high, medium or low.
 
-Formula: each check counts its weight or 0, and each rating its points; Consistent with itself, Bound parts agree with the prose and Enforceable rules enforced weigh 3, every other check 1; persona 30 out of 54, instruction writing 25 out of 44, total 55 out of 98.
-At equal weights: 53 out of 92.
-Stars: 55 ÷ 98 × 5 = 2.81, to the nearest half star.
+Formula: each check counts its weight or 0, and each rating its points; Consistent with itself, Bound parts agree with the prose and Enforceable rules enforced weigh 3, every other check 1; persona 31 out of 54, instruction writing 22 out of 44, total 53 out of 98.
+At equal weights: 51 out of 92.
+Stars: 53 ÷ 98 × 5 = 2.70, to the nearest half star.
 A score does not predict how the agent will behave. The quoted lines are what to act on.
 For secrets, hook scripts and server settings, use a configuration or security linter.
 ```
@@ -150,14 +139,3 @@ For secrets, hook scripts and server settings, use a configuration or security l
 Set aside: CLAUDE.md (project instructions)
 Project instructions: context for the agent, not a dedicated persona.
 ```
-
-## Edge cases
-
-A report says so plainly when:
-
-- the file is empty, with no stars and no total;
-- part of the file cannot be read, with the part skipped and a review of the rest;
-- files load with the persona, with each one named under 'Files reviewed:' and its reason;
-- nearby files may belong to the persona and nobody can say, with each one named under 'Files left out:' and its
-  reason; and
-- nothing lowered the score, with the line 'Nothing was found.' in place of the quoted lines.

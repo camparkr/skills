@@ -22,7 +22,9 @@ its steps say.
    and the Claude Code plugin's hook runs `scripts/guard.py` to keep its shell to the skill's scripts.
    When the harness has no such agent or refuses it, start a subagent whose brief opens with the whole of
    [`reviewer.md`](reviewer.md), front matter included, and give it only the tools the front matter lists where the
-   harness allows. Then tell the user that the rule to change no file rests on the reviewer's instructions alone.
+   harness allows. Then tell the user that the rule to change no file rests on the reviewer's instructions alone. In
+   this skill's test runs, a reviewer briefed this way held every tool, because the harness could not limit them for
+   one call, and its reasoning effort could not be set.
    Where the harness lets you set the reasoning effort, set it high, because the review weighs every line.
 3. **Brief it.** Give the reviewer four things and nothing more:
    - this folder's absolute path;

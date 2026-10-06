@@ -114,10 +114,9 @@ def stated_counts(text):
     out["content-test ratings"] = word_number(m.group(1)) if m else None
     out["content-test checks"] = word_number(m.group(2)) if m else None
     # The rating sections no longer count their ratings by scale: the persona ratings name the scales they use, and
-    # the instruction-writing ratings say each is rated on the frequency scale.
+    # each instruction-writing rating names its own scale model.
     m = re.search(NUMBER + r" scale-rating models: (\w+) and (\w+)\.", folded)
     out["persona rating scales"] = (word_number(m.group(1)), sorted({m.group(2), m.group(3)})) if m else None
-    out["writing ratings all frequency"] = True if re.search(r"Each is rated on the frequency scale", folded) else None
     return out
 
 
@@ -137,7 +136,6 @@ def derived_counts(qs):
         "content-test checks": sum(1 for q in content if q.kind != "rating"),
         "persona rating scales": (len({q.scale for q in in_section(persona) if q.kind == "rating"}),
                                   sorted({q.scale for q in in_section(persona) if q.kind == "rating"})),
-        "writing ratings all frequency": all(q.scale == "frequency" for q in in_section(writing) if q.kind == "rating"),
     }
 
 

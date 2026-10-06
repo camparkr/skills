@@ -33,8 +33,6 @@ MUST'. *Scores 0 on:* 'CRITICAL: You MUST run the tests.' Sources: AN5.
 
 ### Ratings
 
-Each is rated on the frequency scale.
-
 **Terms defined where they are used**
 *Scale model:* Frequency.
 *Places:* Each scale, set of answers or term the file's rules name.

@@ -12,14 +12,13 @@ path. *Scores 0 on:* 'See also `notes.md`.' Sources: RE1.
 
 **Bound parts agree with the prose** (*script*, weight 3). No setting the harness applies permits what the prose forbids
 or forbids what the prose requires. *Scores 0 on:* a file told never to edit files whose `tools` include an editing
-tool. Applies when the file holds settings ('Which questions apply'). Sources: AN2, AN3.
+tool. Sources: AN2, AN3.
 
 **Permissions fit the job** (*reading*). Where the persona sets its own permissions, such as Claude Code's
-`permissionMode` or Codex's `sandbox_mode`, they allow no more than its job needs. Applies when the file holds settings.
-*Scores 0 on:* a reviewer told only to report on a change, whose `permissionMode` is `acceptEdits`. Sources: OA2, AN3.
-The setting does not always bind: Claude Code ignores it when the main conversation runs in `bypassPermissions`,
-`acceptEdits` or auto mode (AN3). So this check reads what the file asks for, and 'Enforceable rules enforced' asks
-whether a rule that must hold is enforced.
+`permissionMode` or Codex's `sandbox_mode`, they allow no more than its job needs. *Scores 0 on:* a reviewer told only
+to report on a change, whose `permissionMode` is `acceptEdits`. Sources: OA2, AN3. The setting does not always bind:
+Claude Code ignores it when the main conversation runs in `bypassPermissions`, `acceptEdits` or auto mode (AN3). So this
+check reads what the file asks for, and 'Enforceable rules enforced' asks whether a rule that must hold is enforced.
 
 **Needs no context it is not given** (*reading*). The persona refers to nothing from a conversation it does not see: no
 earlier discussion, decision or request that its own files and its brief do not hold. *Scores 0 on:* 'Apply the approach
@@ -50,17 +49,14 @@ AN1.
 **No pressure from consequences** (*reading*). The file does not tell the agent what its output will cause for itself or
 for others, as a lever on the output. *Scores 0 on:* 'Low scores will get this model retrained.' Sources: ST6.
 
-**One job** (*reading*). A delegated persona gives the agent one job. Applies to a delegated persona ('Which questions
-apply'). *Scores 0 on:* a subagent told to review code, write the tests and update the changelog. Sources: OA2, GO1.
+**One job** (*reading*). A delegated persona gives the agent one job. *Scores 0 on:* a subagent told to review code,
+write the tests and update the changelog. Sources: OA2, GO1.
 
 **Declares its tools** (*script*). A delegated persona names the tools it may use, so it does not inherit every tool by
-leaving the list out. Applies to a delegated persona whose path names a harness, since the harness decides what a
-missing list gives; not to a Codex custom agent, whose file has no tools field (OA2). *Scores 0 on:* a subagent
-definition with no `tools` field. Sources: OA2, GO2, GH2.
+leaving the list out. *Scores 0 on:* a subagent definition with no `tools` field. Sources: OA2, GO2, GH2.
 
-**States its output** (*reading*). A delegated persona says what the agent returns and in what form. Applies to a
-delegated persona. *Scores 0 on:* a subagent told to 'review the change' with no word on what it hands back. Sources:
-GO3, OA3.
+**States its output** (*reading*). A delegated persona says what the agent returns and in what form. *Scores 0 on:* a
+subagent told to 'review the change' with no word on what it hands back. Sources: GO3, OA3.
 
 **Boundaries in three tiers** (*reading*). The file says what the agent always does, what it asks about first and what
 it never does. *Scores 0 on:* a file with rules to follow and nothing on what needs asking first. Sources: GH3.

@@ -27,7 +27,7 @@ Sources: RE1.
 Sources: ST5.
 
 **Tools explained** 
-*Scale model:* Frequency. Follows 'Declares its tools' ('Which questions apply'). 
+*Scale model:* Frequency. 
 *Places:* Each tool the file names whose use its rules limit: a tool that can do something a rule forbids, such as a shell in a persona that must change no file. A tool the rules leave as its harness describes it needs no explanation, because the harness already gives its use. 
 *Meets it:* The file says when and why the agent uses it within that limit. Whether a setting keeps the tool within the limit is for 'Enforceable rules enforced'. 
 *Example of a low rating:* A shell granted to a reviewer with no word on which commands it runs. 
@@ -43,7 +43,7 @@ Sources: GO3.
 Sources: GH3.
 
 **The description says when to choose it** 
-*Scale model:* Quality. Applies to a delegated persona ('Which questions apply'): nothing chooses a standing one. 
+*Scale model:* Quality. 
 *Exceptional:* Puts the main use first, names the requests it is for in words a user would type and says what it is not for. 
 *Excellent:* Names those requests in a user's words and says what it is not for. 
 *Very good:* Names the requests in a user's words. 
@@ -55,7 +55,7 @@ Sources: GH3.
 Sources: AN3, GO2, OA3, GO3.
 
 **An identity that does the work** 
-*Scale model:* Quality. Applies to every dedicated persona, which has a role of its own; the identity is where the file states it, such as 'You are…'. 
+*Scale model:* Quality. The identity is where the file states the agent's role, such as 'You are…'. 
 *Exceptional:* States what the agent does and where its work stops, with no praise. 
 *Excellent:* States both, with a word of praise. 
 *Very good:* States what the agent does, with no praise. 

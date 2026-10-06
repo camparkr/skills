@@ -38,9 +38,8 @@ Each states its test, and the reviewer quotes the line that meets it, or says th
 Every other question applies to every dedicated persona.
 
 **A check and the rating that follows it.** Where a rating measures how well the file does what a check finds it does,
-the rating applies only when the check scores 1. 'Tools explained' follows 'Declares its tools': a persona that
-declares no tools loses that check's point and is not rated on explaining them, so one missing list costs once. Where
-'Declares its tools' does not apply, 'Tools explained' applies when the file names a tool whose use its rules limit.
+the rating applies only when the check scores 1, so one missing part costs once. Where the check does not apply, the
+rating applies when the file holds its subject.
 
 | Rating | Follows check | Reason printed |
 |---|---|---|

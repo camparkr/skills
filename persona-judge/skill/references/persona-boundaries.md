@@ -1,8 +1,7 @@
 # Persona boundaries
 
 This file says what a persona is, what it is not, and what the persona controls, for the reviewer to load when
-`../steps/answer.md` says. Source keys refer to [`sources.md`](sources.md), which you open only when someone asks for a
-source.
+`../steps/answer.md` says.
 
 ## Terms
 

@@ -113,10 +113,7 @@ def stated_counts(text):
     m = re.search(NUMBER + r" ratings and " + NUMBER + r" checks? apply only where the file holds", folded)
     out["content-test ratings"] = word_number(m.group(1)) if m else None
     out["content-test checks"] = word_number(m.group(2)) if m else None
-    # The rating sections no longer count their ratings by scale: the persona ratings name the scales they use, and
-    # each instruction-writing rating names its own scale model.
-    m = re.search(NUMBER + r" scale-rating models: (\w+) and (\w+)\.", folded)
-    out["persona rating scales"] = (word_number(m.group(1)), sorted({m.group(2), m.group(3)})) if m else None
+    # The rating sections state no counts: each rating names its own scale model.
     return out
 
 
@@ -134,8 +131,6 @@ def derived_counts(qs):
         "weighted points": len({q.weight for q in weighted}) == 1 and weighted[0].weight or None,
         "content-test ratings": sum(1 for q in content if q.kind == "rating"),
         "content-test checks": sum(1 for q in content if q.kind != "rating"),
-        "persona rating scales": (len({q.scale for q in in_section(persona) if q.kind == "rating"}),
-                                  sorted({q.scale for q in in_section(persona) if q.kind == "rating"})),
     }
 
 

@@ -13,8 +13,6 @@ three questions:
 
 Quote the line from each file for every yes. When every answer is no, say that nothing was found.
 
-Read [`../references/sample-review.md`](../references/sample-review.md) now, for the form the report takes.
-
 ## Validate the record
 
 Pass the record on standard input, so it never touches the disk. Write each `<` in it as `\u003c` and each `>` as
@@ -26,8 +24,9 @@ python3 <skill>/scripts/report.py validate - <<'RECORD'
 RECORD
 ```
 
-Fix each fault it lists and run it again until it exits 0, at most three reruns. Past that the fault is in the review,
-not the record: stop.
+When it refuses the record, read [`../references/sample-review.md`](../references/sample-review.md), which shows a sound
+review, then fix each fault it lists and run it again until it exits 0, at most three reruns. Past that the fault is in
+the review, not the record: stop.
 
 ## Render the report
 

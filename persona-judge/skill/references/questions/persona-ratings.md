@@ -1,7 +1,5 @@
 ### Ratings
 
-Two scale-rating models: frequency and quality.
-
 **Rules held in the persona** 
 *Scale model:* Frequency. 
 *Places:* Each rule the agent applies in every act: a rule that holds whatever the task is, not one tied to a single step or kind of task. 

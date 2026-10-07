@@ -187,20 +187,24 @@ enforces, with a hook that lets the reviewer's shell run only the skill's script
 ./setup.sh             # install the skill and the reviewer agent in each harness that is installed
 ```
 
-Codex runs the reviewer agent in a read-only sandbox, unless the session that starts it runs with `--yolo` or a wider
-`/permissions` setting, which Codex applies to the agent too. Gemini CLI gives it read, list, search and shell tools and
-none that writes a file. For Gemini CLI, `setup.sh` runs `gemini extensions link` on `plugin/harness-agents/gemini/`,
-an extension that holds the reviewer agent and a link to the skill folder, so Gemini CLI asks you to consent; it also
-removes any link into this folder that an earlier version made in `~/.gemini/skills/` or `~/.gemini/agents/`. It then
-installs a policy file, `~/.gemini/policies/persona-judge.toml`, that lets the reviewer agent's shell run only
-`python3 --version` and the skill's scripts, and refuses its other commands, in YOLO mode too. Gemini CLI reads user
-policy files from that folder, and drops the allow rules of a policy inside an extension. For OpenCode, `setup.sh`
-links the reviewer agent at `~/.config/opencode/agents/persona-judge-reviewer.md`, or under `$XDG_CONFIG_HOME` when
-that is set, and links the skill at `~/.config/opencode/skills/persona-judge` only when neither
+Codex runs the reviewer agent in the sandbox of the session that starts it, read-only only when that session is, not in
+the read-only sandbox its file sets. Gemini CLI gives it read, list, search and shell tools and none that writes a file.
+For Gemini CLI, `setup.sh` runs `gemini extensions link` on `plugin/harness-agents/gemini/`, an extension that holds the
+reviewer agent and a link to the skill folder, so Gemini CLI asks you to consent; it also removes any link into this
+folder that an earlier version made in `~/.gemini/skills/` or `~/.gemini/agents/`. It then installs a policy file,
+`~/.gemini/policies/persona-judge.toml`, that lets the reviewer agent's shell run only `python3 --version` and the
+skill's scripts, and refuses its other commands, in YOLO mode too. Gemini CLI reads user policy files from that folder,
+and drops the allow rules of a policy inside an extension. The policy refuses `<` and `>` in a command, apart from the
+opening of the one heredoc that passes a record, so in Gemini CLI save pasted text that holds them to a file and name
+the file. In Gemini CLI, run reviews from an interactive session. Headless `gemini -p` gives the reviewer no shell
+unless run with `--approval-mode=yolo`, and then only the policy limits the main session's shell. For OpenCode,
+`setup.sh` links the reviewer agent at `~/.config/opencode/agents/persona-judge-reviewer.md`, or under
+`$XDG_CONFIG_HOME` when that is set, and links the skill at `~/.config/opencode/skills/persona-judge` only when neither
 `~/.claude/skills/persona-judge` nor `~/.agents/skills/persona-judge` exists, since OpenCode finds the skill there too.
-OpenCode runs the reviewer as a subagent that may not edit a file, fetch a page or start another agent, and whose
-shell runs only `python3 --version` and the skill's scripts. The policy refuses `<` and `>` in a command, apart from the opening of the one heredoc that passes a
-record, so in Gemini CLI save pasted text that holds them to a file and name the file. On Windows, for Claude Code, run
+OpenCode runs the reviewer as a subagent that may not edit a file, fetch a page or start another agent, and whose shell
+runs only `python3 --version` and the skill's scripts. Start a review by asking for one in an OpenCode session, which
+starts the reviewer as a subagent. `opencode run --agent persona-judge-reviewer` does not run the reviewer: OpenCode
+falls back to its build agent, which has no limits. On Windows, for Claude Code, run
 `powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun`, then run the command again without `-DryRun`. Neither
 script overwrites a file it did not make; `setup.sh` refreshes its own policy file when the skill moves. `--uninstall`
 (`-Uninstall` on Windows) removes only the links, the extension and the policy file the script made; for the extension

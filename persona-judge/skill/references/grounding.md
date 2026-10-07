@@ -37,7 +37,7 @@ built. Reading alone means no source was found, and the question rests on the au
 | Tools explained | persona | rating, quality; follows 'Declares its tools' | GO3 | vendor rule | Google | none |
 | Commands given exactly | persona | rating, frequency | GH3 | vendor rule, Matt Nigh's analysis of 2,500 files | GitHub | none |
 | The description says when to choose it | persona | rating, quality | AN3, GO2, OA3, GO3 | vendor rule | Anthropic, Google, OpenAI | none |
-| An identity that does the work | persona | rating, quality | ST9 | study, of role labels against no persona; praise itself untested | none | Salewski et al. and Kong et al. report gains from expert or role-play prompts; GH3 opens its examples with 'You are an expert' |
+| An identity that does the work | persona | rating, quality | ST9 | study, of role labels against no persona; praise itself untested | none | ST10 and ST11 report gains from expert or role-play prompts; GH3 opens its examples with 'You are an expert' |
 | No time-sensitive statements | instruction writing | check, script | AN4 | vendor rule | Anthropic | none |
 | Consistent with itself | instruction writing | check, reading; weight 3 | AN1, GH1, ST7, ST8 | vendor rule and study | Anthropic, GitHub | ST7 and ST8 measure conflicts between instruction levels, not two statements in one file |
 | Nothing said twice | instruction writing | check, reading | none | reading alone | none | none |
@@ -135,6 +135,8 @@ Each entry rests on its abstract. The arXiv identifier pins the version.
 | ST7 | McCauley, Kan and Martin, 'IH-Benchmark: A Conflict-Centered Benchmark for Instruction-Hierarchy Robustness in LLM Applications', 2026, <https://arxiv.org/abs/2607.25987> | 3 October 2026 |
 | ST8 | Javed, Fatimah, Bakhtiari, Islam and Fatima, 'PRIME: Evaluating Prompt Resolution Under Incompatible Instructions in LLMs', 2026, <https://arxiv.org/abs/2606.22470> | 3 October 2026 |
 | ST9 | Zheng, Pei, Logeswaran, Lee and Jurgens, 'When "A Helpful Assistant" Is Not Really Helpful: Personas in System Prompts Do Not Improve Performances of Large Language Models', 2024, <https://arxiv.org/abs/2311.10054> | 7 October 2026 |
+| ST10 | Salewski, Alaniz, Rio-Torto, Schulz and Akata, 'In-Context Impersonation Reveals Large Language Models' Strengths and Biases', 2023, <https://arxiv.org/abs/2305.14930> | 7 October 2026 |
+| ST11 | Kong and others, 'Better Zero-Shot Reasoning with Role-Play Prompting', 2024, <https://arxiv.org/abs/2308.07702> | 7 October 2026 |
 
 ### Scale and weights
 

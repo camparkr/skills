@@ -148,12 +148,17 @@ remove_old_link() {
 	esac
 }
 
+# Whether the Gemini CLI extension at $1 is ours: Gemini's install record names exactly the folder $2 as a link.
+extension_ours() {
+	local record="$1/.gemini-extension-install.json"
+	[ -f "$record" ] && grep -qF "\"source\": \"$2\"" "$record" && grep -qF '"type": "link"' "$record"
+}
+
 # Handle the Gemini CLI extension. $1 label, $2 the extension's folder in Gemini's home, $3 the folder it links to.
-# The extension is ours only when Gemini's install record names exactly that folder as a link.
 handle_extension() {
-	local label="$1" dir="$2" source="$3" record="$2/.gemini-extension-install.json" ours=0
+	local label="$1" dir="$2" source="$3" ours=0
 	echo "$label: $dir"
-	if [ -f "$record" ] && grep -qF "\"source\": \"$source\"" "$record" && grep -qF '"type": "link"' "$record"; then
+	if extension_ours "$dir" "$source"; then
 		ours=1
 	fi
 	if [ "$UNINSTALL" -eq 1 ]; then
@@ -277,10 +282,15 @@ if wanted gemini; then
 	# so run this script from a terminal; unattended, it waits for an answer.
 	if command -v gemini >/dev/null 2>&1; then
 		GEMINI_DIR="${GEMINI_CLI_HOME:-$HOME}/.gemini"
-		# Gemini CLI skips an agent file that is a symlink, so the extension replaces both of these links.
-		remove_old_link "Gemini CLI old skill link" "$GEMINI_DIR/skills/$NAME"
-		remove_old_link "Gemini CLI old agent link" "$GEMINI_DIR/agents/$NAME-reviewer.md"
 		handle_extension "Gemini CLI extension" "$GEMINI_DIR/extensions/$NAME" "$GEMINI_EXT"
+		# Gemini CLI skips an agent file that is a symlink, so the extension replaces both of these links. They are
+		# removed only once Gemini's install record names this package, so a declined consent leaves the skill in place.
+		if [ "$UNINSTALL" -eq 1 ] || [ "$DRY_RUN" -eq 1 ] || extension_ours "$GEMINI_DIR/extensions/$NAME" "$GEMINI_EXT"; then
+			remove_old_link "Gemini CLI old skill link" "$GEMINI_DIR/skills/$NAME"
+			remove_old_link "Gemini CLI old agent link" "$GEMINI_DIR/agents/$NAME-reviewer.md"
+		else
+			RESULTS+=("Gemini CLI old links: left in place, since the extension is not linked")
+		fi
 		install_policy "$GEMINI_DIR/policies/$NAME.toml" "$GEMINI_EXT/skills/$NAME"
 	else
 		RESULTS+=("Gemini CLI: not installed, skipped")

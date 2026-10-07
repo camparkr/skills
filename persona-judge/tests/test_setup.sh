@@ -264,6 +264,25 @@ if [ -L "$H12/.gemini/skills/persona-judge" ] && [ -L "$H12/.gemini/agents/perso
 else
 	bad "Gemini CLI links elsewhere: $out / $out2"
 fi
+# A declined consent: a stand-in gemini that links nothing and writes no install record. The old links stay, so Gemini
+# CLI keeps the skill.
+DECLINE="$SCRATCH/bin-decline"
+mkdir -p "$DECLINE"
+printf '#!/usr/bin/env bash\necho "Extension link cancelled." >&2\nexit 1\n' > "$DECLINE/gemini"
+chmod +x "$DECLINE/gemini"
+H20="$SCRATCH/home20"
+mkdir -p "$H20/.gemini/skills" "$H20/.gemini/agents"
+ln -s "$SKILL_DIR" "$H20/.gemini/skills/persona-judge"
+ln -s "$GEMINI_EXT/persona-judge-reviewer.md" "$H20/.gemini/agents/persona-judge-reviewer.md"
+out="$(env -u CODEX_HOME -u GEMINI_CLI_HOME -u XDG_CONFIG_HOME HOME="$H20" PATH="$DECLINE:$PATH" \
+	bash "$REPO/setup.sh" --harness gemini 2>&1)"
+if [ -L "$H20/.gemini/skills/persona-judge" ] && [ -L "$H20/.gemini/agents/persona-judge-reviewer.md" ] \
+	&& [ ! -e "$H20/.gemini/extensions/persona-judge" ] \
+	&& printf '%s' "$out" | grep -q "Gemini CLI old links: left in place, since the extension is not linked"; then
+	ok "Gemini CLI: a declined consent left the old skill and agent links in place"
+else
+	bad "Gemini CLI declined consent: $out"
+fi
 
 # OpenCode: the agent link, under ~/.config/opencode/agents/, follows the other agent links' rules, and the skill is
 # linked under ~/.config/opencode/skills/ only when neither ~/.claude/skills nor ~/.agents/skills holds it.

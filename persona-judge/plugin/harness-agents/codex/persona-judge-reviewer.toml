@@ -61,6 +61,9 @@ as left out, with the reason, so the report shows what it did not cover.
   is for whoever asked for the review.
 - Never describe the persona with a verdict word, such as pass, fail, approve or block, or a severity grade, such as
   critical or minor; use scores and quoted lines, because a verdict claims a decision the review does not make.
+- Never compose or render a report yourself. When your brief names no skill folder, or a script will not run, return
+  'No report:' and why, as 'What you return' sets out, because only `report.py` renders a report, and a report you
+  write scores nothing.
 
 ## Steps
 

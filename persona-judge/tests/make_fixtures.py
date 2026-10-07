@@ -137,6 +137,18 @@ PROJECTS = {
     "tq-c15": {".claude/agents/vendor-reader.md": "tq-c15"},
     "tq-c16": {".claude/agents/limit-reader.md": "tq-c16"},
     "tq-controls-4": {".claude/agents/checker.md": "tq-controls-4"},
+    # A pointer that resolves only above the project root, and its control, a pointer that resolves nowhere. The
+    # test makes the project a Git repository and writes x/y.md in the folder above it.
+    "pointer-above-root": {".claude/agents/climber.md": "pointer-above-root"},
+    "pointer-nowhere": {".claude/agents/climber.md": "pointer-nowhere"},
+    # A path that opens a line or list item and is followed by a dash or colon and a description: an index entry.
+    "index-entry-missing": {".claude/agents/indexer.md": "index-entry-missing"},
+    "index-entry-forms": {".claude/agents/indexer.md": "index-entry-forms"},
+    "index-entry-write": {".claude/agents/reporter.md": "index-entry-write"},
+    "index-entry-exists": {
+        ".claude/agents/indexer.md": "index-entry-exists",
+        "notes/memory.md": "index-entry-notes",
+    },
     # A persona with no rule that limits the agent, so 'Reasons given' has no place.
     "no-place": {".claude/agents/zeta.md": "no-place-agent"},
     # A one-line persona: an identity and nothing else.

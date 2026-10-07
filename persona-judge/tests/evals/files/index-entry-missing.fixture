@@ -1,0 +1,8 @@
+---
+name: indexer
+description: Answers questions about past sessions when asked what was found before.
+tools: Read, Grep
+---
+
+`~/nowhere/memory.md` — full findings record.
+Answer from the record, and say when it holds no answer.

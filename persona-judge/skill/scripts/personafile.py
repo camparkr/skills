@@ -267,7 +267,8 @@ def _paths_in(text):
 def pointers(pf):
     """(line number, path) for each pointer in the body: a path in a sentence that tells the agent to read it, as
     addressed() reads it, with the mask applied. A list item also counts when the line ending in a colon that
-    introduces its list counts."""
+    introduces its list counts. So does an index entry, as index_entry() reads it, unless its sentence tells the
+    agent to write, create or save."""
     masked = masked_body(pf)
     lines = [t for _, t in masked]
     numbers = [n for n, _ in masked]
@@ -300,29 +301,77 @@ def pointers(pf):
                 at = start + offset
                 row = max(r for r, o in enumerate(offsets) if o <= at)
                 out.append((numbers[para[row]], ref))
+        for row, i in enumerate(para):
+            entry = index_entry(lines[i])
+            if not entry:
+                continue
+            at = offsets[row] + entry[0]
+            sentence = next((text[s:e] for s, e in sentences(text) if s <= at < e), text)
+            if _TELLS_TO_WRITE.search(LINK_TARGET.sub("]", BACKTICKED.sub("CODE", sentence))):
+                continue
+            if (numbers[i], entry[1]) not in out:
+                out.append((numbers[i], entry[1]))
     return out
 
 
+# A path that opens a line or list item, in backticks or as a link target, after any emphasis marks, and is followed
+# by a dash, an en dash, an em dash or a colon and a description: the form a memory index gives its entries.
+_INDEX_ENTRY = re.compile(
+    r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?[*_]*(?:`([^`\s]+)`|\[[^\]\n]*\]\(([^)\s]+)\))[*_]*"
+    r"(?:\s*:\s+|\s+-\s+|\s*[–—]\s*)\S"
+)
+# A sentence that tells the agent to write, create or save names a file to make, not one to read.
+_TELLS_TO_WRITE = re.compile(r"\b(?:write|create|save)\b", re.IGNORECASE)
+
+
+def index_entry(line):
+    """(offset, path) when a line is an index entry: a path that opens the line or list item, in backticks or as a
+    link target, followed by a dash, an en dash, an em dash or a colon and a description; otherwise None."""
+    m = _INDEX_ENTRY.match(line)
+    if not m:
+        return None
+    group = 1 if m.group(1) else 2
+    ref = m.group(group).split("#", 1)[0] if group == 2 else m.group(1)
+    if not ref or not PATH_SHAPE.search(ref) or NOT_A_PATH.search(ref):
+        return None
+    return m.start(group), ref
+
+
 def resolve_up(ref, folder, root):
-    """The absolute path a pointer names when it exists in the file's folder or any folder above it, up to the
-    project root; otherwise None."""
+    """(absolute path, folder it resolved from) for the path a pointer names, or None when it resolves nowhere.
+
+    A relative path is looked for in the file's folder and each folder above it, up to the project root. When it is
+    not there, the search keeps climbing above the root, and stops at the user's home folder when the root lies
+    inside it, or else at the filesystem root; a folder above the project root comes back as the second item, so the
+    caller can tell the two apart. A path from ~ or an absolute path has no such folder, and comes back with None."""
     ref = ref[2:] if ref.startswith("./") else ref
     if ref.startswith("~"):
         found = os.path.expanduser(ref)
-        return found if os.path.exists(found) else None
+        return (found, None) if os.path.exists(found) else None
     if os.path.isabs(ref):
-        return ref if os.path.exists(ref) else None
+        return (ref, None) if os.path.exists(ref) else None
     root = os.path.abspath(root)
     current = os.path.abspath(folder)
     while True:
         candidate = os.path.join(current, ref)
         if os.path.exists(candidate):
-            return os.path.normpath(candidate)
+            return os.path.normpath(candidate), current
         if current == root or os.path.dirname(current) == current or not (current + os.sep).startswith(root + os.sep):
             break
         current = os.path.dirname(current)
     candidate = os.path.join(root, ref)
-    return os.path.normpath(candidate) if os.path.exists(candidate) else None
+    if os.path.exists(candidate):
+        return os.path.normpath(candidate), root
+    home = os.path.abspath(os.path.expanduser("~"))
+    inside_home = root == home or root.startswith(home.rstrip(os.sep) + os.sep)
+    stop = home if inside_home else None
+    current = root
+    while current != stop and os.path.dirname(current) != current:
+        current = os.path.dirname(current)
+        candidate = os.path.join(current, ref)
+        if os.path.exists(candidate):
+            return os.path.normpath(candidate), current
+    return None
 
 
 def resolve(ref, folder, root):

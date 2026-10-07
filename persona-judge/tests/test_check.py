@@ -654,6 +654,80 @@ class TestFieldChecksOnTheMainFile(ScratchCase):
 
 
 @unittest.skipUnless(shutil.which("git"), "git is not installed, and these tests call it to build their copies")
+class TestPointerAboveRoot(ScratchCase):
+    """A pointer written from a folder above the project root, such as a workspace that holds several repositories,
+    scores 1 with a note naming that folder; a pointer that resolves nowhere still scores 0."""
+
+    def repository(self, project):
+        """The project built inside a scratch parent and made a Git repository; return (parent, project)."""
+        parent = self.tmp / "workspace"
+        proj = make_fixtures.build(project, parent=parent)
+        subprocess.run(["git", "-C", str(proj), "init", "-q"], check=True, capture_output=True)
+        (parent / "x").mkdir(exist_ok=True)
+        (parent / "x" / "y.md").write_text("# House style\n", encoding="utf-8")
+        return parent, proj
+
+    def test_resolves_above_the_root(self):
+        parent, proj = self.repository("pointer-above-root")
+        proc = run("check.py", "--format", "json", cwd=proj)
+        row = row_for(proc, "PJ-001", ".claude/agents/climber.md")
+        self.assertEqual(row["score"], 1, proc.stdout + proc.stderr)
+        root = subprocess.run(["git", "-C", str(proj), "rev-parse", "--show-toplevel"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        folder = str(parent.resolve())
+        self.assertEqual(
+            row["message"],
+            f"`x/y.md` resolves only from `{folder}`, above the project root `{root}`; "
+            "it holds only when the agent starts there",
+        )
+
+    def test_control_resolves_nowhere(self):
+        _, proj = self.repository("pointer-nowhere")
+        proc = run("check.py", "--format", "json", cwd=proj)
+        row = row_for(proc, "PJ-001", ".claude/agents/climber.md")
+        self.assertEqual(row["score"], 0, proc.stdout + proc.stderr)
+        self.assertIn("nowhere-at-all/y.md does not exist", row["message"])
+
+
+class TestIndexEntries(ScratchCase):
+    """A path that opens a line or list item, followed by a dash, an en dash, an em dash or a colon and a description,
+    is a pointer, as a memory index names its files; a path in a sentence that tells the agent to write, create or
+    save is not."""
+
+    def pointers(self, project, persona):
+        sys.path.insert(0, str(SCRIPTS))
+        import personafile
+
+        proj = self.project(project)
+        return proj, personafile.pointers(personafile.read_path(str(proj / persona), persona))
+
+    def test_missing_index_entry_scores_0(self):
+        proc = run("check.py", "--format", "json", cwd=self.project("index-entry-missing"))
+        row = row_for(proc, "PJ-001", ".claude/agents/indexer.md")
+        self.assertEqual(row["score"], 0, proc.stdout + proc.stderr)
+        self.assertEqual(row["line"], 7)
+        self.assertIn("~/nowhere/memory.md does not exist", row["message"])
+
+    def test_every_form_of_entry(self):
+        """An en dash, a hyphen, a colon after emphasis and a link: each is checked."""
+        _, found = self.pointers("index-entry-forms", ".claude/agents/indexer.md")
+        self.assertEqual(found, [(9, "notes/en-dash.md"), (10, "notes/hyphen.md"), (11, "notes/colon.md"),
+                                 (12, "notes/link.md")])
+
+    def test_write_sentences_are_not_pointers(self):
+        """'Write the report to `out/report.md`.' and an entry that says to save are outside pointers()."""
+        proj, found = self.pointers("index-entry-write", ".claude/agents/reporter.md")
+        self.assertEqual(found, [])
+        proc = run("check.py", "--format", "json", cwd=proj)
+        self.assertEqual(row_for(proc, "PJ-001", ".claude/agents/reporter.md")["score"], 1, proc.stdout)
+
+    def test_existing_index_entry_scores_1(self):
+        proj, found = self.pointers("index-entry-exists", ".claude/agents/indexer.md")
+        self.assertEqual(found, [(7, "notes/memory.md")])
+        proc = run("check.py", "--format", "json", cwd=proj)
+        self.assertEqual(row_for(proc, "PJ-001", ".claude/agents/indexer.md")["score"], 1, proc.stdout)
+
+
 class TestCase6WithoutHistory(ScratchCase):
     """Case 6 reads its files from Git at 1764a6c. In a copy with no .git, or in a repository without that commit, it
     is skipped with a stated reason instead of erroring; in this repository, with the commit, it runs. These tests

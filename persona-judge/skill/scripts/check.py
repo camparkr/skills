@@ -20,7 +20,9 @@ opening ' or " to its closing mark, over the paragraph) become spaces, so quoted
 own instruction and every line keeps its number. A pointer is a path, in backticks or as a link target, with a
 / or a file extension, in a sentence that tells the agent to read it: a base form of read, open, load, see,
 consult, follow, refer or look, first in the sentence or after its opening clause, or after 'you', a modal or
-'please'; a list item counts when the line ending in a colon that introduces it does.
+'please'; a list item counts when the line ending in a colon that introduces it does. An index entry is a
+pointer too: a path that opens a line or list item, followed by a dash, an en dash, an em dash or a colon and a
+description, unless its sentence tells the agent to write, create or save.
 
 Before each persona's rows, one line gives its three branches: delegated, the harness its path names, and
 the settings it holds, as find.py prints them.
@@ -36,7 +38,9 @@ empty for every harness, or names the one harness it applies to. The kinds:
   line-pattern     0 when a body line, read with quoted and example text masked, matches the pattern and
                    not the unless pattern
   missing-path     0 when a pointer names a path that exists neither in the file's folder nor in any
-                   folder above it, up to the project root
+                   folder above it, up to the user's home folder, or the filesystem root outside it; 1 with
+                   a note when it exists only above the project root, since it holds only when the agent
+                   starts in that folder
   field-and-line   0 when the field matches the pattern and a body line matches the unless pattern
   field-missing    0 when the field is absent or empty; the line quoted is the one that names the agent
   harness-default  0 when a body line matches a row of the defaults table named in the data column,
@@ -256,13 +260,26 @@ def run_row(row, pf, delegated, root, harness=None, main=True):
             if pat.search(t) and not (unless and unless.search(t))
         ]
     elif k == "missing-path":
-        faults, by_line = [], {}
+        faults, by_line, above = [], {}, []
+        project = os.path.abspath(root)
         for n, ref in personafile.pointers(pf):
-            if not personafile.resolve_up(ref, pf.folder, root) and ref not in by_line.setdefault(n, []):
-                by_line[n].append(ref)
+            found = personafile.resolve_up(ref, pf.folder, root)
+            if not found:
+                if ref not in by_line.setdefault(n, []):
+                    by_line[n].append(ref)
+                continue
+            # A pointer found only above the project root holds only when the agent starts in that folder.
+            origin = found[1]
+            if origin and not (origin + os.sep).startswith(project.rstrip(os.sep) + os.sep):
+                note = (f"`{ref}` resolves only from `{origin}`, above the project root `{project}`; "
+                        "it holds only when the agent starts there")
+                if note not in above:
+                    above.append(note)
         for n, missing in by_line.items():
             if missing:
                 faults.append(fault(n, original[n], f"{', '.join(missing)} does not exist"))
+        if not faults and above:
+            return ONE, [], "; ".join(above)
     elif k in ("field-and-line", "field-missing"):
         field = row["field"]
         if field in pf.unparsed:

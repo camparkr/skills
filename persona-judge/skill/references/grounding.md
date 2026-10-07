@@ -37,7 +37,7 @@ built. Reading alone means no source was found, and the question rests on the au
 | Tools explained | persona | rating, quality; follows 'Declares its tools' | GO3 | vendor rule | Google | none |
 | Commands given exactly | persona | rating, frequency | GH3 | vendor rule, Matt Nigh's analysis of 2,500 files | GitHub | none |
 | The description says when to choose it | persona | rating, quality | AN3, GO2, OA3, GO3 | vendor rule | Anthropic, Google, OpenAI | none |
-| An identity that does the work | persona | rating, quality | ST2 | study | none | GH3 opens its examples with 'You are an expert' |
+| An identity that does the work | persona | rating, quality | ST9 | study, of role labels against no persona; praise itself untested | none | Salewski et al. and Kong et al. report gains from expert or role-play prompts; GH3 opens its examples with 'You are an expert' |
 | No time-sensitive statements | instruction writing | check, script | AN4 | vendor rule | Anthropic | none |
 | Consistent with itself | instruction writing | check, reading; weight 3 | AN1, GH1, ST7, ST8 | vendor rule and study | Anthropic, GitHub | ST7 and ST8 measure conflicts between instruction levels, not two statements in one file |
 | Nothing said twice | instruction writing | check, reading | none | reading alone | none | none |
@@ -77,7 +77,7 @@ The words each question rests on, quoted from its sources; the questions keep on
 - **Tools explained.** Source: Google, 'Don't just list tools; explain *when* and *why* the agent should use them' (GO3).
 - **Commands given exactly.** Source: GitHub, 'Put relevant executable commands in an early section … Include flags and options, not just tool names' (GH3).
 - **The description says when to choose it.** Sources: 'Claude uses each subagent's description to decide when to delegate tasks' (AN3); Gemini CLI's main agent 'decides whether an agent is a relevant expert based on the agent's description' (GO2). Also: OpenAI, 'Front-load the key use case and trigger words' and 'Explain exactly when this skill should and should not trigger' (OA3); Google, 'specific enough to differentiate it from peers' (GO3).
-- **An identity that does the work.** Source: persona cues unrelated to the task cost agents up to 26.2% of their performance (ST2).
+- **An identity that does the work.** Source: a role label in the system prompt gives no reliable gain over none, and its effect is 'largely random' (ST9). No source tests praise itself; the step down for praise is this skill's reading.
 - **No time-sensitive statements.** Source: Anthropic, 'Avoid time-sensitive information' (AN4).
 - **Consistent with itself.** Source: Anthropic, 'if two instructions contradict each other, Claude may pick one arbitrarily' (AN1). Also: GitHub, 'Whenever possible, try to avoid providing conflicting sets of instructions' (GH1).
 - **Leaves known things unsaid.** Source: Anthropic, 'Claude is already very smart' and 'Does this paragraph justify its token cost?' (AN4).
@@ -134,6 +134,7 @@ Each entry rests on its abstract. The arXiv identifier pins the version.
 | ST6 | Gupta, Nair, Wang and Kumar, 'Context Over Content: Exposing Evaluation Faking in Automated Judges', 2026, <https://arxiv.org/abs/2604.15224> | 30 September 2026 |
 | ST7 | McCauley, Kan and Martin, 'IH-Benchmark: A Conflict-Centered Benchmark for Instruction-Hierarchy Robustness in LLM Applications', 2026, <https://arxiv.org/abs/2607.25987> | 3 October 2026 |
 | ST8 | Javed, Fatimah, Bakhtiari, Islam and Fatima, 'PRIME: Evaluating Prompt Resolution Under Incompatible Instructions in LLMs', 2026, <https://arxiv.org/abs/2606.22470> | 3 October 2026 |
+| ST9 | Zheng, Pei, Logeswaran, Lee and Jurgens, 'When "A Helpful Assistant" Is Not Really Helpful: Personas in System Prompts Do Not Improve Performances of Large Language Models', 2024, <https://arxiv.org/abs/2311.10054> | 7 October 2026 |
 
 ### Scale and weights
 

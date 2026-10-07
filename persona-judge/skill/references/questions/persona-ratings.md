@@ -66,4 +66,4 @@ Sources: AN3, GO2, OA3, GO3.
 *Poor:* Is praise alone, such as 'You are a world-class expert'. 
 *Very poor:* States no identity, or names a role at odds with the rest of the file. 
 
-Sources: ST2.
+Sources: ST9.

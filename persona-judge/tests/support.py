@@ -27,7 +27,7 @@ QUESTIONS = REFERENCES / "questions"
 # sample-review.md, pinned by its SHA-256 hash (141 lines); every test that reads its content checks the hash
 # first, so an edit to the sample shows as a moved file rather than as a wrong comparison.
 SAMPLE = REFERENCES / "sample-review.md"
-SAMPLE_SHA256 = "66a40a2dd065aa840564ff600573652716456dff2ef00a26f1566ae1625c01e1"
+SAMPLE_SHA256 = "c424106c1b6d3d22c477936334876e744abe8d7d223869c480ecf378f9f7209d"
 
 
 def sample_text():

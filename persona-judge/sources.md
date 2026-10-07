@@ -43,6 +43,7 @@ Each entry rests on its abstract. The arXiv identifier pins the version.
 | ST6 | Gupta, Nair, Wang and Kumar, 'Context Over Content: Exposing Evaluation Faking in Automated Judges', 2026, <https://arxiv.org/abs/2604.15224> | 30 September 2026 |
 | ST7 | McCauley, Kan and Martin, 'IH-Benchmark: A Conflict-Centered Benchmark for Instruction-Hierarchy Robustness in LLM Applications', 2026, <https://arxiv.org/abs/2607.25987> | 3 October 2026 |
 | ST8 | Javed, Fatimah, Bakhtiari, Islam and Fatima, 'PRIME: Evaluating Prompt Resolution Under Incompatible Instructions in LLMs', 2026, <https://arxiv.org/abs/2606.22470> | 3 October 2026 |
+| ST9 | Zheng, Pei, Logeswaran, Lee and Jurgens, 'When "A Helpful Assistant" Is Not Really Helpful: Personas in System Prompts Do Not Improve Performances of Large Language Models', 2024, <https://arxiv.org/abs/2311.10054> | 7 October 2026 |
 
 ## Scale and weights
 

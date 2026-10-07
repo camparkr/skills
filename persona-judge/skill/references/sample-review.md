@@ -65,7 +65,7 @@ Lines that lowered the score
    Sources: AN3, GO2, OA3, GO3
 5. .claude/agents/helper.md, line 7: 'You review code for style and report what you find.'
    An identity that does the work. It states the work and not where it stops.
-   Sources: ST2
+   Sources: ST9
 6. .claude/agents/helper.md, line 10: 'Rate each finding high, medium or low.'
    Terms defined where they are used. The scale is named and never defined.
    Sources: RE1

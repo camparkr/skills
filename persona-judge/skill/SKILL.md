@@ -20,6 +20,8 @@ its steps say.
 2. **Start the reviewer.** Start the installed reviewer by name: `persona-judge:persona-judge-reviewer` in the Claude
    Code plugin, or `persona-judge-reviewer` in Gemini CLI, Codex or OpenCode. Prefer it, because its harness enforces
    its tools, and the Claude Code plugin's hook runs `scripts/guard.py` to keep its shell to the skill's scripts.
+   In Codex the reviewer runs in the sandbox of the session that starts it, not the read-only one its file sets, so
+   in Codex the rule to change no file rests on the reviewer's instructions alone.
    When the harness has no such agent or refuses it, start a subagent whose brief opens with the whole of
    [`reviewer.md`](reviewer.md), front matter included, and give it only the tools the front matter lists where the
    harness allows. Then tell the user that the rule to change no file rests on the reviewer's instructions alone. In

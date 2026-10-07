@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# setup.sh links the persona-judge skill, and the reviewer's agent file for Codex, into each harness, links the
-# persona-judge extension, which holds both, into Gemini CLI, and installs the Gemini CLI policy that limits the
-# reviewer's shell.
-# Safe to run twice. Usage: setup.sh [--dry-run] [--uninstall] [--harness claude|codex|gemini]
-# Gemini asks for consent, so run from a terminal, or pass --harness claude or codex when unattended.
+# setup.sh links the persona-judge skill, and the reviewer's agent file for Codex and OpenCode, into each harness,
+# links the persona-judge extension, which holds both, into Gemini CLI, and installs the Gemini CLI policy that limits
+# the reviewer's shell.
+# Safe to run twice. Usage: setup.sh [--dry-run] [--uninstall] [--harness claude|codex|gemini|opencode]
+# Gemini asks for consent, so run from a terminal, or pass --harness claude, codex or opencode when unattended.
 
 set -u
 
@@ -17,7 +17,7 @@ while [ $# -gt 0 ]; do
 		--harness)
 			ONLY="${2:-}"
 			shift
-			case "$ONLY" in claude|codex|gemini) ;; *) echo "--harness takes claude, codex or gemini" >&2; exit 2 ;; esac
+			case "$ONLY" in claude|codex|gemini|opencode) ;; *) echo "--harness takes claude, codex, gemini or opencode" >&2; exit 2 ;; esac
 			;;
 		-h|--help) sed -n '2,6p' "$0"; exit 0 ;;
 		*) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -32,9 +32,10 @@ if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
 	exit 1
 fi
 NAME="persona-judge"
-# The generated agent files for Codex and Gemini CLI; Claude Code gets its agent from the plugin instead.
+# The generated agent files for Codex and OpenCode; Claude Code gets its agent from the plugin instead.
 ROOT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)"
 CODEX_AGENT="$ROOT_DIR/plugin/harness-agents/codex/$NAME-reviewer.toml"
+OPENCODE_AGENT="$ROOT_DIR/plugin/harness-agents/opencode/$NAME-reviewer.md"
 # The Gemini CLI extension: the reviewer's agent file, and a link to skill/, so one copy of the skill exists.
 GEMINI_EXT="$ROOT_DIR/plugin/harness-agents/gemini"
 # The Gemini CLI policy, with a placeholder for the skill folder's paths that install_policy fills.
@@ -283,6 +284,27 @@ if wanted gemini; then
 		install_policy "$GEMINI_DIR/policies/$NAME.toml" "$GEMINI_EXT/skills/$NAME"
 	else
 		RESULTS+=("Gemini CLI: not installed, skipped")
+	fi
+fi
+
+if wanted opencode; then
+	OPENCODE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+	if command -v opencode >/dev/null 2>&1 || [ -d "$OPENCODE_DIR" ]; then
+		# OpenCode also finds skills in ~/.claude/skills and ~/.agents/skills, so its own link is made only when
+		# neither holds the skill; a skill found in two places would be offered twice.
+		found=""
+		for other in "$HOME/.claude/skills/$NAME" "$HOME/.agents/skills/$NAME"; do
+			if [ -e "$other" ] || [ -L "$other" ]; then found="$other"; break; fi
+		done
+		if [ -n "$found" ] && [ "$UNINSTALL" -eq 0 ]; then
+			echo "OpenCode: $OPENCODE_DIR/skills/$NAME"
+			RESULTS+=("OpenCode: not linked, since OpenCode finds the skill at $found")
+		else
+			handle "OpenCode" "$OPENCODE_DIR/skills/$NAME" "" ""
+		fi
+		handle_file "OpenCode agent" "$OPENCODE_DIR/agents/$NAME-reviewer.md" "$OPENCODE_AGENT"
+	else
+		RESULTS+=("OpenCode: not installed, skipped")
 	fi
 fi
 

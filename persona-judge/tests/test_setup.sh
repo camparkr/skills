@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test_setup.sh: test that setup.sh installs the skill for Claude Code, with HOME set to a scratch folder and
-# --harness claude, the reviewer's agent file for Codex, with --harness codex, and the Gemini CLI extension and the
-# policy that limits the reviewer's shell, with --harness gemini.
+# --harness claude, the reviewer's agent file for Codex and OpenCode, with --harness codex and opencode, and the Gemini
+# CLI extension and the policy that limits the reviewer's shell, with --harness gemini.
 # A stand-in `gemini` on the PATH does the work of `gemini extensions link` and `gemini extensions uninstall`, so no
 # real harness is called.
 # The installer runs from a scratch copy of persona-judge/ holding a stand-in SKILL.md and a copy of the policy, so the
@@ -32,6 +32,9 @@ SKILL_DIR="$(cd "$REPO/skill" && pwd -P)"
 mkdir -p "$REPO/plugin/harness-agents/codex" "$REPO/plugin/harness-agents/gemini/agents" \
 	"$REPO/plugin/harness-agents/gemini/skills"
 echo 'name = "persona-judge-reviewer"' > "$REPO/plugin/harness-agents/codex/persona-judge-reviewer.toml"
+mkdir -p "$REPO/plugin/harness-agents/opencode"
+printf -- '---\nmode: subagent\n---\n' > "$REPO/plugin/harness-agents/opencode/persona-judge-reviewer.md"
+OPENCODE_AGENT="$(cd "$REPO/plugin/harness-agents/opencode" && pwd -P)/persona-judge-reviewer.md"
 printf -- '---\nname: persona-judge-reviewer\n---\n' > "$REPO/plugin/harness-agents/gemini/agents/persona-judge-reviewer.md"
 printf '{"name": "persona-judge", "version": "0.0.0"}\n' > "$REPO/plugin/harness-agents/gemini/gemini-extension.json"
 ln -s ../../../../skill "$REPO/plugin/harness-agents/gemini/skills/persona-judge"
@@ -113,11 +116,11 @@ else
 	bad "Claude Code agent: $(ls -R "$H8/.claude")"
 fi
 
-# Run setup.sh for one harness with HOME set to $1; CODEX_HOME and GEMINI_CLI_HOME are cleared so the scratch HOME
-# decides.
+# Run setup.sh for one harness with HOME set to $1; CODEX_HOME, GEMINI_CLI_HOME and XDG_CONFIG_HOME are cleared so
+# the scratch HOME decides.
 run_for() {
 	local home="$1"; shift
-	env -u CODEX_HOME -u GEMINI_CLI_HOME HOME="$home" PATH="$STUB:$PATH" bash "$REPO/setup.sh" "$@" 2>&1
+	env -u CODEX_HOME -u GEMINI_CLI_HOME -u XDG_CONFIG_HOME HOME="$home" PATH="$STUB:$PATH" bash "$REPO/setup.sh" "$@" 2>&1
 }
 
 # A stand-in gemini: `extensions link DIR` and `extensions uninstall NAME`, as setup.sh calls them, on the scratch
@@ -260,6 +263,82 @@ if [ -L "$H12/.gemini/skills/persona-judge" ] && [ -L "$H12/.gemini/agents/perso
 	ok "Gemini CLI: links at the old paths that point elsewhere were left alone"
 else
 	bad "Gemini CLI links elsewhere: $out / $out2"
+fi
+
+# OpenCode: the agent link, under ~/.config/opencode/agents/, follows the other agent links' rules, and the skill is
+# linked under ~/.config/opencode/skills/ only when neither ~/.claude/skills nor ~/.agents/skills holds it.
+H15="$SCRATCH/home15"
+mkdir -p "$H15/.config/opencode"
+OC_AGENT="$H15/.config/opencode/agents/persona-judge-reviewer.md"
+OC_SKILL="$H15/.config/opencode/skills/persona-judge"
+out="$(run_for "$H15" --dry-run --harness opencode)"
+if [ ! -e "$OC_AGENT" ] && [ ! -e "$OC_SKILL" ] && printf '%s' "$out" | grep -q "Dry run: nothing was changed."; then
+	ok "OpenCode: --dry-run made no link"
+else
+	bad "OpenCode --dry-run: $out"
+fi
+out="$(run_for "$H15" --harness opencode)"
+if [ -L "$OC_AGENT" ] && [ "$(readlink "$OC_AGENT")" = "$OPENCODE_AGENT" ] && [ -L "$OC_SKILL" ] \
+	&& [ "$(cd "$OC_SKILL" && pwd -P)" = "$SKILL_DIR" ]; then
+	ok "OpenCode: install linked the agent file and the skill folder"
+else
+	bad "OpenCode install: $out"
+fi
+out="$(run_for "$H15" --harness opencode)"
+if printf '%s' "$out" | grep -q "OpenCode agent: already linked, left as is" \
+	&& printf '%s' "$out" | grep -q "OpenCode: already linked, left as is"; then
+	ok "OpenCode: second run left both links as is"
+else
+	bad "OpenCode second run: $out"
+fi
+out="$(run_for "$H15" --uninstall --harness opencode)"
+if [ ! -L "$OC_AGENT" ] && [ ! -L "$OC_SKILL" ] && [ -f "$OPENCODE_AGENT" ] && [ -f "$SKILL_DIR/SKILL.md" ]; then
+	ok "OpenCode: --uninstall removed both links and kept the files"
+else
+	bad "OpenCode --uninstall: $out"
+fi
+# The skill is not linked for OpenCode when ~/.claude/skills or ~/.agents/skills already holds it.
+for other in .claude/skills .agents/skills; do
+	H16="$SCRATCH/home16-${other%%/*}"
+	mkdir -p "$H16/.config/opencode" "$H16/$other"
+	ln -s "$SKILL_DIR" "$H16/$other/persona-judge"
+	out="$(run_for "$H16" --harness opencode)"
+	if [ ! -e "$H16/.config/opencode/skills/persona-judge" ] && [ -L "$H16/.config/opencode/agents/persona-judge-reviewer.md" ] \
+		&& printf '%s' "$out" | grep -qF "OpenCode: not linked, since OpenCode finds the skill at $H16/$other/persona-judge"; then
+		ok "OpenCode: no skill link beside the one in ~/$other, and the agent was linked"
+	else
+		bad "OpenCode with ~/$other: $out"
+	fi
+done
+# XDG_CONFIG_HOME, when set, decides where OpenCode's folder is.
+H17="$SCRATCH/home17"
+mkdir -p "$H17/xdg/opencode"
+out="$(env -u CODEX_HOME -u GEMINI_CLI_HOME HOME="$H17" XDG_CONFIG_HOME="$H17/xdg" PATH="$STUB:$PATH" \
+	bash "$REPO/setup.sh" --harness opencode 2>&1)"
+if [ -L "$H17/xdg/opencode/agents/persona-judge-reviewer.md" ] && [ ! -e "$H17/.config" ]; then
+	ok "OpenCode: XDG_CONFIG_HOME decided where the agent was linked"
+else
+	bad "OpenCode XDG_CONFIG_HOME: $out"
+fi
+# Control: someone else's file at the agent path is left alone, on install and on uninstall.
+H18="$SCRATCH/home18"
+mkdir -p "$H18/.config/opencode/agents"
+echo "someone else's" > "$H18/.config/opencode/agents/persona-judge-reviewer.md"
+out="$(run_for "$H18" --harness opencode)"
+out2="$(run_for "$H18" --uninstall --harness opencode)"
+if printf '%s' "$out" | grep -q "OpenCode agent: STOPPED, path occupied" \
+	&& printf '%s' "$out2" | grep -q "OpenCode agent: not ours, left alone" \
+	&& [ "$(cat "$H18/.config/opencode/agents/persona-judge-reviewer.md")" = "someone else's" ]; then
+	ok "OpenCode: an occupied agent path was left alone"
+else
+	bad "OpenCode occupied agent path: $out / $out2"
+fi
+# A run with no --harness includes OpenCode.
+out="$(run_for "$H18" --dry-run)"
+if grep -q "^OpenCode agent:" <<<"$out"; then
+	ok "OpenCode: a run with no --harness includes it"
+else
+	bad "OpenCode is missing from a run with no --harness"
 fi
 
 # 14 to 19: the Gemini CLI policy. It is filled with the skill folder's paths, shown and not written by --dry-run,

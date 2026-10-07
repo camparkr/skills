@@ -284,5 +284,32 @@ class TestGeminiExtension(ScratchCase):
             self.assertEqual(gemini_agents(bundle_file, symlinked), [], bundle_file.name)
 
 
+class TestOpenCodeAgent(ScratchCase):
+    """OpenCode finds an agent by globbing agents/*.md in its config folder, following symlinks, and names it by its
+    file name. After setup.sh --harness opencode, in a scratch HOME and XDG_CONFIG_HOME, `opencode agent list` names
+    persona-judge-reviewer as a subagent; before, it does not."""
+
+    def agents(self, env, cwd):
+        proc = subprocess.run(["opencode", "agent", "list"], cwd=cwd, env=env, capture_output=True, text=True,
+                              timeout=180)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        return [line.strip() for line in proc.stdout.splitlines() if line.strip().endswith(("(primary)", "(subagent)",
+                                                                                              "(all)"))]
+
+    def test_real_opencode_lists_the_reviewer(self):
+        if not shutil.which("opencode"):
+            self.skipTest("opencode is not installed")
+        home, project = self.tmp / "home", self.tmp / "project"
+        project.mkdir()
+        (home / ".config" / "opencode").mkdir(parents=True)
+        env = {k: v for k, v in os.environ.items() if k not in ("CODEX_HOME", "GEMINI_CLI_HOME")}
+        env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"))
+        self.assertNotIn("persona-judge-reviewer (subagent)", self.agents(env, project))
+        setup = subprocess.run(["bash", str(ROOT / "setup.sh"), "--harness", "opencode"], env=env, capture_output=True,
+                               text=True, timeout=60)
+        self.assertEqual(setup.returncode, 0, setup.stdout + setup.stderr)
+        self.assertIn("persona-judge-reviewer (subagent)", self.agents(env, project))
+
+
 if __name__ == "__main__":
     unittest.main()

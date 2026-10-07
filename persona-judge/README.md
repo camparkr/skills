@@ -4,7 +4,7 @@
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
 ![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
-![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20CLI-lightgrey.svg)
+![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20CLI%20%7C%20OpenCode-lightgrey.svg)
 ![Format](https://img.shields.io/badge/format-Agent%20Skill-green.svg)
 
 A skill that reviews dedicated agent personas: the files that define an artificial intelligence (AI) agent of its own,
@@ -180,7 +180,7 @@ enforces, with a hook that lets the reviewer's shell run only the skill's script
 /plugin install persona-judge@camparkr-skills
 ```
 
-**Codex and Gemini CLI, or Claude Code without the plugin.** From this folder:
+**Codex, Gemini CLI and OpenCode, or Claude Code without the plugin.** From this folder:
 
 ```bash
 ./setup.sh --dry-run   # show what would change
@@ -194,7 +194,12 @@ an extension that holds the reviewer agent and a link to the skill folder, so Ge
 removes any link into this folder that an earlier version made in `~/.gemini/skills/` or `~/.gemini/agents/`. It then
 installs a policy file, `~/.gemini/policies/persona-judge.toml`, that lets the reviewer agent's shell run only
 `python3 --version` and the skill's scripts, and refuses its other commands, in YOLO mode too. Gemini CLI reads user
-policy files from that folder, and drops the allow rules of a policy inside an extension. The policy refuses `<` and `>` in a command, apart from the opening of the one heredoc that passes a
+policy files from that folder, and drops the allow rules of a policy inside an extension. For OpenCode, `setup.sh`
+links the reviewer agent at `~/.config/opencode/agents/persona-judge-reviewer.md`, or under `$XDG_CONFIG_HOME` when
+that is set, and links the skill at `~/.config/opencode/skills/persona-judge` only when neither
+`~/.claude/skills/persona-judge` nor `~/.agents/skills/persona-judge` exists, since OpenCode finds the skill there too.
+OpenCode runs the reviewer as a subagent that may not edit a file, fetch a page or start another agent, and whose
+shell runs only `python3 --version` and the skill's scripts. The policy refuses `<` and `>` in a command, apart from the opening of the one heredoc that passes a
 record, so in Gemini CLI save pasted text that holds them to a file and name the file. On Windows, for Claude Code, run
 `powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun`, then run the command again without `-DryRun`. Neither
 script overwrites a file it did not make; `setup.sh` refreshes its own policy file when the skill moves. `--uninstall`

@@ -6,9 +6,11 @@ reviewer.md is the one source of the reviewer's text. The script writes:
   agent's hooks are ignored and the guard is wired in plugin/hooks/hooks.json;
 - plugin/harness-agents/gemini/agents/persona-judge-reviewer.md, the Gemini CLI agent in the persona-judge
   extension, with Gemini's read, list, search and shell tools and nothing that writes; and
-- plugin/harness-agents/codex/persona-judge-reviewer.toml, the Codex agent, read-only.
+- plugin/harness-agents/codex/persona-judge-reviewer.toml, the Codex agent, read-only; and
+- plugin/harness-agents/opencode/persona-judge-reviewer.md, the OpenCode agent, a subagent that may not edit, fetch
+  or start another agent, and whose shell runs only `python3 --version` and the skill's scripts.
 
-The Gemini and Codex files sit outside plugin/agents/, because Claude Code loads every file in a plugin's agents
+The Gemini, Codex and OpenCode files sit outside plugin/agents/, because Claude Code loads every file in a plugin's agents
 folder, subfolders included. A regeneration into a scratch folder must match the committed files, with a control that
 plants a drift.
 
@@ -16,6 +18,7 @@ Two enforcement tests read the committed files, each with a control that fails: 
 sandbox_mode = "read-only", and the Gemini agent's tools include no tool that writes a file.
 """
 
+import json
 import subprocess
 import sys
 import tomllib
@@ -30,6 +33,7 @@ OUTPUTS = (
     Path("plugin/agents/persona-judge-reviewer.md"),
     Path("plugin/harness-agents/gemini/agents/persona-judge-reviewer.md"),
     Path("plugin/harness-agents/codex/persona-judge-reviewer.toml"),
+    Path("plugin/harness-agents/opencode/persona-judge-reviewer.md"),
 )
 GEMINI_TOOLS = ["read_file", "read_many_files", "list_directory", "glob", "grep_search", "run_shell_command"]
 # Gemini CLI's tools that change no file. The shell is among them because the policy file, not the tool list, limits
@@ -93,7 +97,7 @@ class TestMakeAgents(ScratchCase):
         codex.write_text(codex.read_text(encoding="utf-8").replace("read-only", "workspace-write"), encoding="utf-8")
         self.assertEqual(drift(planted, fresh), [str(OUTPUTS[2])])
 
-    def test_writes_only_the_three_files(self):
+    def test_writes_only_the_four_files(self):
         fresh = self.fresh()
         written = sorted(p.relative_to(fresh) for p in fresh.rglob("*") if p.is_file())
         self.assertEqual(written, sorted(OUTPUTS))
@@ -141,6 +145,31 @@ class TestMakeAgents(ScratchCase):
         self.assertEqual(data["description"], description)
         self.assertEqual(data["sandbox_mode"], "read-only")
         self.assertEqual(data["developer_instructions"], source_body)
+
+    def test_opencode_agent(self):
+        """OpenCode names an agent by its file name, and reads permission rules, not Claude Code's tools list. A
+        bash rule matched later wins, so "*": deny comes first. The patterns name no install path."""
+        text = (self.fresh() / OUTPUTS[3]).read_text(encoding="utf-8")
+        source_front, source_body = reviewer_parts()
+        description = next(l for l in source_front if l.startswith("description:")).split(":", 1)[1].strip()
+        _, front, body = text.split("---\n", 2)
+        self.assertEqual(front.splitlines()[1:], [
+            f"description: {json.dumps(description, ensure_ascii=False)}",
+            "mode: subagent",
+            "permission:",
+            "  edit: deny",
+            "  webfetch: deny",
+            "  task: deny",
+            "  bash:",
+            '    "*": deny',
+            '    "python3 --version": allow',
+            '    "python3 *persona-judge*/scripts/find.py*": allow',
+            '    "python3 *persona-judge*/scripts/check.py*": allow',
+            '    "python3 *persona-judge*/scripts/report.py*": allow',
+        ])
+        self.assertNotIn("tools:", front)
+        self.assertNotIn(str(ROOT), front)
+        self.assertEqual(body, source_body)
 
     def test_help(self):
         if not TOOL.is_file():

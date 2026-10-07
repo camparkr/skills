@@ -7,12 +7,16 @@ reviewer.md is the one source of the reviewer's text. This script writes, under 
   plugin/harness-agents/gemini/agents/persona-judge-reviewer.md
                                                            the Gemini CLI agent, in the persona-judge extension
   plugin/harness-agents/codex/persona-judge-reviewer.toml  the Codex agent
+  plugin/harness-agents/opencode/persona-judge-reviewer.md the OpenCode agent
 
 Each file carries reviewer.md's body unchanged. The Claude Code agent keeps reviewer.md's name, description and
 tools and has no hooks field: Claude Code ignores a plugin agent's hooks, so the guard is wired in
 plugin/hooks/hooks.json. The Gemini CLI agent lists Gemini's read, list, search and shell tools and nothing that
-writes. The Codex agent runs with sandbox_mode = "read-only". The Gemini CLI and Codex files sit outside
-plugin/agents/, because Claude Code loads every file in a plugin's agents folder, subfolders included.
+writes. The Codex agent runs with sandbox_mode = "read-only". The OpenCode agent is a subagent whose permission rules deny
+edits, web fetches and starting another agent, and let its shell run only python3 --version and the skill's
+scripts, by patterns that name no install path; OpenCode names an agent by its file name. The Gemini CLI, Codex and
+OpenCode files sit outside plugin/agents/, because Claude Code loads every file in a plugin's agents folder,
+subfolders included.
 
 Run it again after every change to reviewer.md; the tests fail when a committed file differs from a fresh run.
 
@@ -34,7 +38,19 @@ OUTPUTS = {
     "claude": Path("plugin/agents/persona-judge-reviewer.md"),
     "gemini": Path("plugin/harness-agents/gemini/agents/persona-judge-reviewer.md"),
     "codex": Path("plugin/harness-agents/codex/persona-judge-reviewer.toml"),
+    "opencode": Path("plugin/harness-agents/opencode/persona-judge-reviewer.md"),
 }
+# OpenCode's permission rules for the reviewer. In a bash block the last rule a command matches wins, so the deny
+# for every command comes first.
+OPENCODE_PERMISSION = [
+    "permission:",
+    "  edit: deny",
+    "  webfetch: deny",
+    "  task: deny",
+    "  bash:",
+    '    "*": deny',
+    '    "python3 --version": allow',
+] + [f'    "python3 *persona-judge*/scripts/{script}.py*": allow' for script in ("find", "check", "report")]
 
 
 def read_reviewer(path):
@@ -67,6 +83,11 @@ def gemini_agent(lines, body):
     return "\n".join(["---", f"# {NOTICE}", lines["name"], lines["description"], tools, "---", ""]) + body
 
 
+def opencode_agent(lines, body):
+    description = f"description: {json.dumps(value(lines['description']), ensure_ascii=False)}"
+    return "\n".join(["---", f"# {NOTICE}", description, "mode: subagent", *OPENCODE_PERMISSION, "---", ""]) + body
+
+
 def codex_agent(lines, body):
     # A TOML multi-line literal string keeps the body exactly: no escapes, and the newline after ''' is dropped.
     if "'''" in body:
@@ -97,6 +118,7 @@ def main(argv):
             "claude": claude_agent(lines, body),
             "gemini": gemini_agent(lines, body),
             "codex": codex_agent(lines, body),
+            "opencode": opencode_agent(lines, body),
         }
     except (OSError, ValueError) as err:
         print(f"make_agents.py: {err}", file=sys.stderr)

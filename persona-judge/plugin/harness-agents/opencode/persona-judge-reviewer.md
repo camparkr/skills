@@ -12,6 +12,17 @@ permission:
     "python3 *persona-judge*/scripts/find.py*": allow
     "python3 *persona-judge*/scripts/check.py*": allow
     "python3 *persona-judge*/scripts/report.py*": allow
+    "python3 -*persona-judge*/scripts/*.py******": deny
+    "python3 /-*persona-judge*/scripts/*.py*****": deny
+    "python3 * *persona-judge*/scripts/*.py*****": deny
+    "python3 *\t*persona-judge*/scripts/*.py*****": deny
+    "python3 *\n*persona-judge*/scripts/*.py*****": deny
+    "python3 *\"*persona-judge*/scripts/*.py*****": deny
+    "python3 *'*persona-judge*/scripts/*.py*****": deny
+    "python3 *$*persona-judge*/scripts/*.py*****": deny
+    "python3 *`*persona-judge*/scripts/*.py*****": deny
+    "python3 *{*persona-judge*/scripts/*.py*****": deny
+    "*>*****************************************": deny
 ---
 
 # Reviewer

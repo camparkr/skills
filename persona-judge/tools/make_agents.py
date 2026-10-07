@@ -40,8 +40,26 @@ OUTPUTS = {
     "codex": Path("plugin/harness-agents/codex/persona-judge-reviewer.toml"),
     "opencode": Path("plugin/harness-agents/opencode/persona-judge-reviewer.md"),
 }
-# OpenCode's permission rules for the reviewer. In a bash block the last rule a command matches wins, so the deny
-# for every command comes first.
+# OpenCode's permission rules for the reviewer. OpenCode 1.18.30 checks each command on a line, with its redirects,
+# against the bash patterns, where * matches any run of characters, newlines included. It applies the last rule in
+# the list that matches, whatever the pattern's length. So the deny for every command comes first, then the allows,
+# then the denies that refuse what the allow patterns would let through.
+OPENCODE_ALLOWS = ["python3 --version"] + [
+    f"python3 *persona-judge*/scripts/{script}.py*" for script in ("find", "check", "report")]
+# Characters that may stand between 'python3 ' and the skill's path only to change what python3 runs: whitespace ends
+# the path; a quote, $, ` or { can turn what follows into an option, or into other words. OpenCode turns every
+# backslash into / before it matches, in the command and the pattern alike, so no pattern can name a backslash.
+NOT_IN_PATH = (" ", "\t", "\n", '"', "'", "$", "`", "{")
+OPENCODE_DENIES = [
+    "python3 -*persona-judge*/scripts/*.py*",  # an option first, such as -c, runs code other than the script
+    "python3 /-*persona-judge*/scripts/*.py*",  # an option behind a backslash, \-c, which OpenCode reads as /-c
+    *(f"python3 *{c}*persona-judge*/scripts/*.py*" for c in NOT_IN_PATH),
+    "*>*",  # any >, which writes or empties a file
+]
+# Trailing stars, which match nothing more, make each deny longer than the longest allow, so the denies would win
+# also under a rule that the longest pattern wins.
+_LONGEST_ALLOW = max(len(p) for p in OPENCODE_ALLOWS)
+OPENCODE_DENIES = [p + "*" * max(0, _LONGEST_ALLOW + 1 - len(p)) for p in OPENCODE_DENIES]
 OPENCODE_PERMISSION = [
     "permission:",
     "  edit: deny",
@@ -49,8 +67,9 @@ OPENCODE_PERMISSION = [
     "  task: deny",
     "  bash:",
     '    "*": deny',
-    '    "python3 --version": allow',
-] + [f'    "python3 *persona-judge*/scripts/{script}.py*": allow' for script in ("find", "check", "report")]
+    *(f"    {json.dumps(p)}: allow" for p in OPENCODE_ALLOWS),
+    *(f"    {json.dumps(p)}: deny" for p in OPENCODE_DENIES),
+]
 
 
 def read_reviewer(path):

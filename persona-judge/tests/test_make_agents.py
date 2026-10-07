@@ -19,6 +19,7 @@ sandbox_mode = "read-only", and the Gemini agent's tools include no tool that wr
 """
 
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -67,6 +68,53 @@ def front_matter(path):
         key, _, value = line.partition(":")
         fields[key.strip()] = value.strip()
     return front.splitlines(), fields, body
+
+
+# Characters that may stand between 'python3 ' and the skill's path only to change what python3 runs: whitespace ends
+# the path; a quote, $, ` or { can turn what follows into an option, or into other words.
+NOT_IN_PATH = (" ", "\t", "\n", '"', "'", "$", "`", "{")
+# The three commands Aristarchus's review of 4f4a742 found the allow patterns let through.
+REFUSED_COMMANDS = (
+    "python3 -c 'import os; os.remove(\"x\")' /h/persona-judge/scripts/find.py",
+    "python3 -c\"__import__('os').remove('x')#\"/h/persona-judge/scripts/find.py",
+    "python3 /h/.claude/skills/persona-judge/scripts/find.py . > x",
+)
+ALLOWED_COMMANDS = (
+    "python3 --version",
+    "python3 /h/.claude/skills/persona-judge/scripts/find.py",
+    "python3 /h/.claude/skills/persona-judge/scripts/check.py .claude/agents/helper.md",
+    "python3 /h/.claude/skills/persona-judge/scripts/report.py validate - <<'RECORD'\n{\"personas\": []}\nRECORD",
+)
+
+
+def opencode_bash_rules(path):
+    """[(pattern, action)] from the bash block of an OpenCode agent's front matter, in file order."""
+    front, _, _ = front_matter(path)
+    start = front.index("  bash:") + 1
+    rules = []
+    for line in front[start:]:
+        if not line.startswith("    "):
+            break
+        key, _, action = line.strip().rpartition(":")
+        rules.append((json.loads(key), action.strip()))
+    return rules
+
+
+def opencode_match(command, pattern):
+    """OpenCode 1.18.30's Wildcard.match: each backslash becomes /, in the command and the pattern; * is any run of
+    characters, newlines included, ? is one character; and a pattern ending ' *' also matches the command without its
+    last word."""
+    command, pattern = command.replace("\\", "/"), pattern.replace("\\", "/")
+    regex = re.sub(r"[.+^${}()|\[\]\\]", lambda m: "\\" + m.group(0), pattern).replace("*", ".*").replace("?", ".")
+    if regex.endswith(" .*"):
+        regex = regex[:-3] + "( .*)?"
+    return re.fullmatch(regex, command, re.DOTALL) is not None
+
+
+def opencode_decision(rules, command):
+    """The action of the last rule that matches, as OpenCode 1.18.30's Permission.evaluate takes it."""
+    matched = [action for pattern, action in rules if opencode_match(command, pattern)]
+    return matched[-1] if matched else "ask"
 
 
 def drift(committed_root, fresh_root):
@@ -148,7 +196,8 @@ class TestMakeAgents(ScratchCase):
 
     def test_opencode_agent(self):
         """OpenCode names an agent by its file name, and reads permission rules, not Claude Code's tools list. A
-        bash rule matched later wins, so "*": deny comes first. The patterns name no install path."""
+        bash rule matched later wins, so "*": deny comes first and the denies that close the allows' gaps come last. The
+        patterns name no install path."""
         text = (self.fresh() / OUTPUTS[3]).read_text(encoding="utf-8")
         source_front, source_body = reviewer_parts()
         description = next(l for l in source_front if l.startswith("description:")).split(":", 1)[1].strip()
@@ -166,10 +215,47 @@ class TestMakeAgents(ScratchCase):
             '    "python3 *persona-judge*/scripts/find.py*": allow',
             '    "python3 *persona-judge*/scripts/check.py*": allow',
             '    "python3 *persona-judge*/scripts/report.py*": allow',
+            '    "python3 -*persona-judge*/scripts/*.py******": deny',
+            '    "python3 /-*persona-judge*/scripts/*.py*****": deny',
+            '    "python3 * *persona-judge*/scripts/*.py*****": deny',
+            r'    "python3 *\t*persona-judge*/scripts/*.py*****": deny',
+            r'    "python3 *\n*persona-judge*/scripts/*.py*****": deny',
+            r'    "python3 *\"*persona-judge*/scripts/*.py*****": deny',
+            '    "python3 *\'*persona-judge*/scripts/*.py*****": deny',
+            '    "python3 *$*persona-judge*/scripts/*.py*****": deny',
+            '    "python3 *`*persona-judge*/scripts/*.py*****": deny',
+            '    "python3 *{*persona-judge*/scripts/*.py*****": deny',
+            '    "*>' + "*" * 41 + '": deny',
         ])
         self.assertNotIn("tools:", front)
         self.assertNotIn(str(ROOT), front)
         self.assertEqual(body, source_body)
+
+    def test_opencode_shell_denies(self):
+        """The deny rules that close the gaps in the allow patterns: python3 with an option first, a character
+        between 'python3 ' and the path that no path holds, and any >. OpenCode applies the last rule that matches,
+        so each deny comes after every allow, and each is longer than the longest allow, so it would win as well
+        were the longest pattern to decide."""
+        rules = opencode_bash_rules(ROOT / OUTPUTS[3])
+        allows = [i for i, (_, action) in enumerate(rules) if action == "allow"]
+        denies = [i for i, (pattern, action) in enumerate(rules) if action == "deny" and pattern != "*"]
+        longest_allow = max(len(rules[i][0]) for i in allows)
+        patterns = [rules[i][0] for i in denies]
+        starts = ["python3 -*persona-judge*", "python3 /-*persona-judge*",
+                  *(f"python3 *{c}*persona-judge*" for c in NOT_IN_PATH), "*>*"]
+        for start in starts:
+            self.assertTrue(any(p.startswith(start) for p in patterns), f"no deny rule starts {start!r}")
+        self.assertGreater(min(denies), max(allows))
+        self.assertTrue(all(len(p) > longest_allow for p in patterns), patterns)
+
+    def test_opencode_rules_refuse_the_review_commands(self):
+        """The committed rules, applied as OpenCode 1.18.30 applies them, refuse the three commands Aristarchus's
+        review found allowed, and still allow the skill's own commands."""
+        rules = opencode_bash_rules(ROOT / OUTPUTS[3])
+        for command in REFUSED_COMMANDS:
+            self.assertEqual(opencode_decision(rules, command), "deny", command)
+        for command in ALLOWED_COMMANDS:
+            self.assertEqual(opencode_decision(rules, command), "allow", command)
 
     def test_help(self):
         if not TOOL.is_file():

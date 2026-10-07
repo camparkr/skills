@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh links the persona-judge skill, and the reviewer's agent file for Codex and Gemini CLI, into each harness,
-# and installs the Gemini CLI policy that limits the reviewer's shell.
+# setup.sh links the persona-judge skill, and the reviewer's agent file for Codex, into each harness, links the
+# persona-judge extension, which holds both, into Gemini CLI, and installs the Gemini CLI policy that limits the
+# reviewer's shell.
 # Safe to run twice. Usage: setup.sh [--dry-run] [--uninstall] [--harness claude|codex|gemini]
 # Gemini asks for consent, so run from a terminal, or pass --harness claude or codex when unattended.
 
@@ -18,7 +19,7 @@ while [ $# -gt 0 ]; do
 			shift
 			case "$ONLY" in claude|codex|gemini) ;; *) echo "--harness takes claude, codex or gemini" >&2; exit 2 ;; esac
 			;;
-		-h|--help) sed -n '2,5p' "$0"; exit 0 ;;
+		-h|--help) sed -n '2,6p' "$0"; exit 0 ;;
 		*) echo "Unknown option: $1" >&2; exit 2 ;;
 	esac
 	shift
@@ -34,7 +35,8 @@ NAME="persona-judge"
 # The generated agent files for Codex and Gemini CLI; Claude Code gets its agent from the plugin instead.
 ROOT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)"
 CODEX_AGENT="$ROOT_DIR/plugin/harness-agents/codex/$NAME-reviewer.toml"
-GEMINI_AGENT="$ROOT_DIR/plugin/harness-agents/gemini/$NAME-reviewer.md"
+# The Gemini CLI extension: the reviewer's agent file, and a link to skill/, so one copy of the skill exists.
+GEMINI_EXT="$ROOT_DIR/plugin/harness-agents/gemini"
 # The Gemini CLI policy, with a placeholder for the skill folder's paths that install_policy fills.
 GEMINI_POLICY="$ROOT_DIR/plugin/harness-agents/gemini/$NAME.toml"
 POLICY_PLACEHOLDER="@SKILL_DIRS@"
@@ -79,7 +81,7 @@ handle() {
 	if [ -L "$link" ] && [ "$(resolve "$link")" = "$SKILL_DIR" ]; then
 		RESULTS+=("$label: already linked, left as is")
 	elif [ -e "$link" ] || [ -L "$link" ]; then
-		# Never overwrite: Gemini's own link command would delete whatever is here.
+		# Never overwrite what someone else put here.
 		echo "  stopped: something else is at this path:"
 		echo "    $(ls -ld "$link")"
 		RESULTS+=("$label: STOPPED, path occupied (see above)")
@@ -122,6 +124,63 @@ handle_file() {
 	fi
 }
 
+# Remove a link an earlier version of this script made, at $2, when it points into this package; leave anything else.
+# $1 label. Used on install and on uninstall alike, since the link is no longer how the harness is set up.
+remove_old_link() {
+	local label="$1" link="$2" target
+	[ -L "$link" ] || { [ -e "$link" ] && RESULTS+=("$label: not a link, left alone"); return; }
+	target="$(readlink "$link")"
+	case "$target" in /*) ;; *) target="$(dirname "$link")/$target" ;; esac
+	echo "$label: $link"
+	case "$target" in
+		"$ROOT_DIR"/*)
+			run rm "$link"
+			RESULTS+=("$label: ${WOULD}removed") ;;
+		*)
+			if [ "$(resolve "$link")" = "$SKILL_DIR" ]; then
+				run rm "$link"
+				RESULTS+=("$label: ${WOULD}removed")
+			else
+				echo "  left alone: it does not point into this package"
+				RESULTS+=("$label: not ours, left alone")
+			fi ;;
+	esac
+}
+
+# Handle the Gemini CLI extension. $1 label, $2 the extension's folder in Gemini's home, $3 the folder it links to.
+# The extension is ours only when Gemini's install record names exactly that folder as a link.
+handle_extension() {
+	local label="$1" dir="$2" source="$3" record="$2/.gemini-extension-install.json" ours=0
+	echo "$label: $dir"
+	if [ -f "$record" ] && grep -qF "\"source\": \"$source\"" "$record" && grep -qF '"type": "link"' "$record"; then
+		ours=1
+	fi
+	if [ "$UNINSTALL" -eq 1 ]; then
+		if [ "$ours" -eq 1 ]; then
+			run gemini extensions uninstall "$NAME"
+			RESULTS+=("$label: ${WOULD}uninstalled")
+		elif [ -e "$dir" ] || [ -L "$dir" ]; then
+			echo "  left alone: it is not a link to this package's extension"
+			RESULTS+=("$label: not ours, left alone")
+		else
+			RESULTS+=("$label: nothing to remove")
+		fi
+		return
+	fi
+	if [ ! -f "$source/gemini-extension.json" ]; then
+		RESULTS+=("$label: no gemini-extension.json in $source, skipped")
+	elif [ "$ours" -eq 1 ]; then
+		RESULTS+=("$label: already linked, left as is")
+	elif [ -e "$dir" ] || [ -L "$dir" ]; then
+		echo "  stopped: another extension named $NAME is installed:"
+		echo "    $(ls -ld "$dir")"
+		RESULTS+=("$label: STOPPED, path occupied (see above)")
+	else
+		run gemini extensions link "$source"
+		RESULTS+=("$label: ${WOULD}linked")
+	fi
+}
+
 # A path as a literal in a regular expression: each character the expression would read as syntax gets a backslash.
 regex_literal() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
 
@@ -138,8 +197,9 @@ fill_policy() {
 }
 
 # Install, or with --uninstall remove, the Gemini CLI policy at $1, for the skill linked at $2.
-# Gemini CLI reads policy files only from ~/.gemini/policies/, so the file goes there. Its patterns name the skill
-# folder by both the link Gemini CLI uses and the folder it points to, because the reviewer may be given either.
+# Gemini CLI reads user policy files from ~/.gemini/policies/, and drops the allow rules of a policy inside an
+# extension, so the file goes there. Its patterns name the skill folder by both the path Gemini CLI reports, inside
+# the extension, and the folder it points to, because the reviewer may be given either.
 install_policy() {
 	local label="Gemini CLI policy" policy="$1" link="$2" group text
 	echo "$label: $policy"
@@ -212,12 +272,15 @@ if wanted codex; then
 fi
 
 if wanted gemini; then
-	# gemini skills link writes a user-scope symlink at ~/.gemini/skills/<name> and asks for consent,
+	# gemini extensions link records the extension in ~/.gemini/extensions/<name> and asks for consent,
 	# so run this script from a terminal; unattended, it waits for an answer.
 	if command -v gemini >/dev/null 2>&1; then
-		handle "Gemini CLI" "$HOME/.gemini/skills/$NAME" "gemini skills link" "gemini skills uninstall $NAME"
-		handle_file "Gemini CLI agent" "$HOME/.gemini/agents/$NAME-reviewer.md" "$GEMINI_AGENT"
-		install_policy "$HOME/.gemini/policies/$NAME.toml" "$HOME/.gemini/skills/$NAME"
+		GEMINI_DIR="${GEMINI_CLI_HOME:-$HOME}/.gemini"
+		# Gemini CLI skips an agent file that is a symlink, so the extension replaces both of these links.
+		remove_old_link "Gemini CLI old skill link" "$GEMINI_DIR/skills/$NAME"
+		remove_old_link "Gemini CLI old agent link" "$GEMINI_DIR/agents/$NAME-reviewer.md"
+		handle_extension "Gemini CLI extension" "$GEMINI_DIR/extensions/$NAME" "$GEMINI_EXT"
+		install_policy "$GEMINI_DIR/policies/$NAME.toml" "$GEMINI_EXT/skills/$NAME"
 	else
 		RESULTS+=("Gemini CLI: not installed, skipped")
 	fi

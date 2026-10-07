@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # test_setup.sh: test that setup.sh installs the skill for Claude Code, with HOME set to a scratch folder and
-# --harness claude, the reviewer's agent file for Codex and Gemini CLI, with --harness codex and gemini, and the Gemini
-# CLI policy that limits the reviewer's shell, with --harness gemini.
-# A stand-in `gemini` on the PATH does the work of `gemini skills link`, so no real harness is called.
+# --harness claude, the reviewer's agent file for Codex, with --harness codex, and the Gemini CLI extension and the
+# policy that limits the reviewer's shell, with --harness gemini.
+# A stand-in `gemini` on the PATH does the work of `gemini extensions link` and `gemini extensions uninstall`, so no
+# real harness is called.
 # The installer runs from a scratch copy of persona-judge/ holding a stand-in SKILL.md and a copy of the policy, so the
 # test needs no prose file and writes nothing outside the scratch folders.
 # Usage: tests/test_setup.sh. Exit 0 when every case holds, 1 when any does not.
@@ -26,13 +27,17 @@ mkdir -p "$REPO/skill"
 cp "$SRC" "$REPO/setup.sh"
 printf -- '---\nname: persona-judge\ndescription: stand-in for the test\n---\n' > "$REPO/skill/SKILL.md"
 SKILL_DIR="$(cd "$REPO/skill" && pwd -P)"
-# Stand-ins for the generated agent files the installer links for Codex and Gemini CLI, and a copy of the policy.
-mkdir -p "$REPO/plugin/harness-agents/codex" "$REPO/plugin/harness-agents/gemini"
+# Stand-ins for the generated agent file the installer links for Codex and for the Gemini CLI extension, and a copy of
+# the policy.
+mkdir -p "$REPO/plugin/harness-agents/codex" "$REPO/plugin/harness-agents/gemini/agents" \
+	"$REPO/plugin/harness-agents/gemini/skills"
 echo 'name = "persona-judge-reviewer"' > "$REPO/plugin/harness-agents/codex/persona-judge-reviewer.toml"
-printf -- '---\nname: persona-judge-reviewer\n---\n' > "$REPO/plugin/harness-agents/gemini/persona-judge-reviewer.md"
+printf -- '---\nname: persona-judge-reviewer\n---\n' > "$REPO/plugin/harness-agents/gemini/agents/persona-judge-reviewer.md"
+printf '{"name": "persona-judge", "version": "0.0.0"}\n' > "$REPO/plugin/harness-agents/gemini/gemini-extension.json"
+ln -s ../../../../skill "$REPO/plugin/harness-agents/gemini/skills/persona-judge"
 cp "$POLICY_SRC" "$REPO/plugin/harness-agents/gemini/persona-judge.toml"
 CODEX_AGENT="$(cd "$REPO/plugin/harness-agents/codex" && pwd -P)/persona-judge-reviewer.toml"
-GEMINI_AGENT="$(cd "$REPO/plugin/harness-agents/gemini" && pwd -P)/persona-judge-reviewer.md"
+GEMINI_EXT="$(cd "$REPO/plugin/harness-agents/gemini" && pwd -P)"
 
 H1="$SCRATCH/home1"
 mkdir -p "$H1/.claude"
@@ -108,26 +113,31 @@ else
 	bad "Claude Code agent: $(ls -R "$H8/.claude")"
 fi
 
-# Run setup.sh for one harness with HOME set to $1; CODEX_HOME is cleared so the scratch HOME decides.
+# Run setup.sh for one harness with HOME set to $1; CODEX_HOME and GEMINI_CLI_HOME are cleared so the scratch HOME
+# decides.
 run_for() {
 	local home="$1"; shift
-	env -u CODEX_HOME HOME="$home" PATH="$STUB:$PATH" bash "$REPO/setup.sh" "$@" 2>&1
+	env -u CODEX_HOME -u GEMINI_CLI_HOME HOME="$home" PATH="$STUB:$PATH" bash "$REPO/setup.sh" "$@" 2>&1
 }
 
-# A stand-in gemini: `skills link DIR` and `skills uninstall NAME`, as setup.sh calls them, on the scratch HOME.
+# A stand-in gemini: `extensions link DIR` and `extensions uninstall NAME`, as setup.sh calls them, on the scratch
+# HOME. It writes the install record as Gemini CLI 0.46.0 does, and removes it the same way.
 STUB="$SCRATCH/bin"
 mkdir -p "$STUB"
 cat > "$STUB/gemini" <<'STUBEOF'
 #!/usr/bin/env bash
+dir="$HOME/.gemini/extensions/persona-judge"
 case "$1 $2" in
-	"skills link") mkdir -p "$HOME/.gemini/skills" && ln -s "$3" "$HOME/.gemini/skills/persona-judge" ;;
-	"skills uninstall") rm "$HOME/.gemini/skills/$3" ;;
+	"extensions link")
+		[ -f "$3/gemini-extension.json" ] || { echo "stand-in gemini: no gemini-extension.json in $3" >&2; exit 1; }
+		mkdir -p "$dir" && printf '{\n  "source": "%s",\n  "type": "link"\n}\n' "$3" > "$dir/.gemini-extension-install.json" ;;
+	"extensions uninstall") [ "$3" = "persona-judge" ] && rm "$dir/.gemini-extension-install.json" && rmdir "$dir" ;;
 	*) echo "stand-in gemini: unexpected $*" >&2; exit 1 ;;
 esac
 STUBEOF
 chmod +x "$STUB/gemini"
 
-# 9 to 13, for each of Codex and Gemini CLI: the agent link follows the skill link's rules.
+# 9 to 13, for Codex: the agent link follows the skill link's rules.
 agent_cases() {
 	local harness="$1" home="$2" link="$3" target="$4" label="$5"
 	mkdir -p "$home/.$harness"
@@ -172,8 +182,85 @@ agent_cases() {
 
 H9="$SCRATCH/home9"
 agent_cases codex "$H9" "$H9/.codex/agents/persona-judge-reviewer.toml" "$CODEX_AGENT" "Codex CLI"
+
+# The Gemini CLI extension: linked with `gemini extensions link`, left as is on a second run, removed with `gemini
+# extensions uninstall`, and someone else's extension of the same name is never touched.
 H10="$SCRATCH/home10"
-agent_cases gemini "$H10" "$H10/.gemini/agents/persona-judge-reviewer.md" "$GEMINI_AGENT" "Gemini CLI"
+mkdir -p "$H10/.gemini"
+EXT_DIR="$H10/.gemini/extensions/persona-judge"
+RECORD="$EXT_DIR/.gemini-extension-install.json"
+out="$(run_for "$H10" --dry-run --harness gemini)"
+if [ ! -e "$EXT_DIR" ] && printf '%s' "$out" | grep -qF "would run: gemini extensions link $GEMINI_EXT" \
+	&& printf '%s' "$out" | grep -q "Gemini CLI extension: would be linked"; then
+	ok "Gemini CLI extension: --dry-run named the link command and linked nothing"
+else
+	bad "Gemini CLI extension --dry-run: $out"
+fi
+out="$(run_for "$H10" --harness gemini)"
+if [ -f "$RECORD" ] && grep -qF "\"source\": \"$GEMINI_EXT\"" "$RECORD" \
+	&& printf '%s' "$out" | grep -q "Gemini CLI extension: linked"; then
+	ok "Gemini CLI extension: install linked the extension folder"
+else
+	bad "Gemini CLI extension install: $out"
+fi
+if [ ! -e "$H10/.gemini/agents" ] && [ ! -e "$H10/.gemini/skills" ]; then
+	ok "Gemini CLI extension: no agent or skill link was made beside it"
+else
+	bad "Gemini CLI extension: $(ls -R "$H10/.gemini")"
+fi
+before="$(cat "$RECORD")"
+out="$(run_for "$H10" --harness gemini)"
+if printf '%s' "$out" | grep -q "Gemini CLI extension: already linked, left as is" && [ "$(cat "$RECORD")" = "$before" ]; then
+	ok "Gemini CLI extension: second run left it as is"
+else
+	bad "Gemini CLI extension second run: $out"
+fi
+out="$(run_for "$H10" --uninstall --harness gemini)"
+if [ ! -e "$EXT_DIR" ] && printf '%s' "$out" | grep -q "Gemini CLI extension: uninstalled" \
+	&& [ -f "$GEMINI_EXT/agents/persona-judge-reviewer.md" ]; then
+	ok "Gemini CLI extension: --uninstall removed it and kept the package's files"
+else
+	bad "Gemini CLI extension --uninstall: $out"
+fi
+# Control: another extension named persona-judge is left alone, on install and on uninstall.
+mkdir -p "$EXT_DIR"
+printf '{\n  "source": "/somewhere/else",\n  "type": "link"\n}\n' > "$RECORD"
+out="$(run_for "$H10" --harness gemini)"
+out2="$(run_for "$H10" --uninstall --harness gemini)"
+if printf '%s' "$out" | grep -q "Gemini CLI extension: STOPPED, path occupied" \
+	&& printf '%s' "$out2" | grep -q "Gemini CLI extension: not ours, left alone" \
+	&& grep -qF '"source": "/somewhere/else"' "$RECORD"; then
+	ok "Gemini CLI extension: someone else's extension was left alone"
+else
+	bad "Gemini CLI extension occupied path: $out / $out2"
+fi
+
+# The links earlier versions made, ~/.gemini/skills/persona-judge and ~/.gemini/agents/persona-judge-reviewer.md, are
+# removed when they point into this package, and left alone when they do not.
+H11="$SCRATCH/home11"
+mkdir -p "$H11/.gemini/skills" "$H11/.gemini/agents"
+ln -s "$SKILL_DIR" "$H11/.gemini/skills/persona-judge"
+ln -s "$GEMINI_EXT/persona-judge-reviewer.md" "$H11/.gemini/agents/persona-judge-reviewer.md"
+out="$(run_for "$H11" --harness gemini)"
+if [ ! -L "$H11/.gemini/skills/persona-judge" ] && [ ! -L "$H11/.gemini/agents/persona-judge-reviewer.md" ] \
+	&& printf '%s' "$out" | grep -q "Gemini CLI old skill link: removed" \
+	&& printf '%s' "$out" | grep -q "Gemini CLI old agent link: removed"; then
+	ok "Gemini CLI: the old skill and agent links into this package were removed"
+else
+	bad "Gemini CLI old links: $out"
+fi
+H12="$SCRATCH/home12"
+mkdir -p "$H12/.gemini/skills" "$H12/.gemini/agents" "$SCRATCH/elsewhere/persona-judge"
+ln -s "$SCRATCH/elsewhere/persona-judge" "$H12/.gemini/skills/persona-judge"
+ln -s "$SCRATCH/elsewhere/reviewer.md" "$H12/.gemini/agents/persona-judge-reviewer.md"
+out="$(run_for "$H12" --harness gemini)"
+out2="$(run_for "$H12" --uninstall --harness gemini)"
+if [ -L "$H12/.gemini/skills/persona-judge" ] && [ -L "$H12/.gemini/agents/persona-judge-reviewer.md" ] \
+	&& [ "$(printf '%s\n%s' "$out" "$out2" | grep -c "Gemini CLI old .* link: not ours, left alone")" = "4" ]; then
+	ok "Gemini CLI: links at the old paths that point elsewhere were left alone"
+else
+	bad "Gemini CLI links elsewhere: $out / $out2"
+fi
 
 # 14 to 19: the Gemini CLI policy. It is filled with the skill folder's paths, shown and not written by --dry-run,
 # left as is on a second run, removed by --uninstall, and someone else's file at its path is never touched.
@@ -191,7 +278,7 @@ else
 fi
 
 out="$(run_for "$H14" --harness gemini)"
-linked_re="$(printf '%s' "$H14/.gemini/skills/persona-judge" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
+linked_re="$(printf '%s' "$GEMINI_EXT/skills/persona-judge" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
 real_re="$(printf '%s' "$SKILL_DIR" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
 if [ -f "$POLICY" ] && [ "$(head -n 1 "$POLICY")" = "$MARK" ] && ! grep -q '@SKILL_DIRS@' "$POLICY" \
 	&& [ "$(grep -cF "python3 ($linked_re|$real_re)/scripts/" "$POLICY")" = "3" ]; then

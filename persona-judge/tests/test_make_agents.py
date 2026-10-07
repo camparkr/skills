@@ -4,8 +4,8 @@ reviewer.md is the one source of the reviewer's text. The script writes:
 
 - plugin/agents/persona-judge-reviewer.md, the Claude Code plugin agent, with no `hooks` field, since a plugin
   agent's hooks are ignored and the guard is wired in plugin/hooks/hooks.json;
-- plugin/harness-agents/gemini/persona-judge-reviewer.md, the Gemini CLI agent, with Gemini's read, list, search and
-  shell tools and nothing that writes; and
+- plugin/harness-agents/gemini/agents/persona-judge-reviewer.md, the Gemini CLI agent in the persona-judge
+  extension, with Gemini's read, list, search and shell tools and nothing that writes; and
 - plugin/harness-agents/codex/persona-judge-reviewer.toml, the Codex agent, read-only.
 
 The Gemini and Codex files sit outside plugin/agents/, because Claude Code loads every file in a plugin's agents
@@ -28,7 +28,7 @@ TOOL = ROOT / "tools" / "make_agents.py"
 REVIEWER_MD = SKILL / "reviewer.md"
 OUTPUTS = (
     Path("plugin/agents/persona-judge-reviewer.md"),
-    Path("plugin/harness-agents/gemini/persona-judge-reviewer.md"),
+    Path("plugin/harness-agents/gemini/agents/persona-judge-reviewer.md"),
     Path("plugin/harness-agents/codex/persona-judge-reviewer.toml"),
 )
 GEMINI_TOOLS = ["read_file", "read_many_files", "list_directory", "glob", "grep_search", "run_shell_command"]

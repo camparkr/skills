@@ -11,7 +11,9 @@ enforced by the harness; a control plants a hook that misses Bash calls and one 
 """
 
 import json
+import os
 import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -198,6 +200,88 @@ class TestPlugin(ScratchCase):
             marketplace_faults(repo),
             ["name is 'skills'", "source is './persona-judges'", "./persona-judges does not exist"],
         )
+
+
+# The Gemini CLI extension: its manifest, the reviewer's agent file and a link to the skill folder.
+GEMINI_EXT = PLUGIN / "harness-agents" / "gemini"
+GEMINI_EXT_AGENT = GEMINI_EXT / "agents" / "persona-judge-reviewer.md"
+GEMINI_EXT_SKILL = GEMINI_EXT / "skills" / "persona-judge"
+# Calls Gemini CLI's own loadAgentsFromDirectory, from the bundle file argv[1], on the folder argv[2], and prints the
+# names of the agents it loads as JSON.
+LOAD_AGENTS_JS = """
+const m = await import(process.argv[1]);
+const r = await m.loadAgentsFromDirectory(process.argv[2]);
+console.log(JSON.stringify(r.agents.map((a) => a.name)));
+process.exit(0);
+"""
+
+
+def gemini_bundle_files():
+    """The files of the installed Gemini CLI's bundle that define loadAgentsFromDirectory; empty when there are none."""
+    gemini = shutil.which("gemini")
+    if not gemini:
+        return []
+    bundle = Path(os.path.realpath(gemini)).parent
+    return sorted(p for p in bundle.glob("*.js")
+                  if "async function loadAgentsFromDirectory(" in p.read_text(encoding="utf-8", errors="replace"))
+
+
+def gemini_agents(bundle_file, folder):
+    """The names Gemini CLI's loadAgentsFromDirectory, in bundle_file, loads from folder."""
+    proc = subprocess.run(["node", "--input-type=module", "-e", LOAD_AGENTS_JS, bundle_file.as_uri(), str(folder)],
+                          capture_output=True, text=True, timeout=120)
+    if proc.returncode != 0:
+        raise AssertionError(f"node failed on {bundle_file.name}: {proc.stderr}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+class TestGeminiExtension(ScratchCase):
+    """plugin/harness-agents/gemini/ is a Gemini CLI extension. Gemini CLI keeps only an agents/ entry that is a file,
+    and a symlink is not, so the agent file is a real file; the skill is a relative link to skill/, so one copy of
+    the skill exists. The policy stays out of a policies/ folder, since Gemini CLI drops an extension policy's allow
+    rules."""
+
+    def test_manifest(self):
+        data = json.loads((GEMINI_EXT / "gemini-extension.json").read_text(encoding="utf-8"))
+        self.assertEqual(data.get("name"), "persona-judge")
+        self.assertTrue(data.get("version"))
+
+    def test_agent_is_a_regular_file(self):
+        self.assertTrue(GEMINI_EXT_AGENT.is_file(), GEMINI_EXT_AGENT)
+        self.assertFalse(GEMINI_EXT_AGENT.is_symlink(), f"{GEMINI_EXT_AGENT} is a symlink, which Gemini CLI skips")
+
+    def test_skill_resolves_to_the_one_skill_folder(self):
+        self.assertTrue(GEMINI_EXT_SKILL.is_symlink())
+        self.assertFalse(os.path.isabs(os.readlink(GEMINI_EXT_SKILL)), "the skill link must be relative")
+        self.assertEqual((GEMINI_EXT_SKILL / "SKILL.md").resolve(), (SKILL / "SKILL.md").resolve())
+
+    def test_no_policies_folder(self):
+        self.assertFalse((GEMINI_EXT / "policies").exists())
+
+    def test_real_gemini_loads_the_reviewer(self):
+        """Linked into a scratch GEMINI_CLI_HOME, the extension's agents/ folder gives Gemini CLI's own loader the
+        reviewer; a control shows the same loader skipping a symlink to the same file."""
+        if not shutil.which("gemini") or not shutil.which("node"):
+            self.skipTest("gemini or node is not installed")
+        bundle_files = gemini_bundle_files()
+        if not bundle_files:
+            self.skipTest("this Gemini CLI's bundle defines no loadAgentsFromDirectory")
+        home = self.tmp / "gemini-home"
+        home.mkdir()
+        proc = subprocess.run(["gemini", "extensions", "link", "--consent", str(GEMINI_EXT)], cwd=self.tmp,
+                              env=dict(os.environ, GEMINI_CLI_HOME=str(home)), capture_output=True, text=True,
+                              timeout=180)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        record = json.loads((home / ".gemini" / "extensions" / "persona-judge" / ".gemini-extension-install.json")
+                            .read_text(encoding="utf-8"))
+        self.assertEqual(record, {"source": str(GEMINI_EXT), "type": "link"})
+        linked = Path(record["source"]) / "agents"
+        symlinked = self.tmp / "symlinked"
+        symlinked.mkdir()
+        (symlinked / GEMINI_EXT_AGENT.name).symlink_to(GEMINI_EXT_AGENT)
+        for bundle_file in bundle_files:
+            self.assertEqual(gemini_agents(bundle_file, linked), ["persona-judge-reviewer"], bundle_file.name)
+            self.assertEqual(gemini_agents(bundle_file, symlinked), [], bundle_file.name)
 
 
 if __name__ == "__main__":

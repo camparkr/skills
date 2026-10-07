@@ -184,19 +184,22 @@ enforces, with a hook that lets the reviewer's shell run only the skill's script
 
 ```bash
 ./setup.sh --dry-run   # show what would change
-./setup.sh             # link the skill, and for Codex and Gemini CLI the reviewer agent, where each is installed
+./setup.sh             # install the skill and the reviewer agent in each harness that is installed
 ```
 
 Codex runs the reviewer agent in a read-only sandbox, unless the session that starts it runs with `--yolo` or a wider
 `/permissions` setting, which Codex applies to the agent too. Gemini CLI gives it read, list, search and shell tools and
-none that writes a file. For Gemini CLI, `setup.sh` also installs a policy file,
-`~/.gemini/policies/persona-judge.toml`, that lets the reviewer agent's shell run only `python3 --version` and the
-skill's scripts, and refuses its other commands, in YOLO mode too; Gemini CLI reads policy files only from that folder,
-not from a project. The policy refuses `<` and `>` in a command, apart from the opening of the one heredoc that passes a
+none that writes a file. For Gemini CLI, `setup.sh` runs `gemini extensions link` on `plugin/harness-agents/gemini/`,
+an extension that holds the reviewer agent and a link to the skill folder, so Gemini CLI asks you to consent; it also
+removes any link into this folder that an earlier version made in `~/.gemini/skills/` or `~/.gemini/agents/`. It then
+installs a policy file, `~/.gemini/policies/persona-judge.toml`, that lets the reviewer agent's shell run only
+`python3 --version` and the skill's scripts, and refuses its other commands, in YOLO mode too. Gemini CLI reads user
+policy files from that folder, and drops the allow rules of a policy inside an extension. The policy refuses `<` and `>` in a command, apart from the opening of the one heredoc that passes a
 record, so in Gemini CLI save pasted text that holds them to a file and name the file. On Windows, for Claude Code, run
 `powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun`, then run the command again without `-DryRun`. Neither
 script overwrites a file it did not make; `setup.sh` refreshes its own policy file when the skill moves. `--uninstall`
-(`-Uninstall` on Windows) removes only the links and the policy file the script made.
+(`-Uninstall` on Windows) removes only the links, the extension and the policy file the script made; for the extension
+it runs `gemini extensions uninstall persona-judge`.
 
 ## Use
 

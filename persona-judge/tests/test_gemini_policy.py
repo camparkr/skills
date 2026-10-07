@@ -28,7 +28,7 @@ from support import PLUGIN, SKILL, ScratchCase
 import test_guard  # noqa: E402
 
 POLICY = PLUGIN / "harness-agents" / "gemini" / "persona-judge.toml"
-GEMINI_AGENT = PLUGIN / "harness-agents" / "gemini" / "persona-judge-reviewer.md"
+GEMINI_AGENT = PLUGIN / "harness-agents" / "gemini" / "agents" / "persona-judge-reviewer.md"
 PLACEHOLDER = "@SKILL_DIRS@"
 SHELL = "run_shell_command"
 # Gemini CLI's loader refuses a pattern with a quantified group after a quantifier inside a group (a ReDoS guard),

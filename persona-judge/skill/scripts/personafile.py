@@ -267,8 +267,8 @@ def _paths_in(text):
 def pointers(pf):
     """(line number, path) for each pointer in the body: a path in a sentence that tells the agent to read it, as
     addressed() reads it, with the mask applied. A list item also counts when the line ending in a colon that
-    introduces its list counts. So does an index entry, as index_entry() reads it, unless its sentence tells the
-    agent to write, create or save."""
+    introduces its list counts. So does an index entry, as index_entry() reads it, unless it names a file to write, as
+    tells_to_write() reads it."""
     masked = masked_body(pf)
     lines = [t for _, t in masked]
     numbers = [n for n, _ in masked]
@@ -307,7 +307,7 @@ def pointers(pf):
                 continue
             at = offsets[row] + entry[0]
             sentence = next((text[s:e] for s, e in sentences(text) if s <= at < e), text)
-            if _TELLS_TO_WRITE.search(LINK_TARGET.sub("]", BACKTICKED.sub("CODE", sentence))):
+            if tells_to_write(sentence, lines[i]):
                 continue
             if (numbers[i], entry[1]) not in out:
                 out.append((numbers[i], entry[1]))
@@ -320,8 +320,20 @@ _INDEX_ENTRY = re.compile(
     r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?[*_]*(?:`([^`\s]+)`|\[[^\]\n]*\]\(([^)\s]+)\))[*_]*"
     r"(?:\s*:\s+|\s+-\s+|\s*[–—]\s*)\S"
 )
-# A sentence that tells the agent to write, create or save names a file to make, not one to read.
-_TELLS_TO_WRITE = re.compile(r"\b(?:write|create|save)\b", re.IGNORECASE)
+# A verb that tells the agent to make a file, not read one, when it opens a sentence or the description of an entry.
+_WRITE_VERB = re.compile(r"[*_]*(?:write|create|save)\b", re.IGNORECASE)
+# What opens a line before its words: indentation and a list marker.
+_LINE_OPENING = re.compile(r"\s*(?:(?:[-*+]|\d+[.)])\s+)?")
+
+
+def tells_to_write(sentence, line):
+    """Whether an index entry names a file to write: its sentence opens with write, create or save, or one comes
+    straight after the entry's dash or colon. A description that merely holds the word, such as 'how to write commit
+    messages', names a file to read."""
+    if _WRITE_VERB.match(sentence, _LINE_OPENING.match(sentence).end()):
+        return True
+    m = _INDEX_ENTRY.match(line)
+    return bool(m and _WRITE_VERB.match(line, m.end() - 1))
 
 
 def index_entry(line):

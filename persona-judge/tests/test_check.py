@@ -721,6 +721,15 @@ class TestIndexEntries(ScratchCase):
         proc = run("check.py", "--format", "json", cwd=proj)
         self.assertEqual(row_for(proc, "PJ-001", ".claude/agents/reporter.md")["score"], 1, proc.stdout)
 
+    def test_entry_that_describes_writing_scores_0(self):
+        """'`style.md` — how to write commit messages' names a file to read: the word write does not open its
+        sentence or follow the dash, so the entry is a pointer, and a missing file scores 0."""
+        proc = run("check.py", "--format", "json", cwd=self.project("index-entry-describes-writing"))
+        row = row_for(proc, "PJ-001", ".claude/agents/committer.md")
+        self.assertEqual(row["score"], 0, proc.stdout + proc.stderr)
+        self.assertEqual(row["line"], 7)
+        self.assertIn("style.md does not exist", row["message"])
+
     def test_existing_index_entry_scores_1(self):
         proj, found = self.pointers("index-entry-exists", ".claude/agents/indexer.md")
         self.assertEqual(found, [(7, "notes/memory.md")])

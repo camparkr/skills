@@ -145,6 +145,8 @@ PROJECTS = {
     "index-entry-missing": {".claude/agents/indexer.md": "index-entry-missing"},
     "index-entry-forms": {".claude/agents/indexer.md": "index-entry-forms"},
     "index-entry-write": {".claude/agents/reporter.md": "index-entry-write"},
+    # An entry whose description says how to write something, not to write to the path.
+    "index-entry-describes-writing": {".claude/agents/committer.md": "index-entry-describes-writing"},
     "index-entry-exists": {
         ".claude/agents/indexer.md": "index-entry-exists",
         "notes/memory.md": "index-entry-notes",

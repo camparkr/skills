@@ -1,0 +1,8 @@
+---
+name: committer
+description: Writes commit messages for staged changes when asked to commit.
+tools: Read, Grep
+---
+
+- `style.md` — how to write commit messages.
+Follow the style guide in every message.

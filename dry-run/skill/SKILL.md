@@ -18,7 +18,8 @@ Every hypothesis has a control.
 
 A fix that cannot change the outcome needs no dry run: a broken link, a typo or a question reworded with
 the same answer. Fix it with evidence, and list it in the record. With no dry run open, list it in the
-commit message instead. Everything else starts at 'Find the record'.
+commit message instead. Such a fix gates nothing: it never goes to the requester as a decision, and never
+sends the work back for another round of review. Everything else starts at 'Find the record'.
 
 ## Decision table
 
@@ -99,6 +100,11 @@ Notes on the table:
     commit exists, unless lighter mode or a fallback has replaced it. A scout is design work, not a check, and
     runs before it.
 
+    The titles `dry-run <n>: hypotheses` and `dry-run <n>: findings` are fixed. A project's own rules may ask
+    more of a commit message, such as a body saying what changed and why. Then keep the title as the first
+    line and add what the rules ask. A body goes in a second `-m`:
+    `git commit -m 'dry-run <n>: hypotheses' -m '<body>' -- <record>`.
+
     Whether to ask before this commit, where the first case that applies decides:
 
     - the project's instructions require asking, whatever the request: ask;
@@ -127,7 +133,7 @@ Notes on the table:
 
 16. **Commit the findings.** This gate checks each finding sits beside its control's result. Write the
     findings into the record. Mark the dry run 'all supported' if every hypothesis is supported, or 'stopped'
-    if any is not. Commit it by name only, with the two commands of 'Commit the hypotheses' and the message
+    if any is not. Commit it by name only, with the two commands of 'Commit the hypotheses' and the title
     'dry-run <n>: findings'. In lighter mode, this is the one record commit after the check.
 17. **Hand the findings to the requester,** who decides what follows. The findings are evidence, not a
     decision. A supported finding shows the plan is right in principle only. The finished work is still
@@ -163,7 +169,8 @@ Never:
 - stage the record's commit with `git add -A` or `git add .`: the change under test enters the hypotheses
   commit;
 - delete a file from the real tree after a check: someone else may be working there;
-- conclude a file has no readers from a filename search: text also cites by title and in prose;
+- conclude a file has no readers from a filename search: text also cites by title and in prose, so
+  search those too;
 - gate on a record about the change, such as a status field: it shows what the author wrote, not what the
   change does;
 - let the author's own re-reading stand as the check: a model without outside feedback does not reliably

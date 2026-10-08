@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scratch-copy.sh — make or remove the scratch copies a dry run checks in, outside the repository.
 # Usage: scratch-copy.sh make <scratch> <tag> [<base-commit>]   run from inside the project's repository
-#        scratch-copy.sh remove <scratch> <tag>   fails if a copy, clone or redraft folder (<tag>a, <tag>b) remains
+#        scratch-copy.sh remove <scratch> <tag>   removes the copies; fails if a clone, a redraft folder (<tag>a, <tag>b) or an unregistered copy remains
 # make: <scratch>/dry-run-<tag> holds the working tree as it stands (uncommitted, new and deleted files;
 # ignored files left out); with <base-commit>, <scratch>/dry-run-<tag>-base holds the old code.
-# Neither touches the real working tree or index. make does add to the real .git: a worktree entry per copy
-# and one snapshot commit, held only by its copy. remove deletes the entries; once the copy is gone, git's
-# routine garbage collection deletes the commit.
+# Neither touches the real working tree or index. make does add to the real .git: a worktree entry per copy,
+# one snapshot commit and the objects for uncommitted files, held only by its copy. remove deletes the
+# entries; once the copy is gone, git's routine garbage collection deletes the commit and its objects.
 
 set -euo pipefail
 
@@ -26,7 +26,8 @@ COPY="$SCRATCH/dry-run-$TAG"
 BASE_COPY="$COPY-base"
 
 # True when the given path is registered as a worktree of the real repository.
-registered() { git -C "$ROOT" worktree list --porcelain | grep -qxF "worktree $1"; }
+# grep reads the whole list (no -q), so git never dies of SIGPIPE under pipefail.
+registered() { git -C "$ROOT" worktree list --porcelain | grep -xF "worktree $1" >/dev/null; }
 
 case "$ACTION" in
 	make)
@@ -51,6 +52,9 @@ case "$ACTION" in
 			GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$(git config user.name || echo 'Lorem Ipsum')}" \
 			GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$(git config user.email || echo lorem.ipsum@example.com)}" \
 			git -C "$ROOT" commit-tree "$TREE" -p HEAD -m "dry-run $TAG: working tree snapshot")"
+		if [ -z "${GIT_AUTHOR_NAME:-}" ] && ! git config user.name >/dev/null; then
+			echo "Note: git has no identity here, so the snapshot commit is signed 'Lorem Ipsum'." >&2
+		fi
 		git -C "$ROOT" worktree add --quiet --detach "$COPY" "$SNAP"
 		echo "Copy: $COPY (HEAD $(git -C "$ROOT" rev-parse --short HEAD) plus the working tree, snapshot $SNAP)"
 		if [ -n "$BASE_HASH" ]; then

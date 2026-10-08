@@ -3,19 +3,19 @@
 Load this file only when the check reads what a model does under instructions, such as a persona, a role
 file or a prompt. That is the instructions row of the decision table in `SKILL.md`.
 
-*Drawn from dry runs of one persona file on several harnesses, 6 to 8 October 2026. A harness is the program
-that runs a model, such as a command-line agent. The evidence covers one file and one family of proposals,
-written by one author. 'What rests on what', at the end, says which rules rest on facts about those runs and
-which on judgement.*
+*Drawn from dry runs of one persona on several harnesses, with and without its file, 6 to 8 October 2026.
+The evidence covers one persona and one family of
+proposals, written by one author. 'What rests on what', at the end, says which rules rest on
+facts about those runs and which on judgement.*
 
 ## What a good one looks like
 
-**The counter-example.** A dry run gave a persona several versions of its file. It asked each one 'In one
-sentence, what is your job on this proposal?' and 'Who besides you should look at this proposal?'. Every
-version but the inverted one gave its file's answer. The answers showed what the model said about itself.
-Each question's wording also invited its own answer: 'who besides you' drew lists of other people. The task
-asked for one sentence, but the file set a findings format, and over half the answers kept the file's
-format. The control changed one line of the file and was never caught.
+**The counter-example.** A dry run gave a persona several versions of its file. It asked each about itself:
+what its job was and who besides it should look at the proposal. Every version answered from its own file,
+the inverted one included. The answers showed what the model said about itself, not what it did with work.
+Each question's wording also invited its own answer: asking who else should look drew lists of other people.
+Other questions asked for one sentence, but the file set its own output format, and over half those answers
+kept the file's format. The control changed one line of the file and was never caught.
 
 **The better design.** The next dry run handed the persona the work: 'This proposal has been sent to you.
 Reply in no more than N words.' The task names no act, so the check could observe whether the model
@@ -37,7 +37,7 @@ These rules shape the task and the reading:
    model breaks a word cap its instructions' own format cannot fit. One model kept its file's format and ran
    past the cap, even when told longer replies are discarded. Measure length; do not assume it.
 4. **Give each measure room to move.** A plant every version finds, or an option no reply picks, cannot show
-   a difference. The most conspicuous flaw, often a number, takes first place in every reply. In the scout,
+   a difference. The most conspicuous flaw, often a number, takes first place in most replies. In the scout,
    no option should hold more than about 70% of the in-role replies.
 5. **Make the control invert the instructions as a whole.** Show in the scout that the reading tells it
    apart.
@@ -50,17 +50,18 @@ These rules shape the task and the reading:
 Before writing the hypotheses, run each version of the instructions a few times on the real task. Read every
 output in full. The scouts behind this file ran each version a few times; that size was a design choice, not
 a measured minimum. Use the scout to fix the task, the plants and the questions. Its outputs are never
-findings and never evidence; say so in the record.
+findings and never evidence; say so in the record. Isolate the scout's runs as you would the main run's
+('Isolation and watching the runs', below).
 
 Test every classifier question on the scout's outputs, not on answers you wrote. Written replies separated
-cleanly, where the first real ones exposed several questions. Some scored alike replies far apart. Others read
-a structural finding as a process one, or a structural verdict as a decision.
+well, where the first real ones exposed several questions. Some scored alike replies far apart. Others read a
+point about structure as one about process, or a verdict on the structure as a decision.
 
 ## Reading with a classifier
 
-Some tools sort a reply by returning a choice, a score or a yes-or-no, each with its confidence. Such a tool
-reads short replies quickly and the same way every time. It judges what a reply does; it cannot produce the
-reply.
+Use a classifier that returns a choice, a score or a yes-or-no with its confidence. A classification service
+will do, or a second model given only the question and the reply. The examples below come from a proposal for
+a café staff rota, with flaws planted in it.
 
 | Returns | Use it for | Example |
 |---|---|---|
@@ -79,13 +80,14 @@ These practices make the reading hold:
 - **Count softly.** Sum each option's probability over the replies, so a half-and-half reply counts half to
   each. Between two versions on one harness, soft counts showed a change that top-choice counts hid.
 - **Route by confidence.** In one sample, a second sorter agreed with nearly every reply the classifier sorted
-  with high confidence. It agreed with fewer than half of those sorted with low confidence. One routing drawn
-  from that sample: take replies at 0.95 confidence or above as sorted. Send a random tenth of those from 0.80
+  with high confidence. It agreed with fewer than half of those sorted with low confidence. A starting routing,
+  drawn from that sample: take replies at 0.95 confidence or above as sorted. Send a random tenth of those from 0.80
   to 0.95, and every reply under 0.80, to a second sorter. That sorter sees neither the version nor the first
-  reading. No run has tested these bands; set your own from a sample of your own.
+  reading. Test these bands on a sample of your own before you rely on them.
 - **Report the low-confidence share for each version.** A fall in confidence can itself be a result.
-- **Check length and format with code, not the classifier.** A pattern match read the format right on every
-  scout reply. The classifier gave middling scores to replies plainly in the format.
+- **Check length and format with code, not the classifier.** A pattern match read the format right on the
+  first scout's replies, where the classifier gave middling scores to replies plainly in the format. A later
+  scout wrote a variant the pattern missed, so test the pattern on real replies too.
 
 ## Isolation and watching the runs
 
@@ -105,6 +107,17 @@ These keep each harness apart and its results sound:
   each harness.
 - **Report every result per harness.** The harness varied more than any version tested. On one question, one
   harness almost never named an issue that another named in most of its answers.
+
+## Never
+
+On this row, never:
+
+- ask the model under test what it does, as the check: it reports its instructions back, not what it does
+  with work;
+- give the model a task that contradicts the instructions under test: the check then measures which
+  instruction wins; or
+- test a classifier's questions only on answers you wrote: written answers separate well where real ones may
+  not.
 
 ## What rests on what
 

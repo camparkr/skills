@@ -52,8 +52,11 @@ case "$ACTION" in
 			GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$(git config user.name || echo 'Lorem Ipsum')}" \
 			GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$(git config user.email || echo lorem.ipsum@example.com)}" \
 			git -C "$ROOT" commit-tree "$TREE" -p HEAD -m "dry-run $TAG: working tree snapshot")"
+		# Note the placeholder whenever any of the four identity fields falls back to it.
 		if { [ -z "${GIT_AUTHOR_NAME:-}" ] && ! git config user.name >/dev/null; } ||
-			{ [ -z "${GIT_AUTHOR_EMAIL:-}" ] && ! git config user.email >/dev/null; }; then
+			{ [ -z "${GIT_AUTHOR_EMAIL:-}" ] && ! git config user.email >/dev/null; } ||
+			{ [ -z "${GIT_COMMITTER_NAME:-}" ] && ! git config user.name >/dev/null; } ||
+			{ [ -z "${GIT_COMMITTER_EMAIL:-}" ] && ! git config user.email >/dev/null; }; then
 			echo "Note: git's identity is incomplete here, so the snapshot commit uses the 'Lorem Ipsum' placeholder." >&2
 		fi
 		git -C "$ROOT" worktree add --quiet --detach "$COPY" "$SNAP"

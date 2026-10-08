@@ -133,8 +133,8 @@ the route.
     'all supported' if every hypothesis is supported, or 'stopped' if any is not. Commit it by name only, with
     step 7's two commands and the message 'dry-run <n>: findings'. In lighter mode, this is the one
     record commit after the check; include the quoted pre-check message and the weaker-witness mark.
-13. **Who decides what follows?** The requester. The findings are evidence, not a decision: a supported
-    finding shows the plan is right in principle only, and the finished work is still checked on its own.
+13. **Who decides what follows?** The requester. The findings are evidence, not a decision. A supported
+    finding shows the plan is right in principle only. The finished work is still checked on its own.
     - All supported: send the findings to the requester. Work they have already asked for goes on as asked.
     - Any refuted or inconclusive: stop. Report each such hypothesis, what was seen and the findings commit
       to the requester, who decides what follows. With no one to report to, write the report into the
@@ -161,8 +161,8 @@ the route.
   it. Change nothing and run nothing.'
 - For a design, decision or specification, present the should-fail case to a fresh reader as one more case
   in the brief. Do not label it as the should-fail case or reveal the hypothesis.
-- Where the question is what a model does with work under the instructions, not what a reader takes them to
-  say, use the instructions row. Asked what a text tells it to do, a model repeats the text: that tests the
+- Where the question is what a model does with work, not what a reader takes the instructions to say, use
+  the instructions row. Asked what a text tells it to do, a model repeats the text: that tests the
   wording, not the behaviour.
 - A change that fits no row uses the nearest row and records why.
 - Run a check when the change can run on a case. Read only when it cannot, and record why.
@@ -177,8 +177,8 @@ the route.
   - Each piece is its own dry run in the record.
   - Commit a piece's hypotheses only after the previous piece's finding.
   - A refuted or inconclusive piece stops the pieces after it.
-- **A scout is design work, not evidence.** Where a check reads what a model does under instructions
-  (the instructions row), read a small sample of real outputs in full before writing the hypotheses (`references/model-output-checks.md`). A scout's outputs are
+- **A scout is design work, not evidence.** On the instructions row, read a small sample of real outputs in
+  full before writing the hypotheses (`references/model-output-checks.md`). A scout's outputs are
   never findings and are never reused as evidence; the record says so. The hypotheses are still committed
   before the check.
 

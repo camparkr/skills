@@ -23,8 +23,8 @@ found for them:
 - re-reading the intent at source before each dry run;
 - the design, decision and specification row of the decision table;
 - the fallbacks in `when-things-go-wrong.md`;
-- the instructions row of the decision table, the scout rule, the three Nevers on model output and
-  `model-output-checks.md`, from dry runs of one persona file on up to six harnesses, 6 to 8 October 2026.
+- the instructions row, the scout rule, the Nevers on model output and `model-output-checks.md`, from dry
+  runs of one persona file, 6 to 8 October 2026.
 
 No external source was found on dry runs in multi-agent or model-driven design pipelines.
 

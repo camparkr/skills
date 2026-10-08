@@ -49,6 +49,10 @@ the route.
      tests the intended difference.
    - **Could a stranger make the refuting observation unaided?** If not, the hypothesis is not ready.
 
+   **Instructions a model runs under**, where the question is what the model does (the instructions row of
+   the decision table): load `references/model-output-checks.md` now. Its scout runs before you write the
+   hypotheses.
+
    Write the hypotheses, one per intent at risk. Each says what you would see if the intent broke; the filled
    examples in the 'Skeleton' section of `references/session-record.md` show good and bad ones. Write any
    fresh reader's brief now, so it goes into the step 7 commit.
@@ -65,7 +69,7 @@ the route.
    the step 7 commit. After the check, make one record commit that quotes that message with its time and
    marks the dry run 'lighter mode: weaker witness'.
 5. **Choose each control** from the decision table below. Load `references/example-dry-runs.md` and read
-   only that row's section. For the instructions row, also load `references/model-output-checks.md`.
+   only that row's section; the instructions row's examples are in `references/model-output-checks.md`.
 6. If the check gives one answer per item, such as each file's new home in a rename, load
    `references/item-answers.md` and record each answer as it says. Otherwise leave it unloaded.
 7. **Gate: is every hypothesis committed before any check?** Commit the record by name only:
@@ -96,6 +100,7 @@ the route.
    | writes, or needs a fault planted in the changed files | a git copy, made by `scratch-copy.sh` | yes |
    | runs the old code, as a behaviour change's control | a git copy plus an old-code copy, made by `scratch-copy.sh` with the base commit, which is the commit before the change | yes |
    | is a redraft's reading | two plain folders, one planted | yes |
+   | hands a model work, as the instructions row does | a folder per run outside the repository, holding only what the run needs (`references/model-output-checks.md`) | yes |
 
    Where the last column says yes, first, from inside the repository, save in the record the fingerprint that
    `<skill>/scripts/fingerprint.sh <record>` prints (paths from the repository's root); `<skill>` is the
@@ -117,8 +122,8 @@ the route.
       `git diff` and `git branch -a` (remote-tracking branches move with any fetch; ignore them).
       - Evidence of another session's change, such as the requester confirming it or the diff matching known
         concurrent work: say so in the record and go on.
-      - Anything else is a finding: record it, delete nothing and stop. Remove no copies and commit no
-        findings until the requester answers.
+      - Anything else: record it, delete nothing and stop. Remove no copies and commit no findings until
+        the requester answers.
 11. **Remove the scratch copies**, if step 8 made any. Removing them deletes anything left in them, so first
     copy into the record the check's output that bears on each hypothesis. Delete any clone and any redraft
     folders from scratch. Then, from inside the repository, run
@@ -156,8 +161,9 @@ the route.
   it. Change nothing and run nothing.'
 - For a design, decision or specification, present the should-fail case to a fresh reader as one more case
   in the brief. Do not label it as the should-fail case or reveal the hypothesis.
-- Where the question is what a model does under the instructions, use the instructions row, not the redraft
-  row. Asked what a text tells it to do, a model reports its instructions back.
+- Where the question is what a model does with work under the instructions, not what a reader takes them to
+  say, use the instructions row. Asked what a text tells it to do, a model repeats the text: that tests the
+  wording, not the behaviour.
 - A change that fits no row uses the nearest row and records why.
 - Run a check when the change can run on a case. Read only when it cannot, and record why.
 - Without its control, a supported finding is inconclusive; a refutation still stands.
@@ -171,8 +177,8 @@ the route.
   - Each piece is its own dry run in the record.
   - Commit a piece's hypotheses only after the previous piece's finding.
   - A refuted or inconclusive piece stops the pieces after it.
-- **A scout is design work, not evidence.** Where a check reads a model's output, read a small sample of real
-  outputs in full before writing the hypotheses (`references/model-output-checks.md`). A scout's outputs are
+- **A scout is design work, not evidence.** Where a check reads what a model does under instructions
+  (the instructions row), read a small sample of real outputs in full before writing the hypotheses (`references/model-output-checks.md`). A scout's outputs are
   never findings and are never reused as evidence; the record says so. The hypotheses are still committed
   before the check.
 
@@ -215,6 +221,6 @@ Each step names when to load a file. Leave each unloaded as follows.
 | `references/item-answers.md` | for a check that does not give one answer per item (step 6) |
 | `references/when-things-go-wrong.md` | unless a step sends you to it |
 | `references/briefing-others.md` | unless a subagent runs the check or an outside review comes next |
-| `references/model-output-checks.md` | unless the check reads a model's output |
+| `references/model-output-checks.md` | unless the change is on the instructions row |
 | `references/why-each-never.md` | during a dry run; only when asked why a NEVER holds |
 | `references/sources.md` | during a dry run; only when asked for a source |

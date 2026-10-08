@@ -21,9 +21,10 @@ of the file and was never caught.
 Reply in no more than 50 words.' The task names no act, so whether the model challenged the proposal, and
 how, was what the check observed. The proposal carried planted flaws, one of them where the file is silent.
 Closed questions read each reply. The control inverted the whole file (its title, goal, remit, directives
-and output format), and the reading caught its ruling in every scout reply. The scouts then showed every
+and output format), and the reading caught the inverted file's ruling in every scout reply. The scouts then showed every
 in-role version writing the same review, each measure at a ceiling or a floor, so the dry run stopped before
-a main run that could have shown no difference. A scout that stops a run has done its job.
+a main run that could have shown no difference. A scout that stops a run has done its job. Its 50-word cap
+proved too tight for the file's own format, as item 3 below records.
 
 ## Asking
 
@@ -51,7 +52,7 @@ is one scout's size, not a measured minimum. Use the scout to fix the task, the 
 Its outputs are never findings and never evidence; say so in the record.
 
 Test every classifier question on the scout's outputs, not on answers you wrote. Five written replies
-separated cleanly where the first 21 real ones exposed four of ten questions.
+separated cleanly where the first 21 real ones exposed four of ten questions: two scored alike replies far apart, and two read a structural finding as a process one or a structural verdict as a decision.
 
 ## Reading with a classifier
 
@@ -73,9 +74,7 @@ quickly and the same way every time. It judges what a reply does; it cannot prod
   each. Between two versions on one harness, soft counts showed a change (92% to 66%) that top-choice counts
   hid (95% to 90%).
 - **Route by confidence.** In one sample, a second sorter agreed with the classifier on 98% of replies at
-  0.95 confidence or above, and on 39% under 0.60. Take replies at 0.95 or above as sorted, sample those from
-  0.80 to 0.95, and send those under 0.80 to a second sorter that sees neither the version nor the first
-  reading. That one sample set the bands, and the second-sorter check designed from them never ran.
+  0.95 confidence or above, and on 39% under 0.60. One routing drawn from that sample: take replies at 0.95 or above as sorted, and send a random tenth of those from 0.80 to 0.95, and every reply under 0.80, to a second sorter that sees neither the version nor the first reading. No run has tested these bands; set your own from a sample of your own.
 - **Report the low-confidence share for each version.** A fall in confidence can itself be a result.
 - **Check length and format with code, not the classifier.** A pattern match read the format right on all 21
   scout replies, where the classifier scored replies plainly in the format 0.51 to 0.77.
@@ -91,13 +90,13 @@ quickly and the same way every time. It judges what a reply does; it cannot prod
   outside the project, with `PWD` set to that folder.
 - **Watch the runs as they come in.** Usage caps, rate limits and expired sign-ins failed without stopping
   the runs: 54 of one harness's 80 runs returned a usage-limit message and their empty answers were scored;
-  an expired sign-in voided 55 answers on another; a third retried a rate limit until each run timed out.
+  an expired sign-in voided 55 answers on another; a third retried a rate limit until each run timed out. Count only answers with text from runs that finished; rerun or leave out the rest, and report how many for each harness.
 - **Report every result per harness.** The harness varied more than any version tested: on one question, one
   harness named an issue in 0 to 1% of answers and another in 57 to 99%.
 
 ## What rests on what
 
-**Facts about the runs:** isolation fails unless proven from what the runs did; the instructions as a whole
+**Facts about these runs**, within the limits at the top of this file: isolation fails unless proven from what the runs did; the instructions as a whole
 govern the work, and one contrary line does not; the instructions' own format outranks the task's request;
 the harness varies more than any version tested; written answers flatter a classifier's questions.
 

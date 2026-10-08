@@ -20,7 +20,7 @@ was built. Load this file only when asked why a NEVER holds.
   strict that they defined the practice. They shut out a restructure, a recode and a redraft.
 - **Asking the model what it does.** On 8 October 2026 a dry run of a persona file asked each model what its
   job was. Every version but the inverted one answered from its file, 95 to 100% of the time, whatever its
-  name or story. The answers echoed the file and could not show what the model did with work.
+  name or the background story in its file. The answers echoed the file and could not show what the model did with work.
 - **A task that contradicts the instructions.** The same dry run asked for one sentence where the persona file
   set a longer findings format. 484 of the 869 answers scored gave the file's format, so the answers measured
   which instruction won.

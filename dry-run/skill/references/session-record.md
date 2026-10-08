@@ -57,7 +57,7 @@ the records, in the commit that first holds the record's hypotheses.
 |---|---|---|---|---|
 | H1 | ... | ... | ... | ... |
 
-**Hypotheses committed:** <commit> (filled in the finding commit; never amend the hypotheses commit).
+**Hypotheses committed:** <commit> (filled in the findings commit; never amend the hypotheses commit).
 
 **Check.** <command or reader>, run at <commit>, on <copy or live tree>.
 <raw output>

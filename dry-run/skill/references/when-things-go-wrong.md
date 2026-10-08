@@ -51,7 +51,7 @@
   the hypotheses to the requester before the run, and cite that message in the record. For step 10, save
   a checksum list of the project folder before the check, such as `find . -type f -exec cksum {} +`, and
   compare it after.
-- **The session ends while step 10 waits for the requester.** Commit the record with the finding and no
-  findings, and name the copies still in scratch. The next session resumes at step 10 with the answer.
+- **The session ends while step 10 waits for the requester.** Commit the record with what step 10 found
+  and no findings, and name the copies still in scratch. The next session resumes at step 10 with the answer.
 - **The session ends before the check runs.** The next session appends the result to the original record,
   under the same dry run, citing the hypotheses' commit. It opens its own record only for new dry runs.

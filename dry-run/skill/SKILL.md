@@ -65,7 +65,7 @@ the route.
    the step 7 commit. After the check, make one record commit that quotes that message with its time and
    marks the dry run 'lighter mode: weaker witness'.
 5. **Choose each control** from the decision table below. Load `references/example-dry-runs.md` and read
-   only that row's section.
+   only that row's section. For the instructions row, also load `references/model-output-checks.md`.
 6. If the check gives one answer per item, such as each file's new home in a rename, load
    `references/item-answers.md` and record each answer as it says. Otherwise leave it unloaded.
 7. **Gate: is every hypothesis committed before any check?** Commit the record by name only:
@@ -145,6 +145,7 @@ the route.
 | Code change that alters or adds behaviour | a run on real cases | the old code, run on the same cases, fails where the change should differ, giving a wrong result or none |
 | Code change that alters no behaviour, such as a refactor | a run on real cases | a fault planted in a scratch copy of the changed code is caught |
 | Redraft | two fresh readers, each given one plain copy, read blind (step 9) | the planted copy's reader follows or reports each planted instruction |
+| Instructions a model runs under, such as a persona, a role file or a prompt, where the question is what the model does | real work handed to the model, its outputs read with closed questions | the instructions inverted as a whole, whose outputs the reading tells apart; a version with one line changed is not a control |
 | Design, decision, specification | run real cases that read only, or have a fresh reader read them | a should-fail case, written into the hypotheses, fails |
 
 - A fresh reader may run on any harness. With no subagents, a new session given only the brief counts.
@@ -155,6 +156,8 @@ the route.
   it. Change nothing and run nothing.'
 - For a design, decision or specification, present the should-fail case to a fresh reader as one more case
   in the brief. Do not label it as the should-fail case or reveal the hypothesis.
+- Where the question is what a model does under the instructions, use the instructions row, not the redraft
+  row. Asked what a text tells it to do, a model reports its instructions back.
 - A change that fits no row uses the nearest row and records why.
 - Run a check when the change can run on a case. Read only when it cannot, and record why.
 - Without its control, a supported finding is inconclusive; a refutation still stands.
@@ -168,6 +171,10 @@ the route.
   - Each piece is its own dry run in the record.
   - Commit a piece's hypotheses only after the previous piece's finding.
   - A refuted or inconclusive piece stops the pieces after it.
+- **A scout is design work, not evidence.** Where a check reads a model's output, read a small sample of real
+  outputs in full before writing the hypotheses (`references/model-output-checks.md`). A scout's outputs are
+  never findings and are never reused as evidence; the record says so. The hypotheses are still committed
+  before the check.
 
 **Never** (for why, when someone asks, the recorded incidents are in `references/why-each-never.md`):
 - accept a rerun as a control: it shows the check repeats, not that it can fail;
@@ -188,7 +195,13 @@ the route.
   the new wording came first;
 - plant a breakage any reader would flag unread: a crude plant tests the reader's eye, not their reading;
 - let checkability replace intent: a test chosen for being easy to check measures what it can see, not
-  what the change is for.
+  what the change is for;
+- ask the model under test what it does, as the check: it reports its instructions back, not what it does
+  with work;
+- give the model a task that contradicts the instructions under test: the check then measures which
+  instruction wins;
+- test a classifier's questions only on answers you wrote: written answers separate cleanly where real ones
+  may not.
 
 ## Do not load
 
@@ -202,5 +215,6 @@ Each step names when to load a file. Leave each unloaded as follows.
 | `references/item-answers.md` | for a check that does not give one answer per item (step 6) |
 | `references/when-things-go-wrong.md` | unless a step sends you to it |
 | `references/briefing-others.md` | unless a subagent runs the check or an outside review comes next |
+| `references/model-output-checks.md` | unless the check reads a model's output |
 | `references/why-each-never.md` | during a dry run; only when asked why a NEVER holds |
 | `references/sources.md` | during a dry run; only when asked for a source |

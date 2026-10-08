@@ -24,6 +24,8 @@ The folder holds these files:
   commit goes wrong;
 - `skill/references/briefing-others.md`: briefing a subagent that runs the check, and the line a brief for
   an outside review carries;
+- `skill/references/model-output-checks.md`: for checks that read a model's output, how to ask, the scout,
+  reading with a classifier, isolation and what each rule rests on;
 - `skill/references/why-each-never.md`: the recorded incidents and examples behind the NEVERs in
   `SKILL.md`;
 - `skill/references/sources.md`: each kind of test's source and its limit, and what rests on internal

@@ -22,7 +22,9 @@ found for them:
 - the value of a dry run before an outside review;
 - re-reading the intent at source before each dry run;
 - the design, decision and specification row of the decision table;
-- the fallbacks in `when-things-go-wrong.md`.
+- the fallbacks in `when-things-go-wrong.md`;
+- the instructions row of the decision table, the scout rule, the three Nevers on model output and
+  `model-output-checks.md`, from dry runs of one persona file on up to six harnesses, 6 to 8 October 2026.
 
 No external source was found on dry runs in multi-agent or model-driven design pipelines.
 

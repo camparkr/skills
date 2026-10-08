@@ -1,7 +1,7 @@
 # dry-run
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.0-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-green.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20CLI-lightgrey.svg)
 ![Format](https://img.shields.io/badge/format-Agent%20Skill-green.svg)
 ![skill-judge: A](https://img.shields.io/badge/skill--judge-A-brightgreen.svg)

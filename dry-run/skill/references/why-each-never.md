@@ -18,3 +18,12 @@ was built. Load this file only when asked why a NEVER holds.
   is wrong', but one that quietly restores the trigger phrase the redraft was meant to drop.
 - **Checkability replacing intent.** On 28 September 2026 a draft of this skill's vision made its tests so
   strict that they defined the practice. They shut out a restructure, a recode and a redraft.
+- **Asking the model what it does.** On 8 October 2026 a dry run of a persona file asked each model what its
+  job was. Every version but the inverted one answered from its file, 95 to 100% of the time, whatever its
+  name or story. The answers echoed the file and could not show what the model did with work.
+- **A task that contradicts the instructions.** The same dry run asked for one sentence where the persona file
+  set a longer findings format. 484 of the 869 answers scored gave the file's format, so the answers measured
+  which instruction won.
+- **A classifier tested only on written answers.** A later design tested its ten classifier questions on five
+  replies its author wrote, and each question separated them cleanly. The first 21 real replies exposed four
+  of the ten: one question scored replies saying the same thing anywhere from 0.20 to 0.97.

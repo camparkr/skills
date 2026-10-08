@@ -17,8 +17,8 @@ Every hypothesis has a control.
 ## When no dry run is needed
 
 A fix that cannot change the outcome needs no dry run: a broken link, a typo or a question reworded with
-the same answer. Fix it with evidence, and list it in the record or in the commit message. Everything
-else starts at 'Find the record'.
+the same answer. Fix it with evidence, and list it in the record. With no dry run open, list it in the
+commit message instead. Everything else starts at 'Find the record'.
 
 ## Decision table
 
@@ -33,6 +33,7 @@ else starts at 'Find the record'.
 
 Notes on the table:
 
+- A fresh reader is a session or subagent with none of the author's context.
 - A change that fits no row uses the nearest row and records why.
 - Run a check when the change can run on a case. Read only when it cannot, and record why.
 - If the control was not run or not caught, a supported finding is inconclusive; a refutation still stands.
@@ -65,8 +66,8 @@ Notes on the table:
      the intended difference.
 5. **Scout, if a model's behaviour is the question.** Is the question what a model does under the changed
    instructions, such as a persona or a prompt? Then load `references/model-output-checks.md` and run its
-   scout: the model on real work, read in full. The scout shapes the hypotheses; its outputs are never
-   evidence.
+   scout: the model on real work, read in full. Run the scout outside the repository, as that file's
+   'Isolation and watching the runs' says. The scout shapes the hypotheses; its outputs are never evidence.
 6. **Write the hypotheses,** one per intent at risk. Each says what you would see if the intent broke, in
    terms a stranger could observe unaided. 'The new step is clearer' tests nothing. 'A fresh reader asked what
    to do when the fingerprint differs says: stop' can be refuted. Name the observation that would refute each
@@ -94,12 +95,13 @@ Notes on the table:
     ```
 
     `<n>` is the dry run's number in the record: 1 for the first, then 2, and so on. This commit and the
-    findings commit are the dry run's evidence. Never run a check before this commit exists, unless lighter
-    mode or a fallback has replaced it. A scout is design work, not a check, and runs before it.
+    findings commit are local git commits, and they are the dry run's evidence. Never run a check before this
+    commit exists, unless lighter mode or a fallback has replaced it. A scout is design work, not a check, and
+    runs before it.
 
-    Whether to ask before this commit:
+    Whether to ask before this commit, where the first case that applies decides:
 
-    - the project's instructions require asking: ask;
+    - the project's instructions require asking, whatever the request: ask;
     - the request was `/dry-run`, or named a dry run or rehearsal: commit without asking; or
     - any other request: ask once.
 
@@ -129,7 +131,7 @@ Notes on the table:
     'dry-run <n>: findings'. In lighter mode, this is the one record commit after the check.
 17. **Hand the findings to the requester,** who decides what follows. The findings are evidence, not a
     decision. A supported finding shows the plan is right in principle only. The finished work is still
-    checked on its own.
+    checked on its own. What follows depends on the findings:
     - All supported: send the findings to the requester. Work they have already asked for goes on as asked.
     - Any refuted or inconclusive: stop. Report each such hypothesis, what was seen and the findings commit to
       the requester, who decides what follows. With no one to report to, write the report into the record,

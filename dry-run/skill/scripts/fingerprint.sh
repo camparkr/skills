@@ -35,11 +35,20 @@ done
 # The state of one untracked path: a file's blob hash, or, for a nested repository (listed as a directory),
 # a hash of its commit, its uncommitted changes and its own untracked files.
 state_of() {
-	if [ -d "$1" ]; then
+	if [ -L "$1" ]; then
+		# A symbolic link is its target's name, never what it points at.
+		printf 'link %s\n' "$(readlink "$1")" | git hash-object --stdin
+	elif [ -d "$1" ]; then
+		# Leave out, inside the nested repository, any excluded path that lies in it.
+		local sub="${1%/}/" inner=() x rel
+		for x in ${EXCLUDE[@]+"${EXCLUDE[@]}"}; do
+			rel="${x#:(exclude)}"
+			case "$rel" in "$sub"?*) inner+=(":(exclude)${rel#"$sub"}") ;; esac
+		done
 		{
 			git -C "$1" rev-parse --verify --quiet HEAD || true
-			git -C "$1" diff --no-ext-diff --no-textconv HEAD 2>/dev/null || true
-			git -C "$1" ls-files -z -o --exclude-standard | while IFS= read -r -d '' g; do
+			git -C "$1" diff --no-ext-diff --no-textconv HEAD -- . ${inner[@]+"${inner[@]}"} 2>/dev/null || true
+			git -C "$1" ls-files -z -o --exclude-standard -- . ${inner[@]+"${inner[@]}"} | while IFS= read -r -d '' g; do
 				printf '%s %s\n' "$g" "$(git -C "$1" hash-object -- "$g" 2>/dev/null || echo unreadable)"
 			done
 		} | git hash-object --stdin

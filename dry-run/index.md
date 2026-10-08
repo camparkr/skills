@@ -18,14 +18,14 @@ The folder holds these files:
   committing, lighter mode, citing versions, the record's template and filled example hypotheses;
 - `skill/references/example-dry-runs.md`: one recorded dry run per kind of change;
 - `skill/references/scratch-copies.md`: which copy each check needs, the fingerprint, making and removing
-  the copies, and checking that nothing reached the real tree;
+  the copies and checking that nothing reached the real tree;
 - `skill/references/item-answers.md`: how to record one answer per item, and the fields to use;
 - `skill/references/when-things-go-wrong.md`: what to do when the objective, a control, a check or a
   commit goes wrong;
 - `skill/references/briefing-others.md`: briefing a fresh reader or a subagent that runs the check, and the
   line a brief for an outside review carries;
-- `skill/references/model-output-checks.md`: for checks that read a model's output, how to ask, the scout,
-  reading with a classifier, isolation, the Nevers for that row and what each rule rests on;
+- `skill/references/model-output-checks.md`: checks that read a model's output. It covers asking, the scout,
+  classifiers, isolation, that row's Nevers and what each rule rests on;
 - `skill/scripts/scratch-copy.sh`: makes and removes the scratch copies a dry run checks in;
 - `skill/scripts/fingerprint.sh`: prints a fingerprint of the real repository's state, to catch leaks;
 - `docs/why-each-never.md`: the recorded incidents and examples behind the Nevers, for maintainers; and

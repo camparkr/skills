@@ -76,7 +76,7 @@ the dry run 'lighter mode: weaker witness'.
 **What follows.** <'all supported' and who the findings went to, or the stop and what was reported to the
 requester>.
 
-**Admin fixed.** <each fix, with its diff or count>.
+**Fixes needing no dry run.** <each fix, with its diff or count>.
 
 **Item answers.** <one per item, where the dry run answered one question for each>.
 ```

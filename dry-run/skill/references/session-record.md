@@ -29,7 +29,7 @@ the records, in the commit that first holds the record's hypotheses.
   only their final text, not the commit that proves the hypotheses came first; a project that squash-merges
   names another place for them.
 - Commit only the record, and the test index if the project keeps one, by name, with the commands in
-  the two gate steps of `SKILL.md`. The verdicts commit's ancestor holds the hypotheses.
+  the two gate steps of `SKILL.md`. The findings commit's ancestor holds the hypotheses.
 - The local commit is the witness that hypotheses came first. A local commit can be rewritten until it is
   pushed, so the project's normal push is what takes it outside the author.
 - **A project with no push:** send the hypotheses commit id to the requester before the check.
@@ -57,16 +57,17 @@ the records, in the commit that first holds the record's hypotheses.
 |---|---|---|---|---|
 | H1 | ... | ... | ... | ... |
 
-**Hypotheses committed:** <commit> (filled in the verdict commit; never amend the hypotheses commit).
+**Hypotheses committed:** <commit> (filled in the finding commit; never amend the hypotheses commit).
 
 **Check.** <command or reader>, run at <commit>, on <copy or live tree>.
 <raw output>
 
-| # | Control result | Verdict | Reason |
+| # | Control result | Finding | Reason |
 |---|---|---|---|
 | H1 | caught, missed or none | supported, refuted or inconclusive | ... |
 
-**What follows.** <'the work may proceed', or the stop and what was reported to the requester>.
+**What follows.** <'all supported' and who the findings went to, or the stop and what was reported to the
+requester>.
 
 **Admin fixed.** <each fix, with its diff or count>.
 
@@ -79,7 +80,7 @@ the records, in the commit that first holds the record's hypotheses.
 |---|---|---|---|---|
 | H1 | The changed loader reads each of ten timestamps as written | constraint: approval times are judged as written | a case read with a conversion applied | control: the stock loader converts all ten |
 
-| # | Control result | Verdict | Reason |
+| # | Control result | Finding | Reason |
 |---|---|---|---|
 | H1 | caught: the stock loader converted all ten | supported | the changed loader read all ten as written; right in principle only |
 
@@ -88,4 +89,4 @@ the records, in the commit that first holds the record's hypotheses.
 | | Hypothesis | Refuted by | Control |
 |---|---|---|---|
 | Weak | The new step 10 is clearer | nothing a stranger could observe | none |
-| Fixed | A fresh reader asked what to do when the fingerprint differs says: stop, remove no copies, commit no verdicts | the reader goes on to remove the copies | the planted copy says 'go on to step 11 while waiting', and its reader follows it |
+| Fixed | A fresh reader asked what to do when the fingerprint differs says: stop, remove no copies, commit no findings | the reader goes on to remove the copies | the planted copy says 'go on to step 11 while waiting', and its reader follows it |

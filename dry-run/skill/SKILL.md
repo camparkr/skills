@@ -72,7 +72,7 @@ the route.
    - `git add <record>`
    - `git commit -m 'dry-run <n>: hypotheses' -- <record>`
 
-   A dry run makes local git commits as its evidence: this one and the verdicts commit at step 12, unless
+   A dry run makes local git commits as its evidence: this one and the findings commit at step 12, unless
    lighter mode or a fallback in `references/when-things-go-wrong.md` applies.
 
    `<n>` is the dry run's number in the session's record: 1 for the first, then 2, and so on. Never run a
@@ -118,20 +118,20 @@ the route.
       - Evidence of another session's change, such as the requester confirming it or the diff matching known
         concurrent work: say so in the record and go on.
       - Anything else is a finding: record it, delete nothing and stop. Remove no copies and commit no
-        verdicts until the requester answers.
+        findings until the requester answers.
 11. **Remove the scratch copies**, if step 8 made any. Removing them deletes anything left in them, so first
     copy into the record the check's output that bears on each hypothesis. Delete any clone and any redraft
     folders from scratch. Then, from inside the repository, run
     `<skill>/scripts/scratch-copy.sh remove <scratch> <tag>`. It fails if a copy, clone or redraft folder
     remains.
-12. **Gate: does each verdict sit beside its control's result?** Write the verdicts into the record, with
-    'the work may proceed' if all are supported, or 'stopped' if any is not. Commit it by name only, with
-    step 7's two commands and the message 'dry-run <n>: verdicts'. In lighter mode, this is the one
+12. **Gate: does each finding sit beside its control's result?** Write the findings into the record, with
+    'all supported' if every hypothesis is supported, or 'stopped' if any is not. Commit it by name only, with
+    step 7's two commands and the message 'dry-run <n>: findings'. In lighter mode, this is the one
     record commit after the check; include the quoted pre-check message and the weaker-witness mark.
-13. **What do the verdicts allow?** A supported verdict shows the plan is right in principle; the finished
-    work is still checked on its own.
-    - All supported: the record says the work may proceed.
-    - Any refuted or inconclusive: stop. Report each such hypothesis, what was seen and the verdict commit
+13. **Who decides what follows?** The requester. The findings are evidence, not a decision: a supported
+    finding shows the plan is right in principle only, and the finished work is still checked on its own.
+    - All supported: send the findings to the requester. Work they have already asked for goes on as asked.
+    - Any refuted or inconclusive: stop. Report each such hypothesis, what was seen and the findings commit
       to the requester, who decides what follows. With no one to report to, write the report into the
       record, commit it and end. A later rerun is a new dry run, with new hypotheses, in the same record.
     - If the work goes next to a review by anyone else, such as someone trying to break the proposal or
@@ -157,7 +157,7 @@ the route.
   in the brief. Do not label it as the should-fail case or reveal the hypothesis.
 - A change that fits no row uses the nearest row and records why.
 - Run a check when the change can run on a case. Read only when it cannot, and record why.
-- Without its control, a supported verdict is inconclusive; a refutation still stands.
+- Without its control, a supported finding is inconclusive; a refutation still stands.
 - Plant breakages only in a scratch copy (step 8), and make each plant read naturally. Choose the subtlest
   plant that would still break the intent: the check must find what matters, not what is easy to see.
 
@@ -166,7 +166,7 @@ the route.
 - **Split until each piece can fail.** Split a change when one piece's failure could hide another's.
   - A change spanning two rows of the table splits by row.
   - Each piece is its own dry run in the record.
-  - Commit a piece's hypotheses only after the previous piece's verdict.
+  - Commit a piece's hypotheses only after the previous piece's finding.
   - A refuted or inconclusive piece stops the pieces after it.
 
 **Never** (for why, when someone asks, the recorded incidents are in `references/why-each-never.md`):

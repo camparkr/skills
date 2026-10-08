@@ -18,7 +18,7 @@ found for them:
 - a hypothesis that says what must stay unchanged;
 - ordering hypotheses by how late each failure would show;
 - where a should-fail case comes from;
-- stopping on an inconclusive verdict as on a refuted one, and who decides after each verdict;
+- stopping on an inconclusive finding as on a refuted one, and who decides after each finding;
 - the value of a dry run before an outside review;
 - re-reading the intent at source before each dry run;
 - the design, decision and specification row of the decision table;

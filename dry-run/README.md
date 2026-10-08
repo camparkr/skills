@@ -12,8 +12,8 @@ what the change would break while the problem is still small and quick to fix.
 *Dry-run* works with artificial intelligence (AI) agents that write code or documents. Before your agent
 builds, merges or publishes a change, *dry-run* rehearses the change on a copy, or gives the change to a
 separate reader new to the work. *Dry-run* then reports the outcome: what worked and what did not, with the
-evidence for each. Your agent goes ahead only if every check holds; otherwise the agent stops and leaves the
-decision to you.
+evidence for each. *Dry-run* decides nothing: the findings go to you. If any check fails or cannot settle its
+hypothesis, the agent stops and leaves the decision to you.
 
 ## What dry-run guards against
 

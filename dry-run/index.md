@@ -15,18 +15,19 @@ The folder holds these files:
 - `setup.ps1`: the installer for Windows, which links the skill into Claude Code and has the same switch;
 - `skill/SKILL.md`: the skill's entry point, which names when each reference loads;
 - `skill/references/session-record.md`: where the session's record lives, the optional test index,
-  committing, citing versions, the record's template and filled example hypotheses;
+  committing, lighter mode, citing versions, the record's template and filled example hypotheses;
 - `skill/references/example-dry-runs.md`: one recorded dry run per kind of change;
-- `skill/references/scratch-copies.md`: how to make each kind of scratch copy, and the tags that keep
-  sessions apart;
+- `skill/references/scratch-copies.md`: which copy each check needs, the fingerprint, making and removing
+  the copies and checking that nothing reached the real tree;
 - `skill/references/item-answers.md`: how to record one answer per item, and the fields to use;
 - `skill/references/when-things-go-wrong.md`: what to do when the objective, a control, a check or a
   commit goes wrong;
-- `skill/references/briefing-others.md`: briefing a subagent that runs the check, and the line a brief for
-  an outside review carries;
-- `skill/references/why-each-never.md`: the recorded incidents and examples behind the NEVERs in
-  `SKILL.md`;
-- `skill/references/sources.md`: each kind of test's source and its limit, and what rests on internal
-  record only;
-- `skill/scripts/scratch-copy.sh`: makes and removes the scratch copies a dry run checks in; and
-- `skill/scripts/fingerprint.sh`: prints a fingerprint of the real repository's state, to catch leaks.
+- `skill/references/briefing-others.md`: briefing a fresh reader or a subagent that runs the check, and the
+  line a brief for an outside review carries;
+- `skill/references/model-output-checks.md`: checks that read a model's output. It covers asking, the scout,
+  classifiers, isolation, that row's Nevers and what each rule rests on;
+- `skill/scripts/scratch-copy.sh`: makes and removes the scratch copies a dry run checks in;
+- `skill/scripts/fingerprint.sh`: prints a fingerprint of the real repository's state, to catch leaks;
+- `docs/why-each-never.md`: the recorded incidents and examples behind the Nevers, for maintainers; and
+- `docs/sources.md`: each kind of test's source and its limit, and what rests on internal record only, for
+  maintainers.

@@ -1,10 +1,9 @@
 # dry-run
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.0-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-green.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20Gemini%20CLI-lightgrey.svg)
 ![Format](https://img.shields.io/badge/format-Agent%20Skill-green.svg)
-![skill-judge: A](https://img.shields.io/badge/skill--judge-A-brightgreen.svg)
 
 A skill that tests a planned change before the change is merged, published or put to use. *Dry-run* finds
 what the change would break while the problem is still small and quick to fix.
@@ -12,8 +11,8 @@ what the change would break while the problem is still small and quick to fix.
 *Dry-run* works with artificial intelligence (AI) agents that write code or documents. Before your agent
 builds, merges or publishes a change, *dry-run* rehearses the change on a copy, or gives the change to a
 separate reader new to the work. *Dry-run* then reports the outcome: what worked and what did not, with the
-evidence for each. Your agent goes ahead only if every check holds; otherwise the agent stops and leaves the
-decision to you.
+evidence for each. *Dry-run* decides nothing: the findings go to you. If any check fails or cannot settle its
+hypothesis, the agent stops and leaves the decision to you.
 
 ## What dry-run guards against
 
@@ -54,7 +53,7 @@ The practices behind *dry-run* come from research and from tools you may already
   Kubernetes show a change before the change is applied. *Dry-run* draws the same line: a good rehearsal
   shows the plan is sound, and the finished work is still checked on its own.
 
-Each source has limits, and the skill's sources file sets them out. *Dry-run* makes no claim that late fixes
+Each source has limits, and `docs/sources.md` sets them out. *Dry-run* makes no claim that late fixes
 always cost more; the evidence on that is mixed.
 
 ## Why use this skill
@@ -105,4 +104,5 @@ unless your agent instructions (`AGENTS.md` or `CLAUDE.md`) name another place.
 ## Contents of this folder
 
 `index.md` lists every file. The skill itself is in `skill/`, which is what the installers link. The rest is
-for people: this README, the index and the installers.
+for people: this README, the index, the installers and `docs/`, which holds the skill's sources and the
+incidents behind its Nevers.

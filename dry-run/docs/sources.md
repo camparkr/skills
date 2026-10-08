@@ -11,23 +11,25 @@ Each kind of test, with its source read at its primary location and that source'
 
 ## Internal evidence only
 
-These rest only on the record kept while this skill was built. No external source was
+These rest only on the record kept while this skill was built and used. No external source was
 found for them:
 
 - no objective, no dry run, since without one only conformance can be tested;
 - a hypothesis that says what must stay unchanged;
 - ordering hypotheses by how late each failure would show;
 - where a should-fail case comes from;
-- stopping on an inconclusive verdict as on a refuted one, and who decides after each verdict;
+- stopping on an inconclusive finding as on a refuted one, and who decides after each finding;
 - the value of a dry run before an outside review;
 - re-reading the intent at source before each dry run;
 - the design, decision and specification row of the decision table;
-- the fallbacks in `when-things-go-wrong.md`.
+- the fallbacks in `skill/references/when-things-go-wrong.md`; and
+- `skill/references/model-output-checks.md`, the instructions row and its Nevers: dry runs of one persona, with
+  and without its file, 6 to 8 October 2026.
 
 No external source was found on dry runs in multi-agent or model-driven design pipelines.
 
 ## Not a ground
 
 Do not argue a dry run's value from the rising cost of late defects. Across 171 projects, later fixes took
-effort 'not consistently or substantially greater' (Menzies et al. 2017, <https://arxiv.org/abs/1609.04886>),
-a finding the authors limit to the projects they studied.
+effort 'not consistently or substantially greater' (Menzies et al. 2017, <https://arxiv.org/abs/1609.04886>).
+The authors limit the finding to the projects they studied.

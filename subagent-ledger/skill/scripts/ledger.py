@@ -10,6 +10,7 @@ Use it as a module:
 
     import ledger
     sent = ledger.dispatch(call_id=..., session=..., route='script', brief=<text>, ...)
+    sent = ledger.dispatch(..., brief=<the named file's text>, prompt=<the prompt's own words>)
     back = ledger.ret(sent, session=..., outcome='served', answer=<text>, ...)
     ledger.witness(event='SubagentStart', session=..., agent_id=...)
     ledger.error(stage='payload', reason=..., session=..., event=...)
@@ -107,7 +108,7 @@ ON_DISPATCH = 'unrecorded (carried on the dispatch record)'
 ON_RETURN = 'unrecorded (filled on the return record)'
 NOT_PASSED = 'unrecorded (not passed to the writer)'
 # Special arguments: text the writer moves to a file, and where the ledger is. Never record fields.
-SPECIAL = ('brief', 'answer', 'ledger')
+SPECIAL = ('brief', 'answer', 'prompt', 'ledger')
 
 
 class UnknownKeyword(Exception):
@@ -129,9 +130,14 @@ class Result(str):
 # Public functions
 # ---------------------------------------------------------------------------
 
-def dispatch(ledger=None, brief=None, **fields):
-    """Write the dispatch record of one call. Returns a Result holding the call id."""
-    return _record('dispatch', ledger, fields, brief=brief)
+def dispatch(ledger=None, brief=None, prompt=None, **fields):
+    """Write the dispatch record of one call. Returns a Result holding the call id.
+
+    `prompt` is a second text copied beside the brief under the same rules, for a prompt that
+    named a brief file: it is scrubbed, named by its hash in the session's folder, and any string
+    equal to it in harness_payload becomes `moved to <path>`. It adds no field to the record.
+    """
+    return _record('dispatch', ledger, fields, brief=brief, prompt=prompt)
 
 
 def ret(call_id=None, ledger=None, answer=None, **fields):
@@ -220,9 +226,10 @@ def load_schema():
 _DISPATCHED = {}
 
 
-def _record(kind, explicit, fields, brief=None, answer=None):
+def _record(kind, explicit, fields, brief=None, answer=None, prompt=None):
     held = _held(fields, kind, kind)
-    keys = sorted(list(fields) + [name for name, text in (('brief', brief), ('answer', answer))
+    keys = sorted(list(fields) + [name for name, text in (('brief', brief), ('answer', answer),
+                                                          ('prompt', prompt))
                                   if text is not None])
     try:
         folder = Path(ledger_folder(explicit))
@@ -235,6 +242,8 @@ def _record(kind, explicit, fields, brief=None, answer=None):
             raise TypeError('the brief is not text')
         if answer is not None and not isinstance(answer, str):
             raise TypeError('the answer is not text')
+        if prompt is not None and not isinstance(prompt, str):
+            raise TypeError('the prompt is not text')
 
         stage = 'setting'
         on = None if kind == 'witness' else _fields_on(folder)
@@ -249,8 +258,8 @@ def _record(kind, explicit, fields, brief=None, answer=None):
         secrets, shapes = _secrets(), _shapes()
         record, count = _scrub(record, secrets, shapes)
         texts = {}
-        for name, text in (('brief', brief), ('answer', answer)):
-            if text is not None:
+        for name, text in (('brief', brief), ('answer', answer), ('prompt', prompt)):
+            if text is not None and not (name == 'prompt' and text == brief):
                 texts[name], more = _scrub(text, secrets, shapes)
                 count += more
         record['withheld'] = count

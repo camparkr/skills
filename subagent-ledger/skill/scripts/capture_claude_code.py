@@ -50,6 +50,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import commands  # noqa: E402
 import ledger  # noqa: E402
 import transcripts  # noqa: E402
 
@@ -476,16 +477,13 @@ def match_command(command, patterns=None):
     if not isinstance(command, str) or not command.strip():
         return None, None
     patterns = patterns or load_patterns()
-    for part in re.split(r'\|\||&&|;|\||\n', command):
-        try:
-            words = shlex.split(part)
-        except ValueError:
-            words = part.split()
-        while words and (re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', words[0]) or words[0] == 'env'):
-            words.pop(0)
+    # The split is commands.py's, which the B4 sorter shares: at shell operators outside quotes, with
+    # here-document bodies set aside, so a quoted `|` or a here-document line is never a command.
+    for part in commands.parts(command):
+        words = part.words
         if not words:
             continue
-        program = os.path.basename(words[0])
+        program = part.program
         args = words[1:]
         for entry in patterns['patterns']:
             if program != entry['program']:

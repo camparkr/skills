@@ -16,8 +16,19 @@ It imposes no time limit.
     from OpenCode's own database, opened read-only: the child session's `directory`, and the input
     of each tool call it made.
 
-Any other tool is passed over. OpenCode 1.18.30 sent no `after` for a `task` whose subagent failed,
-so such a call leaves its dispatch and no return.
+    python3 capture_opencode.py event <event type> [--ledger <folder>]
+
+with `{"event": ..., "directory": ...}` on standard input: one event from the plugin's general
+`event` hook. OpenCode 1.18.30 sends no `after` for a `task` whose subagent fails. Its parent
+session's `message.part.updated` then carries the task part with `state.status` "error", the error
+text in `state.error`, the `callID` the `before` carried, and the subagent's session in
+`state.metadata.sessionId`. That event writes the pending dispatch's return: `failed`, its class
+read from reasons.json against the error text, and `harness_payload.event_type` naming the event.
+The tie is the call id, never timing. An error event whose call id is not pending and has no return
+writes one error line naming every pending call id, and no return. A call that already has a return
+gets no second one. Every other event is passed over.
+
+Any other tool is passed over.
 
 A failure at any stage writes one error line through ledger.error(), naming the session, call id and
 event read from the raw payload before anything else.
@@ -85,6 +96,8 @@ def main(argv=None):
         folder = argv[at + 1] if at + 1 < len(argv) else None
         del argv[at:at + 2]
     event = argv[0] if argv else None
+    if event == 'event' and len(argv) > 1:
+        event = 'event:%s' % argv[1]
     try:
         text = sys.stdin.read()
     except Exception as exc:
@@ -106,6 +119,8 @@ def handle(event, text, folder=None):
         shown = 'empty' if not (text or '').strip() else 'not JSON'
         Held(event, None).error(folder, 'payload', 'the payload on standard input is %s: %s' % (shown, exc))
         return
+    if (event or '').split(':')[0] == 'event':
+        return handle_event(payload, folder)
     held = Held(event, payload)
     try:
         folder = ledger.ledger_folder(folder)
@@ -118,6 +133,122 @@ def handle(event, text, folder=None):
             return after(payload, folder, held)
     except Exception as exc:  # the capture's own fault: recorded, never raised to the plugin
         held.error(folder, 'payload', 'the capture failed: %s: %s' % (type(exc).__name__, exc))
+
+
+# ---------------------------------------------------------------------------
+# The general event hook: a failed task's return
+# ---------------------------------------------------------------------------
+
+class EventHeld(Held):
+    """What an error line names for an event: read from the task part before any other work."""
+
+    def __init__(self, event_type, part):
+        part = part if isinstance(part, dict) else {}
+        state = part.get('state') if isinstance(part.get('state'), dict) else {}
+        metadata = state.get('metadata') if isinstance(state.get('metadata'), dict) else {}
+        self.event = 'event:%s' % event_type
+        self.session = shared._text(part.get('sessionID'), 'unrecorded (sessionID absent from %s)' % self.event)
+        self.call_id = shared._text(part.get('callID'), 'unrecorded (callID absent from %s)' % self.event)
+        self.agent_id = shared._text(metadata.get('sessionId'), 'unrecorded (no agent id in %s)' % self.event)
+        self.keys = sorted(str(key) for key in part)
+
+
+def task_part(payload):
+    """The event's type, and its task part where it is a task's tool part, else None."""
+    event = payload.get('event') if isinstance(payload.get('event'), dict) else {}
+    event_type = event.get('type') if isinstance(event.get('type'), str) else 'unrecorded (no event type)'
+    properties = event.get('properties') if isinstance(event.get('properties'), dict) else {}
+    part = properties.get('part') if isinstance(properties.get('part'), dict) else None
+    if part is None or part.get('type') != 'tool' or not is_subagent_tool(part.get('tool')):
+        return event_type, None
+    return event_type, part
+
+
+def handle_event(payload, folder=None):
+    event_type, part = task_part(payload)
+    if part is None:
+        return
+    state = part.get('state') if isinstance(part.get('state'), dict) else {}
+    if state.get('status') != 'error':
+        return
+    held = EventHeld(event_type, part)
+    try:
+        folder = ledger.ledger_folder(folder)
+        on_event(event_type, part, payload, folder, held)
+    except Exception as exc:  # the capture's own fault: recorded, never raised to the plugin
+        held.error(folder, 'payload', 'the capture failed: %s: %s' % (type(exc).__name__, exc), record='return')
+
+
+def pending_calls(folder, session):
+    """The call ids of the session's dispatches still waiting for a return."""
+    folder = shared.pending_dir(folder, session)
+    return sorted(path.stem for path in folder.glob('*.json') if not path.stem.startswith('join-'))
+
+
+def already_returned(folder, session, call_id):
+    """Whether the session's ledger file already holds a return for the call."""
+    path = Path(folder) / ('%s.jsonl' % session)
+    try:
+        lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get('record') == 'return' and row.get('call_id') == call_id:
+            return True
+    return False
+
+
+def tie(pending, call_id):
+    """The pending dispatch the event names: its call id, exactly. No guess by time or order."""
+    return call_id if call_id in pending else None
+
+
+def on_event(event_type, part, payload, folder, held):
+    """A task part in state "error": the failed return of its pending dispatch."""
+    if held.session.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'a task error event named no session', record='return')
+        return
+    with shared.pending_lock(folder, held.session):
+        call_id = None if held.call_id.startswith('unrecorded (') else held.call_id
+        if call_id and already_returned(folder, held.session, call_id):
+            return
+        pending = pending_calls(folder, held.session)
+        tied = tie(pending, call_id)
+        if tied is None:
+            held.error(folder, 'payload', 'a task error event (%s) could not be tied to a pending dispatch: '
+                       'it names %s; pending: %s' % (event_type, call_id or 'no call id',
+                                                    ', '.join(pending) or 'none'), record='return')
+            return
+        state = part.get('state') if isinstance(part.get('state'), dict) else {}
+        metadata = state.get('metadata') if isinstance(state.get('metadata'), dict) else {}
+        text = state.get('error') if isinstance(state.get('error'), str) and state.get('error') else \
+            'the task part reported status error with no error text'
+        model = metadata.get('model') if isinstance(metadata.get('model'), dict) else {}
+        provider, name = model.get('providerID'), model.get('modelID')
+        fields = common(payload, held)
+        fields.update({
+            'call_id': tied,
+            'agent_id': held.agent_id if not held.agent_id.startswith('unrecorded (') else
+            'unrecorded (state.metadata.sessionId absent from %s)' % event_type,
+            'outcome': 'failed',
+            'outcome_reason': ledger.reason_for(HARNESS, text, fallback='harness_error'),
+            'model': '%s/%s' % (provider, name) if isinstance(provider, str) and isinstance(name, str)
+            and provider and name else 'unrecorded (model absent from %s)' % event_type,
+            'tokens': NO_COUNTERS, 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT, 'effort': NO_EFFORT,
+            'isolation': isolation_from_db(held.agent_id),
+        })
+        given = state.get('input') if isinstance(state.get('input'), dict) else {}
+        kept = {'event_type': event_type, 'event': payload.get('event'), 'directory': payload.get('directory')}
+        fields['harness_payload'] = shared.without_texts(kept, given.get('prompt'), shared.ON_DISPATCH_BRIEF)
+        sent = shared.read_pending(folder, held.session, tied)
+        if sent and sent.get('dispatched_at'):
+            fields['dispatched_at'] = sent['dispatched_at']
+        ledger.ret(ledger=folder, **fields)
+        shared.clear_pending(folder, held.session, [tied])
 
 
 def common(payload, held):

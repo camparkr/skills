@@ -1,5 +1,7 @@
 // OpenCode plugin: hands each `task` call's before and after events to capture_opencode.py, which
-// writes the call's dispatch and return records.
+// writes the call's dispatch and return records. It also hands on, from OpenCode's general event
+// hook, each `message.part.updated` whose part is a `task` tool part in state "error": OpenCode sends
+// no `after` for a task whose subagent fails, and that event is where the failure shows.
 //
 // Place this file in, or link it from, OpenCode's plugin folder, with SUBAGENT_LEDGER_DIR set to the
 // ledger folder in the environment OpenCode starts with. The capture is found through
@@ -34,10 +36,27 @@ function send(event, input, output, directory) {
   } /* guard */ catch (err) {}
 }
 
+function sendEvent(event, directory) {
+  try {
+    if (!event || event.type !== "message.part.updated") return;
+    const part = event.properties && event.properties.part;
+    if (!part || part.type !== "tool" || part.tool !== "task") return;
+    if (!part.state || part.state.status !== "error") return;
+    const argv = [capturePath(), "event", event.type];
+    if (process.env.SUBAGENT_LEDGER_DIR) argv.push("--ledger", process.env.SUBAGENT_LEDGER_DIR);
+    spawnSync(PYTHON, argv, {
+      input: JSON.stringify({ event, directory }),
+      stdio: ['pipe', 'ignore', 'ignore'],
+      env: process.env,
+    });
+  } /* event guard */ catch (err) {}
+}
+
 export const SubagentLedger = async (context) => {
   const directory = context && context.directory;
   return {
     "tool.execute.before": async (input, output) => send("before", input, output, directory),
     "tool.execute.after": async (input, output) => send("after", input, output, directory),
+    "event": async (arg) => sendEvent(arg && arg.event, directory),
   };
 };

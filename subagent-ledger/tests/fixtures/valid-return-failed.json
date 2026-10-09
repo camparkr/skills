@@ -1,0 +1,52 @@
+{
+  "schema": "subagent-ledger/1",
+  "record": "return",
+  "call_id": "toolu_fixture_0001",
+  "agent_id": "a0fixture0001",
+  "session": "fixture-session-0001",
+  "dispatched_at": "2026-10-09T02:30:00Z",
+  "returned_at": "2026-10-09T02:31:05.250Z",
+  "outcome": "failed",
+  "fields_on": [
+    "model_requested",
+    "model",
+    "tokens",
+    "cost",
+    "outcome_reason"
+  ],
+  "fields_not_chosen": [
+    "route",
+    "harness",
+    "machine",
+    "caller",
+    "project",
+    "effort",
+    "effort_assigned",
+    "auth_route",
+    "brief_path",
+    "brief_source",
+    "answer_path",
+    "isolation",
+    "harness_payload",
+    "spend_line",
+    "persona-name",
+    "characteristic",
+    "grouping",
+    "task",
+    "failure_modes",
+    "roster_revision",
+    "labeller_model",
+    "recommended_harness",
+    "recommended_model",
+    "triage_model"
+  ],
+  "withheld": 0,
+  "model_requested": "unrecorded (carried on the dispatch record)",
+  "model": "claude-haiku-fixture",
+  "tokens": "unrecorded (no transcript)",
+  "cost": "unrecorded (the harness reports no cost for this route)",
+  "outcome_reason": {
+    "class": "not_signed_in",
+    "text": "Not logged in \u00b7 Please run /login"
+  }
+}

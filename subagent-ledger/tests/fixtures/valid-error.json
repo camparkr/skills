@@ -1,0 +1,16 @@
+{
+  "schema": "subagent-ledger-error/1",
+  "at": "2026-10-09T02:30:02Z",
+  "session": "fixture-session-0001",
+  "call_id": "unrecorded (not passed to the writer)",
+  "agent_id": "unrecorded (not passed to the writer)",
+  "record": "dispatch",
+  "harness": "fixture-harness",
+  "event": "PreToolUse",
+  "stage": "validate",
+  "reason": "at $: no call_id (required)",
+  "payload_keys": [
+    "model_requested",
+    "session"
+  ]
+}

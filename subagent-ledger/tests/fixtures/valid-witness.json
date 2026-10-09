@@ -1,0 +1,10 @@
+{
+  "schema": "subagent-ledger/1",
+  "record": "witness",
+  "event": "SubagentStart",
+  "session": "fixture-session-0001",
+  "agent_id": "a0fixture0001",
+  "call_id": "unrecorded (not carried by SubagentStart)",
+  "at": "2026-10-09T02:30:01Z",
+  "withheld": 0
+}

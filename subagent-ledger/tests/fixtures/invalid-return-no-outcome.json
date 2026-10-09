@@ -1,0 +1,53 @@
+{
+  "schema": "subagent-ledger/1",
+  "record": "return",
+  "call_id": "toolu_fixture_0001",
+  "agent_id": "a0fixture0001",
+  "session": "fixture-session-0001",
+  "dispatched_at": "2026-10-09T02:30:00Z",
+  "returned_at": "2026-10-09T02:31:05.250Z",
+  "fields_on": [
+    "model_requested",
+    "model",
+    "tokens",
+    "cost",
+    "outcome_reason"
+  ],
+  "fields_not_chosen": [
+    "route",
+    "harness",
+    "machine",
+    "caller",
+    "project",
+    "effort",
+    "effort_assigned",
+    "auth_route",
+    "brief_path",
+    "brief_source",
+    "answer_path",
+    "isolation",
+    "harness_payload",
+    "spend_line",
+    "persona-name",
+    "characteristic",
+    "grouping",
+    "task",
+    "failure_modes",
+    "roster_revision",
+    "labeller_model",
+    "recommended_harness",
+    "recommended_model",
+    "triage_model"
+  ],
+  "withheld": 0,
+  "model_requested": "unrecorded (carried on the dispatch record)",
+  "model": "claude-haiku-fixture",
+  "tokens": {
+    "input": 12,
+    "cache_write": 0,
+    "cache_read": 3400,
+    "output": 250
+  },
+  "cost": "unrecorded (the harness reports no cost for this route)",
+  "outcome_reason": "none (served)"
+}

@@ -243,12 +243,123 @@ class BackgroundTranscriptSettles(World):
         self.assertEqual(back['model'], 'claude-haiku-5-5')
         self.assertIsInstance(back['tokens']['output'], int)
 
-    def test_control_without_the_wait_the_counters_are_unrecorded(self):
+    def test_control_without_the_completion_test_the_counters_are_unrecorded(self):
         rows, full, text = self.background_late()
-        with mock.patch.object(self.capture, 'SETTLE_SECONDS', 0):
+        with mock.patch.object(self.capture, 'transcript_complete', lambda *a, **k: True):
             with mock.patch.object(self.capture.time, 'sleep', lambda seconds: full.write_text(text, encoding='utf-8')):
                 self.feed(rows)
         self.assertTrue(UNRECORDED.match(self.records()[-1]['tokens']))
+
+
+# ---------------------------------------------------------------------------
+# B2 rework: R-B2-1, a background call read once its transcript holds the answer
+# ---------------------------------------------------------------------------
+
+L1_FULL = {'input': 4, 'cache_write': 31384, 'cache_read': 28892, 'output': 86}
+L1_FIRST = {'input': 2, 'cache_write': 28892, 'cache_read': 0, 'output': 78}
+
+
+class CRB2_1WaitOnContent(World):
+    """A live background call (agent a2905ca0abf302cee) whose transcript held only its first request,
+    ending tool_use, when SubagentStop fired. The test appends the second request after a delay while
+    the capture handles SubagentStop. The full counters are close-cost.py's reading of the same run."""
+
+    def replay(self, delay):
+        import threading
+        rows = self.events('l1-background-events.jsonl')
+        path = Path(rows[3]['payload']['agent_transcript_path'])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.fill((FIXTURES / 'l1-background-agent-first.jsonl').read_text(encoding='utf-8')),
+                        encoding='utf-8')
+        rest = self.fill((FIXTURES / 'l1-background-agent-rest.jsonl').read_text(encoding='utf-8'))
+
+        def append():
+            import time as clock
+            clock.sleep(delay)
+            with path.open('a', encoding='utf-8') as handle:
+                handle.write(rest)
+        self.feed(rows[:3])
+        writer = threading.Thread(target=append)
+        writer.start()
+        try:
+            self.feed(rows[3:])
+        finally:
+            writer.join()
+        return [r for r in self.records() if r['record'] == 'return']
+
+    def counters(self, record):
+        return dict((k, record['tokens'][k]) for k in L1_FULL)
+
+    def test_c_rb2_1a_the_second_request_after_a_third_of_a_second(self):
+        back = self.replay(0.3)
+        self.assertEqual(len(back), 1)
+        self.assertEqual(self.counters(back[0]), L1_FULL)
+        self.assertGreaterEqual(back[0]['tokens']['read_after_seconds'], 0.3)
+
+    def test_c_rb2_1b_the_second_request_after_eight_seconds(self):
+        back = self.replay(8)
+        self.assertEqual(self.counters(back[0]), L1_FULL)
+        self.assertGreaterEqual(back[0]['tokens']['read_after_seconds'], 8)
+
+    def test_c_rb2_1c_control_completion_test_switched_off_reads_short(self):
+        with mock.patch.object(self.capture, 'transcript_complete', lambda *a, **k: True):
+            back = self.replay(0.3)
+        self.assertEqual(self.counters(back[0]), L1_FIRST)
+
+
+# ---------------------------------------------------------------------------
+# B2 rework: R-B2-2, R-B2-3 and R-B2-5
+# ---------------------------------------------------------------------------
+
+class CRB2_2AgentFailure(World):
+
+    def test_c_rb2_2_a_failed_agent_call_is_failed_with_its_class(self):
+        rows = self.foreground()
+        failure = json.loads(json.dumps(rows[3]))
+        failure['event'] = 'PostToolUseFailure'
+        failure['payload']['hook_event_name'] = 'PostToolUseFailure'
+        failure['payload'].pop('tool_response')
+        failure['payload']['error'] = 'Not logged in · Please run /login'
+        self.feed([rows[0], failure])
+        back = [r for r in self.records() if r['record'] == 'return']
+        self.assertEqual(len(back), 1)
+        self.assertEqual(back[0]['call_id'], self.records()[0]['call_id'])
+        self.assertEqual(back[0]['outcome'], 'failed')
+        self.assertEqual(back[0]['outcome_reason']['class'], 'not_signed_in')
+
+
+class CRB2_3PromptKept(World):
+
+    fields = 'all'
+
+    def test_c_rb2_3_the_prompt_is_copied_beside_the_named_brief(self):
+        rows = self.foreground()
+        prompt = rows[0]['payload']['tool_input']['prompt']
+        self.feed(rows[:1])
+        dispatch = self.records()[0]
+        copies = sorted((self.ledger / dispatch['session']).glob('*.md'))
+        self.assertEqual(len(copies), 2, copies)
+        shown = dispatch['harness_payload']['tool_input']['prompt']
+        self.assertTrue(shown.startswith('moved to '), shown)
+        target = Path(shown[len('moved to '):])
+        target = target if target.is_absolute() else self.ledger.parent / target
+        self.assertEqual(target.read_text(encoding='utf-8'), prompt)
+        self.assertNotEqual(str(target), dispatch['brief_path'])
+
+
+class CRB2_5RelativeBrief(World):
+
+    fields = 'all'
+
+    def test_c_rb2_5_a_brief_named_relative_to_the_working_folder_is_found(self):
+        rows = self.foreground()
+        rows[0]['payload']['tool_input']['prompt'] = 'Read brief.md in the working folder'
+        self.feed(rows[:1])
+        dispatch = self.records()[0]
+        self.assertEqual(dispatch['brief_source'], 'brief.md')
+        copy = Path(dispatch['brief_path'])
+        copy = copy if copy.is_absolute() else self.ledger.parent / copy
+        self.assertEqual(copy.read_text(encoding='utf-8'), (self.work / 'brief.md').read_text(encoding='utf-8'))
 
 
 # ---------------------------------------------------------------------------

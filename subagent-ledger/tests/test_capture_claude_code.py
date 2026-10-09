@@ -220,6 +220,37 @@ class CB2_2Background(World):
         self.assertTrue(any('no pending join' in r for r in reasons), reasons)
 
 
+class BackgroundTranscriptSettles(World):
+    """Live control 1 found a background transcript with no usage row yet when SubagentStop fired.
+
+    The capture waits for the transcript's last request to carry a stop reason before it reads a
+    background call's counters. Here the transcript holds only its first row when SubagentStop
+    arrives, and the rest is written during the capture's first wait.
+    """
+
+    def background_late(self):
+        rows = self.events('background-events.jsonl')
+        full = self.place_transcript('background-agent.jsonl', rows)
+        text = full.read_text(encoding='utf-8')
+        full.write_text(text.splitlines(True)[0], encoding='utf-8')
+        return rows, full, text
+
+    def test_the_counters_are_read_once_the_transcript_settles(self):
+        rows, full, text = self.background_late()
+        with mock.patch.object(self.capture.time, 'sleep', lambda seconds: full.write_text(text, encoding='utf-8')):
+            self.feed(rows)
+        back = self.records()[-1]
+        self.assertEqual(back['model'], 'claude-haiku-5-5')
+        self.assertIsInstance(back['tokens']['output'], int)
+
+    def test_control_without_the_wait_the_counters_are_unrecorded(self):
+        rows, full, text = self.background_late()
+        with mock.patch.object(self.capture, 'SETTLE_SECONDS', 0):
+            with mock.patch.object(self.capture.time, 'sleep', lambda seconds: full.write_text(text, encoding='utf-8')):
+                self.feed(rows)
+        self.assertTrue(UNRECORDED.match(self.records()[-1]['tokens']))
+
+
 # ---------------------------------------------------------------------------
 # C-B2-3: streamed rows grouped by message id
 # ---------------------------------------------------------------------------

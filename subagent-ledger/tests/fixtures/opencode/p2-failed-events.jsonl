@@ -1,0 +1,3 @@
+{"event":"init","at":"2026-10-09T06:34:06.447Z","ctx_keys":["client","project","worktree","directory","experimental_workspace","serverUrl","$"],"directory":"${WORK}","worktree":"/"}
+{"event":"before","at":"2026-10-09T06:34:12.415Z","input":{"tool":"task","sessionID":"ses_ee0a18ac7ffefS0mE7ngj4oyWh","callID":"call_01a11f5e89c07059b3e84ad533c6118c"},"output":{"args":{"description":"Read brief.md for token","prompt":"Read ${WORK}/brief.md and reply with the token it holds. Return only the token and any relevant context.","subagent_type":"general"}}}
+{"event":"before","at":"2026-10-09T06:34:15.386Z","input":{"tool":"read","sessionID":"ses_ee0a173bcffedUE7REux5xNVBs","callID":"call_01a11f5e95a3705e96e2873c004227e7"},"output":{"args":{"filePath":"${WORK}/brief.md"}}}

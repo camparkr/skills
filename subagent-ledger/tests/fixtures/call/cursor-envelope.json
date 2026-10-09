@@ -1,0 +1,16 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 36482,
+ "duration_api_ms": 36482,
+ "result": "avocet-3302",
+ "session_id": "ace57121-0afe-422b-bb6d-dd8eb08116fb",
+ "request_id": "4f56c78c-5d6d-4833-89d5-40952491bcef",
+ "usage": {
+  "inputTokens": 19298,
+  "outputTokens": 2582,
+  "cacheReadTokens": 73728,
+  "cacheWriteTokens": 0
+ }
+}

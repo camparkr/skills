@@ -701,5 +701,71 @@ class ProbeFindings(World):
         self.assertTrue(Path(back['answer_path']).name.endswith('.md'))
 
 
+# ---------------------------------------------------------------------------
+# C-B3-8: a `claude -p` call through Bash reads its counters from its own transcript
+# ---------------------------------------------------------------------------
+
+INNER_SESSION = '005d0379-66fe-45ea-96d8-d013ce25b6b1'
+
+
+class CB3_8InnerTranscript(World):
+    """bash-cli-events.jsonl is a live Bash call of `claude -p --output-format json`; its envelope names
+    session 005d0379. bash-cli-inner.jsonl is that inner session's own transcript, less its attachment
+    rows. The test puts it where Claude Code wrote it, under the configuration folder's projects/."""
+
+    fields = 'all'
+
+    def place_inner(self, config):
+        path = Path(config) / 'projects' / '-fixture-work' / ('%s.jsonl' % INNER_SESSION)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.fill((FIXTURES / 'bash-cli-inner.jsonl').read_text(encoding='utf-8')),
+                        encoding='utf-8')
+        return path
+
+    def with_command(self, command):
+        rows = self.events('bash-cli-events.jsonl')
+        for row in rows:
+            row['payload']['tool_input']['command'] = command
+        return rows
+
+    def test_c_b3_8_tokens_and_model_from_the_inner_transcript(self):
+        self.place_inner(self.config)
+        self.feed(self.events('bash-cli-events.jsonl'))
+        self.assertEqual(self.errors(), [])
+        back = self.records()[-1]
+        self.assertEqual(back['tokens'], {'input': 2, 'cache_write': 14021, 'cache_read': 23691, 'output': 4})
+        self.assertEqual(back['model'], 'claude-opus-5-5')
+        self.assertEqual(back['isolation']['read_from'], str(Path(self.config) / 'projects' / '-fixture-work'
+                                                                / ('%s.jsonl' % INNER_SESSION)))
+
+    def test_c_b3_8_the_folder_the_command_set_is_searched(self):
+        other = self.tmp / 'other-config'
+        self.place_inner(other)
+        self.feed(self.with_command('CLAUDE_CONFIG_DIR=%s claude -p --output-format json "Reply ok"' % other))
+        back = self.records()[-1]
+        self.assertEqual(back['tokens']['cache_read'], 23691)
+
+    def test_c_b3_8_a_missing_transcript_reads_unrecorded(self):
+        self.feed(self.events('bash-cli-events.jsonl'))
+        back = self.records()[-1]
+        self.assertRegex(back['tokens'], UNRECORDED)
+        self.assertIn(INNER_SESSION, back['tokens'])
+        self.assertRegex(back['isolation'], UNRECORDED)
+        self.assertEqual(back['model'], 'claude-opus-5-5', 'the envelope still names the model')
+
+    def test_c_b3_8_a_transcript_without_the_result_reads_unrecorded(self):
+        path = self.place_inner(self.config)
+        path.write_text(path.read_text(encoding='utf-8').replace('"text": "ok"', '"text": "something else"'),
+                        encoding='utf-8')
+        self.feed(self.events('bash-cli-events.jsonl'))
+        self.assertIn('does not carry', self.records()[-1]['tokens'])
+
+    def test_c_b3_8_control_inner_reading_switched_off_leaves_the_counters_unread(self):
+        self.place_inner(self.config)
+        with mock.patch.object(self.capture, 'inner_reading', lambda *a, **k: {}):
+            self.feed(self.events('bash-cli-events.jsonl'))
+        self.assertRegex(self.records()[-1]['tokens'], UNRECORDED)
+
+
 if __name__ == '__main__':
     unittest.main()

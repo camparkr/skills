@@ -23,7 +23,12 @@ What each event does:
     PostToolUse that follows.
   * PreToolUse on Bash: a dispatch record, route cli, when the command matches cli-patterns.json.
   * PostToolUse on Bash: the return record for a matched command, which exited 0. Claude Code sends
-    a command that exits non-zero to PostToolUseFailure instead, which writes a failed return.
+    a command that exits non-zero to PostToolUseFailure instead, which writes a failed return. Where
+    the command printed a `claude -p --output-format json` envelope naming its session, the inner
+    session's own transcript is read for the model, the four counters and the isolation evidence:
+    under the CLAUDE_CONFIG_DIR the command set, or else the calling session's configuration folder.
+    A transcript that is absent, or that does not carry the envelope's result, leaves each of them
+    unrecorded, saying why.
 
 A failure at any stage writes one error line through ledger.error(), naming the session, call id
 and event read from the raw payload before anything else.
@@ -31,6 +36,7 @@ and event read from the raw payload before anything else.
 
 import contextlib
 import fcntl
+import glob
 import io
 import json
 import os
@@ -557,6 +563,7 @@ def post_shell(event, payload, folder, held):
                 reason = reason_from_envelope if isinstance(reason_from_envelope, dict) else reason
                 answer = envelope.get('result') if isinstance(envelope.get('result'), str) else ''
                 fields.update({'model': model, 'cost': cost})
+                fields.update(inner_reading(envelope, command_of(payload), payload, model))
                 kept['error'] = (text.split('\n', 1)[0] + '\n') if '\n' in text else text
                 kept['envelope'] = envelope
             else:
@@ -582,10 +589,112 @@ def post_shell(event, payload, folder, held):
                 model = 'unrecorded (the command\'s output names no model)'
                 cost = 'unrecorded (the command\'s output reports no cost)'
             fields.update({'outcome': outcome, 'outcome_reason': reason, 'model': model, 'cost': cost})
-        command = (payload.get('tool_input') or {}).get('command') if isinstance(payload.get('tool_input'), dict) else None
+            if envelope is not None:
+                fields.update(inner_reading(envelope, command_of(payload), payload, model))
+        command = command_of(payload)
         fields['harness_payload'] = without_texts(kept, command, ON_DISPATCH_BRIEF)
         ledger.ret(ledger=folder, answer=answer, **fields)
         clear_pending(folder, held.session, ['cli-' + held.call_id])
+
+
+def command_of(payload):
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    return given.get('command') if isinstance(given.get('command'), str) else None
+
+
+def config_set_by(command):
+    """The CLAUDE_CONFIG_DIR a command sets before it runs `claude`, or None."""
+    found = None
+    for part in re.split(r'\|\||&&|;|\||\n', command or ''):
+        try:
+            words = shlex.split(part)
+        except ValueError:
+            words = part.split()
+        if words and words[0] == 'export':
+            words = words[1:]
+        for word in words:
+            if word.startswith('CLAUDE_CONFIG_DIR='):
+                found = os.path.expanduser(word.split('=', 1)[1])
+            elif word != 'env' and not re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', word):
+                if os.path.basename(word) == 'claude':
+                    return found
+                break
+    return found
+
+
+def answer_texts(rows):
+    """Every text the transcript's messages carry, singly and joined per message id."""
+    grouped, order, singles = {}, [], []
+    for position, row in enumerate(rows):
+        message = row.get('message') if isinstance(row.get('message'), dict) else None
+        if message is None:
+            continue
+        content = message.get('content')
+        texts = [content] if isinstance(content, str) else [
+            part['text'] for part in content or [] if isinstance(part, dict) and isinstance(part.get('text'), str)]
+        if not texts:
+            continue
+        singles.extend(texts)
+        key = message.get('id') if isinstance(message.get('id'), str) else 'row-%d' % position
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].extend(texts)
+    return singles + ['\n'.join(grouped[key]) for key in order] + [''.join(grouped[key]) for key in order]
+
+
+def inner_reading(envelope, command, payload, envelope_model=None):
+    """tokens, model and isolation from the inner `claude -p` session's own transcript (§5b, B3).
+
+    The transcript is <config>/projects/*/<session_id>.jsonl, where <config> is the CLAUDE_CONFIG_DIR
+    the command set, or else the calling session's configuration folder. It is read only when it
+    carries the envelope's result: the result is the last thing a `-p` run writes, so a transcript
+    holding it is complete, and one that does not may be short.
+    """
+    session = envelope.get('session_id')
+    if not isinstance(session, str) or not session:
+        why = 'unrecorded (the envelope names no session, so its transcript cannot be found)'
+        return {'tokens': why, 'isolation': why}
+    named = config_set_by(command)
+    if named:
+        folders = [Path(named)]
+    else:
+        folders = [transcripts.config_folder()]
+        path = payload.get('transcript_path')
+        if isinstance(path, str) and '/projects/' in path:
+            folders.append(Path(path.split('/projects/', 1)[0]))
+    found = None
+    for folder in folders:
+        hits = sorted(glob.glob(str(Path(folder) / 'projects' / '*' / ('%s.jsonl' % glob.escape(session)))))
+        if hits:
+            found = Path(hits[0])
+            break
+    if found is None:
+        why = 'unrecorded (no transcript for session %s under %s)' % (
+            session, ' or '.join(str(Path(folder) / 'projects') for folder in folders))
+        return {'tokens': why, 'isolation': why}
+    try:
+        rows = transcripts.rows_of(found)
+    except OSError as exc:
+        why = 'unrecorded (the transcript of session %s could not be read: %s)' % (session, exc)
+        return {'tokens': why, 'isolation': why}
+    result = envelope.get('result')
+    wanted = result.strip() if isinstance(result, str) else ''
+    if not wanted or not any(wanted in text for text in answer_texts(rows)):
+        why = ('unrecorded (the transcript of session %s does not carry the envelope\'s result, so a count '
+               'taken from it could be short)' % session)
+        return {'tokens': why, 'isolation': why}
+    reading = transcripts.read(found)
+    if reading['error']:
+        why = 'unrecorded (%s)' % reading['error']
+        return {'tokens': why, 'isolation': why}
+    out = {'tokens': dict(reading['tokens']), 'isolation': transcripts.isolation(reading)}
+    if reading['model']:
+        out['model'] = reading['model']
+        if isinstance(envelope_model, str) and not envelope_model.startswith('unrecorded (') \
+                and envelope_model != reading['model']:
+            out['model_check'] = {'harness': envelope_model, 'transcript': reading['model']}
+    return out
 
 
 def envelope_in(text):

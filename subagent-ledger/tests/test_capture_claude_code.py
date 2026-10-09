@@ -755,8 +755,10 @@ class CB3_8InnerTranscript(World):
 
     def test_c_b3_8_a_transcript_without_the_result_reads_unrecorded(self):
         path = self.place_inner(self.config)
-        path.write_text(path.read_text(encoding='utf-8').replace('"text": "ok"', '"text": "something else"'),
-                        encoding='utf-8')
+        # The answer is 'ok', which the prompt 'Reply ok' also holds; both go, as in a transcript cut
+        # short before the answer was written to a run whose prompt did not quote it.
+        text = path.read_text(encoding='utf-8').replace('"text": "ok"', '"text": "something else"')
+        path.write_text(text.replace('Reply ok', 'Reply'), encoding='utf-8')
         self.feed(self.events('bash-cli-events.jsonl'))
         self.assertIn('does not carry', self.records()[-1]['tokens'])
 

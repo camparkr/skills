@@ -1,0 +1,8 @@
+{
+  "description": "The tools by which each harness dispatches a subagent, and the transcript reader the call reader's count check uses for it. The count check counts, in each transcript it is given, the distinct tool-call ids whose tool is one of these, and compares them with the ledger's records. A harness whose transcript has no reader here is reported unrecorded, not counted.",
+  "harnesses": {
+    "claude-code": {"tools": ["Agent", "Task"], "transcript": "claude-code"},
+    "codex": {"tools": ["spawn_agent"], "transcript": "codex"},
+    "opencode": {"tools": ["task"], "transcript": null}
+  }
+}

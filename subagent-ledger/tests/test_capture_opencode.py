@@ -305,5 +305,194 @@ class CB3_9BadInput(World):
         self.assertEqual(self.records(), [])
 
 
+
+# ---------------------------------------------------------------------------
+# C-RB3-1 to C-RB3-4: a failed subagent's return from OpenCode's general event stream (B3 rework)
+#
+# Fixtures, from the rework's probe of 9 October 2026 (OpenCode 1.18.30), every event the recording
+# plugin saw, in the shape this skill's plugin sends. Tool hooks are {event, input, output}; the
+# general event hook is {event: "event", type, payload: {event}}. Bulk events with no session or
+# tool state (plugin.added, catalog, reference and integration updates, message.part.delta) are
+# left out. Machine paths are placeholders (${RUN}, ${WORK}):
+#
+#   * rb3-failed-events.jsonl: a `task` whose subagent's read of /etc/hosts was refused. No `after`
+#     on `task`; the parent session's `message.part.updated` carries the task part with
+#     state.status "error", its error text, the same callID as `before`, and the child session in
+#     state.metadata.sessionId;
+#   * rb3-served-events.jsonl: a `task` whose subagent read brief.md. `after` on `task` came first,
+#     then the part's state.status "completed".
+# ---------------------------------------------------------------------------
+
+FAILED_PARENT = 'ses_edffb5415ffeWq4Y3lzMs2IXXS'
+FAILED_CHILD = 'ses_edffb461affejItzaRmKfeV6Pg'
+FAILED_CALL = 'call_01a12004b78f72c59d5bd4838ca593c3'
+SERVED_PARENT = 'ses_edffa919cffeqPklyk5MgA6OHF'
+SERVED_CALL = 'call_01a120057972743d92020359545b7b79'
+EVENT_TYPE = 'message.part.updated'
+
+
+class EventStream(World):
+
+    fields = 'all'
+
+    def stream(self, name):
+        text = (FIXTURES / name).read_text(encoding='utf-8')
+        text = text.replace('${WORK_RELATIVE}', str(self.work).lstrip('/'))
+        text = text.replace('${WORK}', str(self.work)).replace('${RUN}', str(self.tmp))
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+    def replay(self, rows):
+        for row in rows:
+            if row['event'] == 'event':
+                self.capture.handle('event', json.dumps(dict(row['payload'], directory=str(self.work))), None)
+            else:
+                self.capture.handle(row['event'], json.dumps({'input': row['input'], 'output': row['output'],
+                                                              'directory': str(self.work)}), None)
+
+    def task_error_event(self, session, call_id, text='Subagent failed (task_id: ses_x): planted failure'):
+        return {'event': 'event', 'type': EVENT_TYPE, 'payload': {'event': {
+            'id': 'evt_planted', 'type': EVENT_TYPE, 'properties': {'sessionID': session, 'part': {
+                'type': 'tool', 'tool': 'task', 'callID': call_id, 'sessionID': session,
+                'state': {'status': 'error', 'error': text, 'input': {'prompt': 'planted'},
+                          'metadata': {'sessionId': 'ses_planted_child'}}}}}}}
+
+    def task_before(self, session, call_id):
+        return {'event': 'before', 'input': {'tool': 'task', 'sessionID': session, 'callID': call_id},
+                'output': {'args': {'description': 'd', 'prompt': 'planted brief %s' % call_id,
+                                    'subagent_type': 'general'}}}
+
+    def kinds(self):
+        return [(line['record'], line['call_id']) for line in self.records()]
+
+
+class CRB3_1FailedFromEvents(EventStream):
+
+    def test_c_rb3_1_a_failed_task_gets_a_failed_return_with_its_class(self):
+        self.replay(self.stream('rb3-failed-events.jsonl'))
+        self.assertEqual(self.errors(), [])
+        self.assertEqual(self.kinds(), [('dispatch', FAILED_CALL), ('return', FAILED_CALL)])
+        dispatch, back = self.records()
+        self.assertEqual(back['outcome'], 'failed')
+        self.assertEqual(back['outcome_reason']['class'], 'harness_error')
+        self.assertIn('rejected permission', back['outcome_reason']['text'])
+        self.assertEqual(back['agent_id'], FAILED_CHILD)
+        self.assertEqual(back['session'], FAILED_PARENT)
+        self.assertEqual(back['dispatched_at'], dispatch['dispatched_at'])
+        self.assertEqual(back['model'], 'opencode/muse-spark-1.3-contributor-free')
+        self.assertEqual(back['harness_payload']['event_type'], EVENT_TYPE)
+        self.assertEqual(list(self.ledger.glob('.pending/*/call_*.json')), [], 'the dispatch is no longer pending')
+
+    def test_c_rb3_1_control_event_handling_switched_off_leaves_the_dispatch_alone(self):
+        with mock.patch.object(self.capture, 'on_event', lambda *args, **kwargs: None):
+            self.replay(self.stream('rb3-failed-events.jsonl'))
+        self.assertEqual(self.kinds(), [('dispatch', FAILED_CALL)], 'as at 0a3fdf3: a dispatch and no return')
+
+
+class CRB3_2NoSecondReturn(EventStream):
+
+    def test_c_rb3_2_a_served_task_has_one_return_from_after(self):
+        rows = self.stream('rb3-served-events.jsonl')
+        rows.append(self.task_error_event(SERVED_PARENT, SERVED_CALL))  # a later event for the same call
+        self.replay(rows)
+        self.assertEqual(self.kinds(), [('dispatch', SERVED_CALL), ('return', SERVED_CALL)])
+        self.assertEqual(self.records()[1]['outcome'], 'served')
+        self.assertEqual(self.errors(), [])
+
+    def test_c_rb3_2_control_the_return_check_switched_off_gives_a_second_return(self):
+        rows = self.stream('rb3-served-events.jsonl')
+        rows.append(self.task_error_event(SERVED_PARENT, SERVED_CALL))
+        with mock.patch.object(self.capture, 'already_returned', lambda *args: False), \
+                mock.patch.object(self.capture.shared, 'clear_pending', lambda *args: None):
+            self.replay(rows)
+        self.assertEqual([kind for kind, _ in self.kinds()], ['dispatch', 'return', 'return'])
+
+
+class CRB3_3NoGuess(EventStream):
+
+    def test_c_rb3_3_an_event_tied_to_neither_pending_dispatch_gives_one_error_line_and_no_return(self):
+        self.replay([self.task_before('ses_two', 'call_first'), self.task_before('ses_two', 'call_second'),
+                     self.task_error_event('ses_two', 'call_neither')])
+        self.assertEqual([kind for kind, _ in self.kinds()], ['dispatch', 'dispatch'])
+        errors = self.errors()
+        self.assertEqual(len(errors), 1)
+        self.assertIn('call_first', errors[0]['reason'])
+        self.assertIn('call_second', errors[0]['reason'])
+        self.assertEqual(errors[0]['harness'], 'opencode')
+
+    def test_c_rb3_3_control_a_guessing_tie_writes_a_return(self):
+        self.replay([self.task_before('ses_two', 'call_first'), self.task_before('ses_two', 'call_second')])
+        guess = lambda pending, call_id: sorted(pending)[0]  # noqa: E731
+        with mock.patch.object(self.capture, 'tie', guess):
+            self.replay([self.task_error_event('ses_two', 'call_neither')])
+        self.assertIn('return', [kind for kind, _ in self.kinds()])
+
+
+EVENT_DRIVER = r'''
+import { pathToFileURL } from "url";
+const mod = await import(pathToFileURL(process.argv[2]).href);
+const factory = Object.values(mod).find((value) => typeof value === "function");
+const hooks = await factory({ directory: process.cwd() });
+const part = { type: "tool", tool: "task", callID: "call_1", sessionID: "ses_parent",
+               state: { status: "error", error: "Subagent failed", metadata: { sessionId: "ses_child" } } };
+const events = [
+  { event: { id: "e1", type: "message.part.delta", properties: { sessionID: "ses_parent", delta: "x" } } },
+  { event: { id: "e2", type: "message.part.updated", properties: { sessionID: "ses_parent", part } } },
+];
+const before = JSON.stringify(events);
+let escaped = null;
+try {
+  for (const e of events) await hooks["event"](e);
+} catch (err) {
+  escaped = String(err);
+}
+process.stderr.write(JSON.stringify({ escaped, unchanged: JSON.stringify(events) === before }) + "\n");
+'''
+
+
+class CRB3_4PluginEvent(unittest.TestCase):
+
+    setUp = CB3_5Plugin.setUp
+    source = CB3_5Plugin.source
+
+    def run_event(self, source, capture=None):
+        if capture is not None:
+            self.failing.write_text(capture, encoding='utf-8')
+        plugin = self.tmp / 'opencode-plugin' / 'subagent-ledger.js'
+        plugin.write_text(source, encoding='utf-8')
+        (self.tmp / 'event-driver.mjs').write_text(EVENT_DRIVER, encoding='utf-8')
+        env = dict(os.environ, SUBAGENT_LEDGER_SCRIPTS=str(self.tmp), SUBAGENT_LEDGER_DIR=str(self.tmp / 'ledger'))
+        done = subprocess.run(['node', str(self.tmp / 'event-driver.mjs'), str(plugin)], capture_output=True,
+                              text=True, env=env, cwd=str(self.tmp), timeout=60)
+        lines = [line for line in done.stderr.splitlines() if line.startswith('{"escaped"')]
+        return done, (json.loads(lines[-1]) if lines else None)
+
+    def test_c_rb3_4_a_failing_capture_on_an_event_throws_nothing_and_prints_nothing(self):
+        done, seen = self.run_event(self.source())
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIsNotNone(seen, done.stderr)
+        self.assertIsNone(seen['escaped'])
+        self.assertTrue(seen['unchanged'])
+        self.assertEqual(done.stdout, '')
+        self.assertNotIn('noise', done.stderr)
+
+    def test_c_rb3_4_only_the_task_part_event_reaches_the_capture(self):
+        seen_file = self.tmp / 'seen.txt'
+        recorder = ('import sys\nopen(%r, "a").write(" ".join(sys.argv[1:]) + "\\n")\n' % str(seen_file))
+        self.run_event(self.source(), capture=recorder)
+        self.assertTrue(seen_file.is_file(), 'the capture was never run for an event')
+        self.assertEqual(seen_file.read_text(encoding='utf-8').splitlines()[0].split()[:2],
+                         ['event', 'message.part.updated'])
+        self.assertEqual(len(seen_file.read_text(encoding='utf-8').splitlines()), 1)
+
+    def test_c_rb3_4_control_the_guard_switched_off_lets_an_event_error_escape(self):
+        source = self.source()
+        self.assertIn('/* event guard */ catch (err) {}', source)
+        broken = source.replace('/* event guard */ catch (err) {}', '/* event guard */ catch (err) { throw err; }')
+        broken = broken.replace('spawnSync(', 'mustSpawn(')
+        broken = 'function mustSpawn(...a) { throw new Error("spawn failed"); }\n' + broken
+        done, seen = self.run_event(broken)
+        self.assertIsNotNone(seen, done.stderr)
+        self.assertIsNotNone(seen['escaped'])
+
 if __name__ == '__main__':
     unittest.main()

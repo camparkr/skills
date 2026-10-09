@@ -21,10 +21,23 @@
     ],
     "claude-code": [],
     "claude-research": [],
-    "codex": [],
-    "gemini-cli": [],
-    "opencode": [],
-    "cursor": [],
+    "codex": [
+      {"class": "not_signed_in", "pattern": "\\b401\\b|unauthorized|codex login"},
+      {"class": "harness_error", "pattern": "turn aborted|interrupted"}
+    ],
+    "gemini-cli": [
+      {"class": "missing_key", "pattern": "GEMINI_API_KEY environment variable not found|please set an auth method"},
+      {"class": "usage_limit", "pattern": "RESOURCE_EXHAUSTED|exceeded your current quota"}
+    ],
+    "opencode": [
+      {"class": "not_signed_in", "pattern": "ProviderAuthError|no credentials found"},
+      {"class": "harness_error", "pattern": "rejected permission|subagent failed"}
+    ],
+    "cursor": [
+      {"class": "usage_limit", "pattern": "hit your usage limit"},
+      {"class": "not_signed_in", "pattern": "agent login"},
+      {"class": "harness_error", "pattern": "EPERM|operation not permitted"}
+    ],
     "perplexity": []
   },
   "credential_shapes": [

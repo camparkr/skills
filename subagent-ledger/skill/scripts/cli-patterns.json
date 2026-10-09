@@ -1,0 +1,11 @@
+{
+  "description": "Command shapes that make a model call through a command-line tool. A shell command is split into its parts at ;, &&, || and |; in each part, leading VAR=value assignments and an 'env' are passed over, and the next word is the program. A part is a call when its program's name is one listed here, it carries one of the entry's call markers (a flag anywhere, or a subcommand as the first argument), and it carries none of the words under not_a_call. The match is on the program run, so a command that runs a script which itself calls a model is not matched here: such a script writes its own records.",
+  "patterns": [
+    {"program": "claude", "flags": ["-p", "--print"], "subcommands": [], "harness": "claude-code", "model_flags": ["--model"]},
+    {"program": "codex", "flags": [], "subcommands": ["exec", "e"], "harness": "codex", "model_flags": ["--model", "-m"]},
+    {"program": "gemini", "flags": ["-p", "--prompt"], "subcommands": [], "harness": "gemini-cli", "model_flags": ["--model", "-m"]},
+    {"program": "opencode", "flags": [], "subcommands": ["run"], "harness": "opencode", "model_flags": ["--model", "-m"]},
+    {"program": "cursor-agent", "flags": ["-p", "--print"], "subcommands": [], "harness": "cursor", "model_flags": ["--model", "-m"]}
+  ],
+  "not_a_call": ["--version", "-v", "-V", "--help", "-h", "help", "login", "logout"]
+}

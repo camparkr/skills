@@ -206,6 +206,8 @@
         "harness_error",
         "truncated",
         "unreadable",
+        "caller_time_limit",
+        "empty_answer",
         "other"
       ]
     },

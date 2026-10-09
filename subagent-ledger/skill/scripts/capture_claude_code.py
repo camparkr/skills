@@ -67,13 +67,13 @@ ABSENT_FROM_BRIEF = {
     'characteristic': 'unrecorded (not given in the brief)',
     'task': 'unrecorded (the brief names no task)',
 }
-# A background call's transcript may still be written when SubagentStop fires (live control,
-# 9 October 2026), so its counters are read once the last request carries a stop reason. The wait is
-# the capture's own and never stops or delays the call's result; past it the transcript is read as
-# it stands.
-SETTLE_SECONDS = 5
-SETTLE_STEP = 0.1
-FILE_IN_PROMPT = re.compile(r'''(?:^|[\s'"`(])((?:~|/)[^\s'"`()<>|;]+)''')
+# A background call's transcript may still be written when SubagentStop fires, so its counters are
+# read only once the transcript holds the answer SubagentStop reports, in a final request whose stop
+# reason is not tool_use. The capture sets no limit on that wait: the harness's own time-out on hooks
+# is the only bound. This is how often it re-reads.
+REREAD_SECONDS = 0.1
+NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
+_ARRIVAL = {}
 
 
 class Held:
@@ -124,6 +124,7 @@ def main(argv=None):
 
 def handle(event, text, folder=None):
     """Handle one hook event's payload text. Never raises; every failure is an error line."""
+    _ARRIVAL['at'] = time.monotonic()
     try:
         payload = json.loads(text)
         if not isinstance(payload, dict):
@@ -180,7 +181,7 @@ def pre_agent(payload, folder, held):
         'model_requested': given.get('model') if isinstance(given.get('model'), str) and given.get('model') else None,
         'auth_route': auth_route(),
         'brief_source': source,
-        'harness_payload': without_texts(payload, prompt, named_marker(source)),
+        'harness_payload': payload,
     })
     fields.update(optional_fields(folder, brief if source else prompt))
     with pending_lock(folder, held.session):
@@ -188,7 +189,8 @@ def pre_agent(payload, folder, held):
             'call_id': held.call_id, 'dispatched_at': at,
             'run_in_background': bool(given.get('run_in_background')),
         })
-    ledger.dispatch(ledger=folder, brief=brief or None, **fields)
+    ledger.dispatch(ledger=folder, brief=brief or None, prompt=prompt if source and prompt else None,
+                    **fields)
 
 
 def subagent_start(payload, folder, held):
@@ -266,7 +268,7 @@ def post_agent_failure(payload, folder, held):
             'call_id': held.call_id,
             'agent_id': 'unrecorded (no agent id in PostToolUseFailure)',
             'outcome': 'failed',
-            'outcome_reason': {'class': 'harness_error', 'text': text[:ledger.REASON_LIMIT]},
+            'outcome_reason': ledger.reason_for(HARNESS, text),
             'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT,
             'model': 'unrecorded (the call failed before a transcript could be joined)',
             'tokens': 'unrecorded (the call failed before a transcript could be joined)',
@@ -342,8 +344,10 @@ def write_background_return(folder, held, agent, stop, join=None):
     })
     if sent and sent.get('dispatched_at'):
         fields['dispatched_at'] = sent['dispatched_at']
-    wait_for_transcript(path)
+    wait_for_transcript(path, answer)
     fields.update(from_transcript(path, response.get('resolvedModel'), None))
+    if isinstance(fields.get('tokens'), dict):
+        fields['tokens']['read_after_seconds'] = round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)
     kept = dict(payload)
     kept['post_tool_use_response'] = response
     if isinstance(kept.get('last_assistant_message'), str):
@@ -353,26 +357,44 @@ def write_background_return(folder, held, agent, stop, join=None):
     clear_pending(folder, held.session, [call_id, 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
 
 
-def wait_for_transcript(path):
-    """Wait, a step at a time, until the transcript's last request carries a stop reason."""
+def wait_for_transcript(path, answer):
+    """Re-read the transcript until it is complete. No limit of the capture's own (specification §3e)."""
     if not path:
         return
-    for _ in range(int(SETTLE_SECONDS / SETTLE_STEP)):
-        if transcript_settled(path):
-            return
-        time.sleep(SETTLE_STEP)
+    while not transcript_complete(path, answer):
+        time.sleep(REREAD_SECONDS)
 
 
-def transcript_settled(path):
+def transcript_complete(path, answer):
+    """True when the final request carries `answer` and stopped for a reason other than tool_use."""
     try:
         rows = transcripts.rows_of(path)
     except OSError:
         return False
-    last = None
-    for row in rows:
-        if transcripts._usage(row) is not None:
-            last = row
-    return last is not None and (last.get('message') or {}).get('stop_reason') is not None
+    groups, order = {}, []
+    for position, row in enumerate(row for row in rows if transcripts._usage(row) is not None):
+        key = transcripts._group_key(row, position)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(row)
+    if not order:
+        return False
+    last = groups[order[-1]]
+    reasons = [(row.get('message') or {}).get('stop_reason') for row in last]
+    stopped = [reason for reason in reasons if reason is not None]
+    if not stopped or 'tool_use' in stopped:
+        return False
+    wanted = (answer or '').strip()
+    if not wanted:
+        return True
+    said = []
+    for row in last:
+        content = (row.get('message') or {}).get('content')
+        if isinstance(content, list):
+            said.extend(part.get('text', '') for part in content
+                        if isinstance(part, dict) and isinstance(part.get('text'), str))
+    return wanted in '\n'.join(said)
 
 
 def is_background(response):
@@ -637,14 +659,24 @@ def auth_route():
 
 
 def brief_of(prompt, cwd):
-    """The brief and the path the prompt named for it, or the prompt and None."""
-    for found in FILE_IN_PROMPT.findall(prompt or ''):
+    """The brief and the path the prompt named for it, or the prompt and None.
+
+    Each word of the prompt that could be a path is tried in order: an absolute or ~ path as it
+    stands, any other relative to the hook's working folder. The first that is a readable file wins.
+    """
+    for found in NAMED_IN_PROMPT.findall(prompt or ''):
         candidate = found.rstrip('.,:;!?')
+        if not candidate or candidate in ('.', '..'):
+            continue
         path = Path(os.path.expanduser(candidate))
+        if not path.is_absolute():
+            if not isinstance(cwd, str) or not cwd:
+                continue
+            path = Path(cwd) / path
         try:
             if path.is_file():
                 return path.read_text(encoding='utf-8'), candidate
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError, ValueError):
             continue
     return prompt, None
 
@@ -652,9 +684,8 @@ def brief_of(prompt, cwd):
 def without_texts(payload, text, marker):
     """The payload with every string equal to `text` replaced by `marker`, so no brief stays inline.
 
-    The writer itself replaces a string equal to the brief or answer it copies with `moved to
-    <path>`. This covers the two cases it cannot see: a dispatch whose prompt named a file (the file
-    is the brief, not the prompt), and a return record, which carries no brief.
+    The writer itself replaces a string equal to a text it copies with `moved to <path>`. This
+    covers the case it cannot see: a return record, which carries no brief.
     """
     if not isinstance(text, str) or not text or marker is None:
         return payload
@@ -670,11 +701,7 @@ def without_texts(payload, text, marker):
     return walk(payload)
 
 
-def named_marker(source):
-    return 'not kept: the prompt named %s, which brief_path copies' % source if source else None
-
-
-ON_DISPATCH_BRIEF = 'not kept: the brief is copied at the dispatch record\'s brief_path'
+ON_DISPATCH_BRIEF = 'not kept: the dispatch record copies the brief and names the copy'
 
 
 def read_config(folder):

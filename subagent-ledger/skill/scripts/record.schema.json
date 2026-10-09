@@ -164,6 +164,11 @@
             },
             "counter_check": {
               "$ref": "#/$defs/anyValue"
+            },
+            "read_after_seconds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from a background SubagentStop payload's arrival to the read of a complete transcript."
             }
           },
           "additionalProperties": false

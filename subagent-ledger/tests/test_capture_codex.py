@@ -299,16 +299,18 @@ class CB3_3Wait(World):
         self.assertNotIn('task_complete', at_stop)
         self.assertIn('task_complete', rest)
 
-    def test_c_b3_3_the_observed_split_is_read_after_the_wait(self):
+    def test_c_b3_3_the_observed_split_is_read_at_once_and_in_full(self):
+        # When SubagentStop fired, the rollout already held the answer and its counter row; only
+        # task_complete was missing, and Codex writes that after the hook returns. Waiting for it
+        # would never end (the B3 live run), so the read must not.
         rows = self.events('p1-events.jsonl')
-        path = self.place(rows, 'p1-agent-rollout-at-stop.jsonl')
-        self.late(path, self.fill((FIXTURES / 'p1-agent-rollout-rest.jsonl').read_text(encoding='utf-8')), 0.4)
+        self.place(rows, 'p1-agent-rollout-at-stop.jsonl')
         self.feed(rows)
         back = self.records()[-1]
         self.assertEqual(back['record'], 'return')
         for key, value in self.full_counters().items():
             self.assertEqual(back['tokens'][key], value, key)
-        self.assertGreaterEqual(back['tokens']['read_after_seconds'], 0.3)
+        self.assertLess(back['tokens']['read_after_seconds'], 5)
 
     def test_c_b3_3_counters_that_lag_the_stop_are_read_in_full(self):
         rows = self.events('p1-events.jsonl')

@@ -17,9 +17,10 @@ What each event does (Codex 0.142.5, as observed):
     whose response names no agent is a failed call, and its return is written here.
   * SubagentStart: a witness line.
   * SubagentStop: a witness line, then the return record, joined to its call through the stored
-    join. The subagent's rollout, at `agent_transcript_path`, is read once its last turn has ended
-    (a `task_complete` or `turn_aborted` row): when SubagentStop fires the rollout can still lack
-    it. There is no limit on that wait beyond the harness's own time-out on hooks. The model, the
+    join. The subagent's rollout, at `agent_transcript_path`, is read once it holds the answer
+    SubagentStop reports and the counter row written after it, or the turn's end. Codex writes
+    `task_complete` only after this hook returns, so the capture never waits for that row. There is
+    no limit on the wait beyond the harness's own time-out on hooks. The model, the
     four counters, the effort and the isolation evidence come from the rollout; the answer from
     `last_assistant_message`.
 
@@ -253,7 +254,7 @@ def subagent_stop(payload, folder, held):
     if not isinstance(path, str) or not path:
         held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = None
-    wait_for_rollout(path)
+    wait_for_rollout(path, answer)
     waited = round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)
     fields = common(payload)
     fields.update({'call_id': call_id, 'agent_id': agent, 'cost': SUBAGENT_COST,
@@ -271,11 +272,14 @@ def subagent_stop(payload, folder, held):
         shared.clear_pending(folder, held.session, [call_id, 'join-' + agent])
 
 
-def wait_for_rollout(path):
-    """Re-read the rollout until its last turn has ended. No limit of the capture's own (§3e)."""
+def wait_for_rollout(path, answer):
+    """Re-read the rollout until it holds the answer and the counter row after it (§3e).
+
+    No limit of the capture's own: the harness's time-out on hooks is the only bound.
+    """
     if not path:
         return
-    while not transcripts.codex_complete(path):
+    while not transcripts.codex_complete(path, answer):
         time.sleep(REREAD_SECONDS)
 
 

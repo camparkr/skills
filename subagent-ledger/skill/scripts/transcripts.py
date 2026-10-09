@@ -210,20 +210,39 @@ def codex_usage(usages):
     return usages[-1]
 
 
-def codex_complete(path):
-    """True once the rollout's last turn has ended: a `task_complete` or `turn_aborted` after its start."""
+def codex_complete(path, answer=None):
+    """True once the rollout holds the run's end, as far as Codex writes it before SubagentStop returns.
+
+    Codex writes `task_complete` only after its SubagentStop hook has returned, so a hook that waited
+    for it would wait for ever (the B3 live run, 9 October 2026). What it has written by then is the
+    answer, as an `agent_message`, and the counter row after it. So the last turn is complete when it
+    holds `answer` in an `agent_message` followed by a `token_count`, or when it has ended
+    (`task_complete` or `turn_aborted`). With no answer to look for, a `token_count` after the last
+    `agent_message` will do.
+    """
     try:
         rows = rows_of(path)
     except OSError:
         return False
-    started, ended = -1, -1
+    started = -1
     for position, row in enumerate(rows):
-        kind = _payload(row).get('type') if row.get('type') == 'event_msg' else None
-        if kind == 'task_started':
+        if row.get('type') == 'event_msg' and _payload(row).get('type') == 'task_started':
             started = position
-        elif kind in CODEX_ENDS:
-            ended = position
-    return ended > started
+    wanted = (answer or '').strip()
+    said = -1
+    for position, row in enumerate(rows):
+        if position <= started or row.get('type') != 'event_msg':
+            continue
+        payload = _payload(row)
+        kind = payload.get('type')
+        if kind in CODEX_ENDS:
+            return True
+        if kind == 'agent_message' and isinstance(payload.get('message'), str):
+            if not wanted or wanted in payload['message']:
+                said = position
+        if kind == 'token_count' and said >= 0 and position > said:
+            return True
+    return False
 
 
 def codex_continues(path, rows):

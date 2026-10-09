@@ -326,6 +326,8 @@ def _build(kind, folder, fields, on, brief, answer):
         return record
     record = {'schema': RECORD_SCHEMA, 'record': kind}
     given = dict(fields)
+    # The harness event names the call on an error line; a call record has no field for it.
+    given.pop('event', None)
     if 'call_id' in given:
         record['call_id'] = given.pop('call_id')
     session = given.pop('session', None)

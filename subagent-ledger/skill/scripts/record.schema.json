@@ -1,0 +1,1751 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:subagent-ledger:record-schema:1",
+  "title": "subagent-ledger record",
+  "description": "One line of a subagent ledger: a dispatch or a return record of one call, a witness line, or a capture error line. x-opentelemetry is an annotation giving the OpenTelemetry generative-AI attribute each field corresponds to; it does not validate.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/dispatch"
+    },
+    {
+      "$ref": "#/$defs/return"
+    },
+    {
+      "$ref": "#/$defs/witness"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "unrecorded": {
+      "type": "string",
+      "pattern": "^unrecorded \\(.+\\)$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400
+    },
+    "anyValue": {
+      "$comment": "any JSON value"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "timeOrUnrecorded": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/time"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "session": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "served",
+        "failed",
+        "refused",
+        "timed_out",
+        "empty"
+      ]
+    },
+    "outcomeOrUnrecorded": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/outcome"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "selectableName": {
+      "enum": [
+        "model_requested",
+        "model",
+        "tokens",
+        "cost",
+        "outcome_reason",
+        "route",
+        "harness",
+        "machine",
+        "caller",
+        "project",
+        "effort",
+        "effort_assigned",
+        "auth_route",
+        "brief_path",
+        "brief_source",
+        "answer_path",
+        "isolation",
+        "harness_payload",
+        "spend_line",
+        "persona-name",
+        "characteristic",
+        "grouping",
+        "task",
+        "failure_modes",
+        "roster_revision",
+        "labeller_model",
+        "recommended_harness",
+        "recommended_model",
+        "triage_model"
+      ]
+    },
+    "fieldList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/selectableName"
+      },
+      "uniqueItems": true
+    },
+    "counter": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/count"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "tokens": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/unrecorded"
+        },
+        {
+          "type": "object",
+          "required": [
+            "input",
+            "cache_write",
+            "cache_read",
+            "output"
+          ],
+          "properties": {
+            "input": {
+              "$ref": "#/$defs/counter",
+              "x-opentelemetry": "gen_ai.usage.input_tokens"
+            },
+            "cache_write": {
+              "$ref": "#/$defs/counter",
+              "x-opentelemetry": "gen_ai.usage.cache_write.input_tokens"
+            },
+            "cache_read": {
+              "$ref": "#/$defs/counter",
+              "x-opentelemetry": "gen_ai.usage.cache_read.input_tokens"
+            },
+            "output": {
+              "$ref": "#/$defs/counter",
+              "x-opentelemetry": "gen_ai.usage.output_tokens"
+            },
+            "counter_check": {
+              "$ref": "#/$defs/anyValue"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "cost": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/unrecorded"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value",
+            "currency",
+            "field"
+          ],
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "currency": {
+              "$ref": "#/$defs/text"
+            },
+            "field": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "reasonClass": {
+      "enum": [
+        "not_signed_in",
+        "missing_key",
+        "rate_limited",
+        "usage_limit",
+        "harness_error",
+        "truncated",
+        "unreadable",
+        "other"
+      ]
+    },
+    "outcomeReason": {
+      "anyOf": [
+        {
+          "const": "none (served)"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        },
+        {
+          "type": "object",
+          "required": [
+            "class",
+            "text"
+          ],
+          "properties": {
+            "class": {
+              "$ref": "#/$defs/reasonClass"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 400
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "route": {
+      "anyOf": [
+        {
+          "enum": [
+            "subagent",
+            "cli",
+            "script"
+          ]
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "objectOrUnrecorded": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "failureModes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/unrecorded"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "callRecord": {
+      "type": "object",
+      "required": [
+        "schema",
+        "record",
+        "call_id",
+        "agent_id",
+        "session",
+        "dispatched_at",
+        "returned_at",
+        "outcome",
+        "fields_on",
+        "fields_not_chosen",
+        "withheld"
+      ],
+      "properties": {
+        "schema": {
+          "const": "subagent-ledger/1"
+        },
+        "record": {
+          "enum": [
+            "dispatch",
+            "return"
+          ]
+        },
+        "fields_on": {
+          "$ref": "#/$defs/fieldList",
+          "description": "The selectable fields on when the record was written."
+        },
+        "fields_not_chosen": {
+          "$ref": "#/$defs/fieldList",
+          "description": "The selectable fields not chosen."
+        },
+        "withheld": {
+          "$ref": "#/$defs/count",
+          "description": "How many credential matches the scrub replaced."
+        },
+        "call_id": {
+          "$ref": "#/$defs/id",
+          "description": "The harness's own id for the call, or a UUID version 4.",
+          "x-opentelemetry": "gen_ai.tool.call.id"
+        },
+        "agent_id": {
+          "$ref": "#/$defs/id",
+          "description": "The subagent's id, or unrecorded (<reason>).",
+          "x-opentelemetry": "gen_ai.agent.id"
+        },
+        "session": {
+          "$ref": "#/$defs/session",
+          "description": "The calling session's id, or unrecorded (<reason>).",
+          "x-opentelemetry": "gen_ai.conversation.id"
+        },
+        "dispatched_at": {
+          "$ref": "#/$defs/timeOrUnrecorded",
+          "description": "When the call was sent, RFC 3339."
+        },
+        "returned_at": {
+          "$ref": "#/$defs/timeOrUnrecorded",
+          "description": "When the call came back, RFC 3339."
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcomeOrUnrecorded",
+          "description": "The call's true outcome."
+        },
+        "model_requested": {
+          "$ref": "#/$defs/text",
+          "description": "The model the caller asked for, as written.",
+          "x-opentelemetry": "gen_ai.request.model"
+        },
+        "model": {
+          "$ref": "#/$defs/text",
+          "description": "The model that ran, read from the run's own transcript.",
+          "x-opentelemetry": "gen_ai.response.model"
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokens",
+          "description": "The call's four counters."
+        },
+        "cost": {
+          "$ref": "#/$defs/cost",
+          "description": "The cost as the far end reported it; never derived from tokens."
+        },
+        "outcome_reason": {
+          "$ref": "#/$defs/outcomeReason",
+          "description": "Why the call was not served.",
+          "x-opentelemetry": "error.type (the class; other for _OTHER)"
+        },
+        "route": {
+          "$ref": "#/$defs/route",
+          "description": "How the call left the session.",
+          "x-opentelemetry": {
+            "subagent": "gen_ai.operation.name: invoke_agent"
+          }
+        },
+        "harness": {
+          "$ref": "#/$defs/text",
+          "description": "The program the record names for the call."
+        },
+        "machine": {
+          "$ref": "#/$defs/text",
+          "description": "The host."
+        },
+        "caller": {
+          "$ref": "#/$defs/text",
+          "description": "parent, or the calling lane's agent id."
+        },
+        "project": {
+          "$ref": "#/$defs/text",
+          "description": "The name of the git top-level folder of the working folder."
+        },
+        "effort": {
+          "$ref": "#/$defs/text",
+          "description": "The effort level the run reported."
+        },
+        "effort_assigned": {
+          "$ref": "#/$defs/text",
+          "description": "The effort level a triage assigned."
+        },
+        "auth_route": {
+          "$ref": "#/$defs/text",
+          "description": "The route the call authenticated by; never a credential."
+        },
+        "brief_path": {
+          "$ref": "#/$defs/text",
+          "description": "The ledger folder's copy of the brief."
+        },
+        "brief_source": {
+          "$ref": "#/$defs/text",
+          "description": "The path the caller named for the brief."
+        },
+        "answer_path": {
+          "$ref": "#/$defs/text",
+          "description": "The ledger folder's copy of the answer."
+        },
+        "isolation": {
+          "$ref": "#/$defs/objectOrUnrecorded",
+          "description": "What the run touched outside its folder."
+        },
+        "harness_payload": {
+          "$ref": "#/$defs/objectOrUnrecorded",
+          "description": "Everything else the harness carried, less the brief, the answer and any credential."
+        },
+        "spend_line": {
+          "$ref": "#/$defs/text",
+          "description": "<spend ledger file> <timestamp> of the line this record joins."
+        },
+        "persona-name": {
+          "$ref": "#/$defs/text",
+          "description": "Who the call speaks as."
+        },
+        "characteristic": {
+          "$ref": "#/$defs/text",
+          "description": "The character of the act."
+        },
+        "grouping": {
+          "$ref": "#/$defs/text",
+          "description": "The persona's standing home."
+        },
+        "task": {
+          "$ref": "#/$defs/text",
+          "description": "The task the call served."
+        },
+        "failure_modes": {
+          "$ref": "#/$defs/failureModes",
+          "description": "Failure modes a labeller marked."
+        },
+        "roster_revision": {
+          "$ref": "#/$defs/text",
+          "description": "The revision of the roster the labeller read."
+        },
+        "labeller_model": {
+          "$ref": "#/$defs/text",
+          "description": "The labeller's model."
+        },
+        "recommended_harness": {
+          "$ref": "#/$defs/text",
+          "description": "A triage's recommended harness."
+        },
+        "recommended_model": {
+          "$ref": "#/$defs/text",
+          "description": "A triage's recommended model."
+        },
+        "triage_model": {
+          "$ref": "#/$defs/text",
+          "description": "The triage's model."
+        },
+        "model_check": {
+          "$ref": "#/$defs/anyValue",
+          "description": "Written beside model where the harness and the transcript disagree."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "model_requested"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "model_requested"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "model_requested"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "model_requested"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "model_requested"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "model"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "model"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "model"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "model"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "model"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "tokens"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "tokens"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "tokens"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "tokens"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "tokens"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cost"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "cost"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "cost"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "cost"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "cost"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome_reason"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "outcome_reason"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "outcome_reason"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "outcome_reason"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "outcome_reason"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "route"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "route"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "route"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "route"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "route"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "harness"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "harness"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "harness"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "harness"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "harness"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "machine"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "machine"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "machine"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "machine"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "machine"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "caller"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "caller"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "caller"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "caller"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "caller"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "project"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "project"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "project"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "project"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "project"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "effort"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "effort"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "effort"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "effort"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "effort"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "effort_assigned"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "effort_assigned"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "effort_assigned"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "effort_assigned"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "effort_assigned"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "auth_route"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "auth_route"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "auth_route"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "auth_route"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "auth_route"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "brief_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "brief_path"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "brief_path"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "brief_path"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "brief_path"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "brief_source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "brief_source"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "brief_source"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "brief_source"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "brief_source"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "answer_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "answer_path"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "answer_path"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "answer_path"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "answer_path"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "isolation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "isolation"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "isolation"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "isolation"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "isolation"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "harness_payload"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "harness_payload"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "harness_payload"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "harness_payload"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "harness_payload"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "spend_line"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "spend_line"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "spend_line"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "spend_line"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "spend_line"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "persona-name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "persona-name"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "persona-name"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "persona-name"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "persona-name"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "characteristic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "characteristic"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "characteristic"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "characteristic"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "characteristic"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "grouping"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "grouping"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "grouping"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "grouping"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "grouping"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "task"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "task"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "task"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "task"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "task"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "failure_modes"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "failure_modes"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "failure_modes"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "failure_modes"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "failure_modes"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "roster_revision"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "roster_revision"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "roster_revision"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "roster_revision"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "roster_revision"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "labeller_model"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "labeller_model"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "labeller_model"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "labeller_model"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "labeller_model"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "recommended_harness"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "recommended_harness"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "recommended_harness"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "recommended_harness"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "recommended_harness"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "recommended_model"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "recommended_model"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "recommended_model"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "recommended_model"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "recommended_model"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "triage_model"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "triage_model"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "triage_model"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "triage_model"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "triage_model"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dispatch": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/callRecord"
+        },
+        {
+          "properties": {
+            "record": {
+              "const": "dispatch"
+            },
+            "dispatched_at": {
+              "$ref": "#/$defs/time"
+            },
+            "outcome": {
+              "$ref": "#/$defs/unrecorded"
+            }
+          }
+        }
+      ]
+    },
+    "return": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/callRecord"
+        },
+        {
+          "properties": {
+            "record": {
+              "const": "return"
+            },
+            "returned_at": {
+              "$ref": "#/$defs/time"
+            },
+            "outcome": {
+              "$ref": "#/$defs/outcome"
+            }
+          }
+        }
+      ]
+    },
+    "witness": {
+      "type": "object",
+      "required": [
+        "schema",
+        "record",
+        "event",
+        "session",
+        "agent_id",
+        "call_id",
+        "at",
+        "withheld"
+      ],
+      "properties": {
+        "schema": {
+          "const": "subagent-ledger/1"
+        },
+        "record": {
+          "const": "witness"
+        },
+        "event": {
+          "$ref": "#/$defs/text"
+        },
+        "session": {
+          "$ref": "#/$defs/session"
+        },
+        "agent_id": {
+          "$ref": "#/$defs/id"
+        },
+        "call_id": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "withheld": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "schema",
+        "at",
+        "session",
+        "call_id",
+        "agent_id",
+        "record",
+        "harness",
+        "event",
+        "stage",
+        "reason",
+        "payload_keys"
+      ],
+      "properties": {
+        "schema": {
+          "const": "subagent-ledger-error/1"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "session": {
+          "type": "string"
+        },
+        "call_id": {
+          "type": "string"
+        },
+        "agent_id": {
+          "type": "string"
+        },
+        "record": {
+          "enum": [
+            "dispatch",
+            "return",
+            "witness",
+            "unknown"
+          ]
+        },
+        "harness": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "payload",
+            "setting",
+            "validate",
+            "scrub",
+            "copy",
+            "write"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "payload_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

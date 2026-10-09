@@ -37,6 +37,7 @@ import os
 import re
 import shlex
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -66,6 +67,12 @@ ABSENT_FROM_BRIEF = {
     'characteristic': 'unrecorded (not given in the brief)',
     'task': 'unrecorded (the brief names no task)',
 }
+# A background call's transcript may still be written when SubagentStop fires (live control,
+# 9 October 2026), so its counters are read once the last request carries a stop reason. The wait is
+# the capture's own and never stops or delays the call's result; past it the transcript is read as
+# it stands.
+SETTLE_SECONDS = 5
+SETTLE_STEP = 0.1
 FILE_IN_PROMPT = re.compile(r'''(?:^|[\s'"`(])((?:~|/)[^\s'"`()<>|;]+)''')
 
 
@@ -335,6 +342,7 @@ def write_background_return(folder, held, agent, stop, join=None):
     })
     if sent and sent.get('dispatched_at'):
         fields['dispatched_at'] = sent['dispatched_at']
+    wait_for_transcript(path)
     fields.update(from_transcript(path, response.get('resolvedModel'), None))
     kept = dict(payload)
     kept['post_tool_use_response'] = response
@@ -343,6 +351,28 @@ def write_background_return(folder, held, agent, stop, join=None):
     fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
     ledger.ret(ledger=folder, answer=answer, **fields)
     clear_pending(folder, held.session, [call_id, 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
+
+
+def wait_for_transcript(path):
+    """Wait, a step at a time, until the transcript's last request carries a stop reason."""
+    if not path:
+        return
+    for _ in range(int(SETTLE_SECONDS / SETTLE_STEP)):
+        if transcript_settled(path):
+            return
+        time.sleep(SETTLE_STEP)
+
+
+def transcript_settled(path):
+    try:
+        rows = transcripts.rows_of(path)
+    except OSError:
+        return False
+    last = None
+    for row in rows:
+        if transcripts._usage(row) is not None:
+            last = row
+    return last is not None and (last.get('message') or {}).get('stop_reason') is not None
 
 
 def is_background(response):

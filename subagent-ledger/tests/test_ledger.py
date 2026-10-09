@@ -289,15 +289,27 @@ class K7WriteFails(Folder):
         self.assertEqual(error['call_id'], 'call-0002')
         self.assertIn('ermission', error['reason'])
 
-    def test_k7_control_the_unguarded_append_raises(self):
-        """The same read-only file, appended to without the writer's guard, raises to the caller."""
+    def test_k7_control_the_writers_guard_removed_lets_the_exception_through(self):
+        """The writer's own guard, removed in a scratch copy of ledger.py: the exception reaches the caller."""
+        import shutil
+        scratch = self.tmp / 'scratch-scripts'
+        shutil.copytree(SCRIPTS, scratch, ignore=shutil.ignore_patterns('__pycache__'))
+        source = (scratch / 'ledger.py').read_text(encoding='utf-8')
+        guard = ("    except Exception as exc:\n"
+                 "        return _error_line(folder, stage, '%s: %s' % (type(exc).__name__, exc), held, keys)\n")
+        self.assertEqual(source.count(guard), 1, 'the writer\'s guard was not found to remove')
+        (scratch / 'ledger.py').write_text(source.replace(guard, "    except Exception:\n        raise\n"),
+                                           encoding='utf-8')
+        spec = importlib.util.spec_from_file_location('unguarded_writer', scratch / 'ledger.py')
+        unguarded = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(unguarded)
+        first = unguarded.dispatch(call_id='call-0001', session='s-0001', route='script', brief='b')
+        self.assertTrue(first.ok, first.error)
         target = self.folder / 's-0001.jsonl'
-        target.write_text('', encoding='utf-8')
         target.chmod(stat.S_IRUSR)
         try:
             with self.assertRaises(PermissionError):
-                with target.open('a', encoding='utf-8') as handle:
-                    handle.write('{}\n')
+                unguarded.dispatch(call_id='call-0002', session='s-0001', route='script', brief='b')
         finally:
             target.chmod(0o600)
 
@@ -573,6 +585,17 @@ class Lines(Folder):
         result = ledger.dispatch(call_id='c', session='s-0001', harness_payload={'x': object()})
         self.assertFalse(result.ok)
         self.assertEqual(self.errors()[-1]['stage'], 'payload')
+
+    def test_the_rework_classes_exist(self):
+        """caller_time_limit and empty_answer are classes of reasons.json and the schema (rework S5, Time)."""
+        classes = json.loads((SCRIPTS / 'reasons.json').read_text(encoding='utf-8'))['classes']
+        schema_classes = ledger.load_schema()['$defs']['reasonClass']['enum']
+        for name in ('caller_time_limit', 'empty_answer'):
+            self.assertIn(name, classes)
+            self.assertIn(name, schema_classes)
+        record = fixture('valid-return.json')
+        record.update(outcome='empty', outcome_reason={'class': 'empty_answer', 'text': 'the answer was empty'})
+        self.assertEqual(ledger.validate(record, ledger.load_schema()), [])
 
     def test_reason_classes(self):
         cases = [('Not logged in · Please run /login', 'not_signed_in'),

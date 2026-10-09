@@ -109,6 +109,8 @@ class World(unittest.TestCase):
 
     def feed(self, rows):
         for row in rows:
+            if 'input' not in row:
+                continue  # the recording plugin's own start line, not a tool event
             self.capture.handle(row['event'], json.dumps({'input': row['input'], 'output': row['output']}), None)
 
     def records(self):

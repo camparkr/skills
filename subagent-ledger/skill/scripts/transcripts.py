@@ -23,6 +23,16 @@ compared with it.
 `cwd` is read from the first row that carries one, and every `tool_use` block's `name` and `input`
 is kept, so `isolation()` can list what the run touched outside its folder.
 
+A Codex rollout is read by the rules its own record keeps (the reader tells it by its first row,
+`session_meta`). Each `token_count` event carries a cumulative `total_token_usage`, so the last clean
+one is the run's total; summing them over-counts. Its `input_tokens` includes the cache, so `input`
+is that less `cached_input_tokens` (the cache read) and less `cache_write_input_tokens` where the
+rollout writes one; where it does not, the cache-write counter is unrecorded. A row whose total is
+non-zero while every counter it breaks into is zero is passed over. The models are the distinct
+`payload.model` values, the effort is `turn_context.effort`, the folder is `turn_context.cwd`, and
+each `exec_command`'s text is kept for `isolation()`. A rollout that Codex continued in a second file
+after compaction is not read short: its counters are unrecorded, saying so.
+
 Use it as a module (`read(path)`, `isolation(reading)`, `lane_path(...)`) or as a command:
 
     python3 transcripts.py <transcript.jsonl>
@@ -44,10 +54,16 @@ COUNTERS = (
     ('cache_read', 'cache_read_input_tokens'),
     ('output', 'output_tokens'),
 )
-PATH_KEYS = ('file_path', 'path', 'notebook_path')
+PATH_KEYS = ('file_path', 'path', 'notebook_path', 'filePath', 'dir_path')
 COMMAND_KEYS = ('command',)
 ISOLATION_LIMIT = ('none known for tool inputs; a shell command is listed when it names an absolute '
                    'path outside the folder, and a path a command reaches by other means is not seen')
+CODEX_LIMIT = ('each command is listed as the model wrote it, when it names an absolute path outside '
+               'the folder; a read inside a script it ran is not seen')
+CODEX_COUNTERS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')
+CODEX_NO_CACHE_WRITE = 'unrecorded (the rollout records no cache-write counter)'
+CODEX_CONTINUED = 'unrecorded (the session continues in another rollout)'
+CODEX_ENDS = ('task_complete', 'turn_aborted')
 
 
 def config_folder():
@@ -104,13 +120,16 @@ def _group_key(row, position):
 def read(path):
     """The reading of one transcript, as a dict. A file that cannot be read gives `error`."""
     reading = {'path': str(path), 'rows': 0, 'requests': 0, 'model': None, 'models': [],
-               'tokens': None, 'last_request': None, 'cwd': None, 'tool_uses': [], 'error': None}
+               'tokens': None, 'last_request': None, 'cwd': None, 'tool_uses': [], 'error': None,
+               'harness': 'claude-code'}
     try:
         rows = rows_of(path)
     except OSError as exc:
         reading['error'] = 'the transcript could not be read: %s' % exc
         return reading
     reading['rows'] = len(rows)
+    if is_codex(rows):
+        return read_codex(path, rows, reading)
     groups, order = {}, []
     usage_rows = [row for row in rows if _usage(row) is not None]
     for position, row in enumerate(usage_rows):
@@ -149,6 +168,131 @@ def read(path):
     return reading
 
 
+# ---------------------------------------------------------------------------
+# Codex rollouts
+# ---------------------------------------------------------------------------
+
+def is_codex(rows):
+    """A Codex rollout opens with a `session_meta` row."""
+    return bool(rows) and rows[0].get('type') == 'session_meta'
+
+
+def _payload(row):
+    payload = row.get('payload')
+    return payload if isinstance(payload, dict) else {}
+
+
+def _count(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _clean_usages(rows):
+    """Each counter row's cumulative usage, less the rows whose counters are all zero under a total."""
+    found = []
+    for row in rows:
+        payload = _payload(row)
+        if row.get('type') != 'event_msg' or payload.get('type') != 'token_count':
+            continue
+        info = payload.get('info')
+        usage = info.get('total_token_usage') if isinstance(info, dict) else None
+        if not isinstance(usage, dict) or not any(key in usage for key in CODEX_COUNTERS):
+            continue
+        parts = [usage.get(key) for key in CODEX_COUNTERS if key in usage]
+        if _count(usage.get('total_tokens')) and usage['total_tokens'] > 0 and all(
+                _count(value) and value == 0 for value in parts):
+            continue
+        found.append(usage)
+    return found
+
+
+def codex_usage(usages):
+    """The run's total: the last cumulative value. Never a sum of them, which over-counts."""
+    return usages[-1]
+
+
+def codex_complete(path):
+    """True once the rollout's last turn has ended: a `task_complete` or `turn_aborted` after its start."""
+    try:
+        rows = rows_of(path)
+    except OSError:
+        return False
+    started, ended = -1, -1
+    for position, row in enumerate(rows):
+        kind = _payload(row).get('type') if row.get('type') == 'event_msg' else None
+        if kind == 'task_started':
+            started = position
+        elif kind in CODEX_ENDS:
+            ended = position
+    return ended > started
+
+
+def codex_continues(path, rows):
+    """True when Codex continued this session in another rollout after compaction."""
+    own = _payload(rows[0]).get('id') if rows else None
+    path = Path(path)
+    if not isinstance(own, str) or not own:
+        return False
+    if '_' in path.name:
+        return True
+    store = next((parent for parent in path.parents if parent.name == 'sessions'), None)
+    if store is None:
+        return False
+    return bool(glob.glob(str(store / '*' / '*' / '*' / ('rollout-*-%s_*.jsonl' % glob.escape(own)))))
+
+
+def read_codex(path, rows, reading):
+    reading['harness'] = 'codex'
+    reading['isolation_limit'] = CODEX_LIMIT
+    reading['complete'] = any(_payload(row).get('type') in CODEX_ENDS for row in rows
+                              if row.get('type') == 'event_msg')
+    for row in rows:
+        payload = _payload(row)
+        model = payload.get('model')
+        if isinstance(model, str) and model and model not in reading['models']:
+            reading['models'].append(model)
+        if row.get('type') == 'turn_context':
+            if isinstance(payload.get('cwd'), str) and reading['cwd'] is None:
+                reading['cwd'] = payload['cwd']
+            if isinstance(payload.get('effort'), str) and payload['effort']:
+                reading['effort'] = payload['effort']
+        if row.get('type') == 'response_item' and payload.get('type') == 'function_call':
+            given = payload.get('arguments')
+            try:
+                given = json.loads(given) if isinstance(given, str) else given
+            except ValueError:
+                given = {'command': given}
+            if not isinstance(given, dict):
+                continue
+            command = given.get('cmd', given.get('command'))
+            if isinstance(command, list):
+                command = ' '.join(str(word) for word in command)
+            kept = {}
+            if isinstance(command, str):
+                kept['command'] = command
+            if isinstance(given.get('workdir'), str):
+                kept['workdir'] = given['workdir']
+            reading['tool_uses'].append({'name': payload.get('name'), 'input': kept})
+    if reading['cwd'] is None and isinstance(_payload(rows[0]).get('cwd'), str):
+        reading['cwd'] = _payload(rows[0])['cwd']
+    reading['model'] = ', '.join(reading['models']) or None
+    if codex_continues(path, rows):
+        reading['tokens'] = CODEX_CONTINUED
+        return reading
+    usages = _clean_usages(rows)
+    if not usages:
+        reading['error'] = 'no row of the rollout carries a clean counter'
+        return reading
+    reading['requests'] = len(usages)
+    usage = codex_usage(usages)
+    cache_read = usage.get('cached_input_tokens', 0)
+    cache_write = usage.get('cache_write_input_tokens')
+    fresh = usage.get('input_tokens', 0) - cache_read - (cache_write if _count(cache_write) else 0)
+    reading['tokens'] = {'input': fresh,
+                         'cache_write': cache_write if _count(cache_write) else CODEX_NO_CACHE_WRITE,
+                         'cache_read': cache_read, 'output': usage.get('output_tokens', 0)}
+    return reading
+
+
 def _inside(path, folder):
     path = posixpath.normpath(path)
     folder = posixpath.normpath(folder)
@@ -180,6 +324,9 @@ def isolation(reading):
             value = given.get(key)
             if isinstance(value, str) and value and not _inside(_absolute(value, folder), folder):
                 outside.append({'tool': use.get('name'), key: value})
+        workdir = given.get('workdir')
+        if isinstance(workdir, str) and workdir and not _inside(_absolute(workdir, folder), folder):
+            outside.append({'tool': use.get('name'), 'workdir': workdir})
         for key in COMMAND_KEYS:
             value = given.get(key)
             if not isinstance(value, str):
@@ -189,7 +336,7 @@ def isolation(reading):
             if named:
                 outside.append({'tool': use.get('name'), key: value, 'paths': named})
     return {'folder': folder, 'outside': outside, 'read_from': reading.get('path'),
-            'limit': ISOLATION_LIMIT}
+            'limit': reading.get('isolation_limit') or ISOLATION_LIMIT}
 
 
 def main(argv=None):

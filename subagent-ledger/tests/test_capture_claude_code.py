@@ -324,6 +324,93 @@ class PendingSwept(World):
         self.assertEqual(self.pending(), [])
 
 
+class QueuedMessage(World):
+    """A message sent to a running agent is queued ('Message queued for delivery …') and may be answered by a
+    later turn. Its return is written at the first stop after the message appears in the agent's transcript, with
+    that turn's answer and counters; with no transcript, at the first stop of a turn that started after it was
+    sent. A message to a stopped agent is unchanged."""
+
+    fields = 'all'
+    MESSAGE = 'Please also count the files in the folder.'
+    LATER_ANSWER = 'A later answer.'
+    LATER = [{'type': 'user', 'isMeta': True, 'message': {'role': 'user', 'content': MESSAGE}},
+             {'type': 'assistant', 'message': {
+                 'id': 'msg_queued_turn', 'role': 'assistant', 'model': 'claude-haiku-5-5', 'stop_reason': 'end_turn',
+                 'content': [{'type': 'text', 'text': LATER_ANSWER}],
+                 'usage': {'input_tokens': 7, 'cache_creation_input_tokens': 11, 'cache_read_input_tokens': 13,
+                           'output_tokens': 17}}}]
+    LATER_TOKENS = {'input': 7, 'cache_write': 11, 'cache_read': 13, 'output': 17}
+
+    def message_rows(self, rows, said='Message queued for delivery to %s at its next tool round.'):
+        pre, post = json.loads(json.dumps(rows[0])), json.loads(json.dumps(rows[2]))
+        for row in (pre, post):
+            row['payload'].update(tool_name='SendMessage', tool_use_id='toolu_queued_message_0001',
+                                  tool_input={'to': BACKGROUND_AGENT, 'message': self.MESSAGE})
+        post['payload']['tool_response'] = {'success': True, 'message': said % BACKGROUND_AGENT}
+        return [pre, post]
+
+    def later_turn(self, rows):
+        start = json.loads(json.dumps(rows[1]))
+        stop = json.loads(json.dumps(rows[3]))
+        stop['payload']['last_assistant_message'] = self.LATER_ANSWER
+        return [start, stop]
+
+    def session(self, transcript=True):
+        """The background call, a message queued while it runs, its stop, then the turn the message starts."""
+        rows = self.events('background-events.jsonl')
+        path = self.place_transcript('background-agent.jsonl', rows)
+        first = self.transcripts.read(path)['tokens']
+        with open(path, 'a', encoding='utf-8') as handle:
+            for row in self.LATER:
+                handle.write(json.dumps(row) + '\n')
+        if not transcript:
+            path.unlink()
+        return rows[:3] + self.message_rows(rows) + [rows[3]] + self.later_turn(rows), first
+
+    def returns(self):
+        return dict((line['call_id'], line) for line in self.records() if line['record'] == 'return')
+
+    def answer(self, record):
+        named = record['answer_path']
+        found = [path for path in self.ledger.rglob('*') if path.is_file() and str(path).endswith(named)]
+        return found[0].read_text(encoding='utf-8') if found else None
+
+    def test_a_queued_message_returns_with_the_turn_it_was_delivered_in(self):
+        rows, first = self.session()
+        self.feed(rows[:6])
+        self.assertNotIn('toolu_queued_message_0001', self.returns(), 'not at the first stop')
+        self.feed(rows[6:])
+        self.assertEqual(self.errors(), [])
+        back = self.returns()['toolu_queued_message_0001']
+        self.assertEqual(self.answer(back), self.LATER_ANSWER)
+        self.assertEqual(dict((k, back['tokens'][k]) for k in self.LATER_TOKENS), self.LATER_TOKENS)
+        call = self.returns()[rows[0]['payload']['tool_use_id']]
+        self.assertEqual(dict((k, call['tokens'][k]) for k in first), first, 'the call keeps its own turn')
+        self.assertEqual(sorted(p.name for p in (self.ledger / '.pending').rglob('*.json')), [])
+
+    def test_with_no_transcript_it_returns_at_the_stop_of_a_turn_started_after_it(self):
+        rows, _ = self.session(transcript=False)
+        self.feed(rows[:6])
+        self.assertNotIn('toolu_queued_message_0001', self.returns())
+        self.feed(rows[6:])
+        self.assertEqual(self.errors(), [])
+        self.assertEqual(self.answer(self.returns()['toolu_queued_message_0001']), self.LATER_ANSWER)
+
+    def test_a_message_to_a_stopped_agent_returns_at_the_next_stop(self):
+        rows = self.events('background-events.jsonl')
+        self.place_transcript('background-agent.jsonl', rows)
+        sent = self.message_rows(rows, said='Resuming agent %s')
+        self.feed(rows[:3] + sent + [rows[3]])
+        self.assertIn('toolu_queued_message_0001', self.returns())
+
+    def test_control_read_as_not_queued_it_takes_the_first_turns_answer(self):
+        rows, _ = self.session()
+        with mock.patch.object(self.capture, 'is_queued', lambda response: False):
+            self.feed(rows[:6])
+        back = self.returns()['toolu_queued_message_0001']
+        self.assertNotEqual(self.answer(back), self.LATER_ANSWER)
+
+
 class BackgroundTranscriptSettles(World):
     """Live control 1 found a background transcript with no usage row yet when SubagentStop fired.
 

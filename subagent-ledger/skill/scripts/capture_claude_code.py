@@ -16,7 +16,13 @@ What each event does:
     that agent id; otherwise the record says the message is addressed to something else. The return
     is written at that agent's next SubagentStop, as a background call's is. PostToolUse on
     SendMessage keeps the tool response for it; PostToolUseFailure writes a failed return.
-  * SubagentStart: a witness line, and a pending file keyed by the agent id.
+    A message the response says was queued for a running agent is answered by the turn it is
+    delivered in: its return is written at the first SubagentStop after the message appears in the
+    agent's transcript as delivered (a user row holding its text), with that turn's answer and
+    counters. Where the transcript cannot be read, it is written at the first stop of a turn that
+    started (SubagentStart) after the message was sent.
+  * SubagentStart: a witness line, and a pending file keyed by the agent id. Each message still
+    waiting for this agent's stop is marked as sent before a turn that started.
   * PostToolUse on Agent or Task, a foreground call: the return record. The tool response is the one
     payload carrying both the call id and the agent id. The model, the four counters and the
     isolation evidence are read from the subagent's own transcript, at the path SubagentStop stored
@@ -166,6 +172,8 @@ ABSENT_FROM_BRIEF = {
 # limit on that wait: the harness's own time-out on hooks is the only bound. This is how often it
 # re-reads.
 REREAD_SECONDS = 0.1
+# SendMessage's response to a message for a running agent, which the agent reads at its next tool round.
+QUEUED = re.compile(r'^Message queued for delivery\b')
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
 
@@ -329,6 +337,12 @@ def subagent_start(payload, folder, held):
         write_pending(folder, held.session, 'agent-' + held.agent_id, {
             'agent_id': held.agent_id, 'agent_type': payload.get('agent_type'),
             'started_at': ledger.now()})
+        # A turn has started after each message still waiting for this agent's stop: where the transcript
+        # cannot be read, a queued message's return is written at this turn's stop.
+        for name, data in read_resumes(folder, held.session, held.agent_id):
+            if not data.get('turn_started_after'):
+                data['turn_started_after'] = True
+                write_pending(folder, held.session, name, data)
 
 
 def post_agent(payload, folder, held):
@@ -509,7 +523,14 @@ def post_resume(payload, folder, held):
         if kept is None:
             return
         kept['tool_response'] = response
+        kept['queued'] = is_queued(response)
         write_pending(folder, held.session, 'resume-' + held.call_id, kept)
+
+
+def is_queued(response):
+    """Whether SendMessage's response says the message was queued for a running agent."""
+    said = response.get('message') if isinstance(response, dict) else None
+    return isinstance(said, str) and bool(QUEUED.match(said))
 
 
 def read_resumes(folder, session, agent):
@@ -573,7 +594,7 @@ def subagent_stop(payload, folder, held):
                 kept_for_return = True
         if join is None and not resumes:
             return
-        ending = background_ending(folder, held, agent, stop, turn_starter(join, resumes))
+        ending = background_ending(folder, held, agent, stop, turn_starter(join, resumes, kept_for_return))
         if join is not None:
             if not join.get('call_id'):
                 held.error(folder, 'payload', 'no pending join for background agent %s' % agent, record='return')
@@ -581,24 +602,96 @@ def subagent_stop(payload, folder, held):
                 write_background_return(folder, held, agent, stop, join, ending,
                                         [join['call_id'], 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
         for name, data in resumes:
+            own = ending
+            if data.get('queued'):
+                # A queued message is answered by the turn it is delivered in, which may be a later one.
+                own = queued_ending(ending, data)
+                if own is None:
+                    continue
             # The return removes the pending files for its call and its agent, except a stop file just kept
             # for a foreground call whose PostToolUse has not yet come.
             cleared = [data['call_id'], name, 'agent-' + agent]
             if not kept_for_return:
                 cleared.append('stop-' + agent)
-            write_background_return(folder, held, agent, stop, data, ending, cleared)
+            write_background_return(folder, held, agent, stop, data, own, cleared)
 
 
-def turn_starter(join, resumes):
-    """What started the turn this stop ends: ('dispatch', None) for a background dispatch, whose turn opens the
-    transcript; ('resume', <its message>) for the oldest message still waiting for a stop; None if neither is
+def turn_starter(join, resumes, foreground=False):
+    """What started the turn this stop ends: ('dispatch', None) for a background dispatch, or a foreground call
+    still waiting for its return, whose turn opens the transcript; ('resume', <its message>) for the oldest
+    message still waiting for a stop, a message to a stopped agent before a queued one; None if neither is
     known."""
-    if join is not None:
+    if join is not None or foreground:
         return ('dispatch', None)
-    for _, data in resumes:
+    ordered = [data for _, data in resumes if not data.get('queued')] + [data for _, data in resumes
+                                                                         if data.get('queued')]
+    for data in ordered:
         message = data.get('message')
         return ('resume', message) if isinstance(message, str) and message.strip() else None
     return None
+
+
+def queued_ending(ending, data):
+    """The ending a queued message's return is written with at this stop, or None where it waits for a later
+    stop.
+
+    Where the transcript can be read, the message has been delivered by this stop when a user row holding it
+    comes before the end of the request that holds this stop's answer; its return then takes this stop's
+    answer, and the counters of the turn it was delivered in, from the turn's first row to that request. The
+    turn begins after the last request before the user row that stopped for a reason other than tool_use, or
+    at the transcript's start. Where the transcript cannot be read, it is written at the first stop of a turn
+    that started after the message was sent."""
+    message = data.get('message')
+    rows = None
+    if ending['how'] not in ('no transcript', 'no path'):
+        try:
+            rows = transcripts.rows_of(ending['path'])
+        except OSError:
+            rows = None
+    if rows is None:
+        return ending if data.get('turn_started_after') else None
+    if not isinstance(message, str) or not message.strip():
+        return ending
+    delivered = turn_start(rows, ('resume', message))
+    end = ending['span'][1] if ending.get('span') else final_request_end(rows)
+    if delivered is None or end is None or delivered > end:
+        return None
+    return dict(ending, span=(turn_begun(rows, delivered), end))
+
+
+def turn_begun(rows, position):
+    """The first row of the turn that row `position` falls in: the row after the last request before it that
+    stopped for a reason other than tool_use, or 0."""
+    groups, order = {}, []
+    for at, row in enumerate(rows[:position]):
+        if transcripts._usage(row) is None:
+            continue
+        key = transcripts._group_key(row, at)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(at)
+    begun = 0
+    for key in order:
+        reasons = [(rows[at].get('message') or {}).get('stop_reason') for at in groups[key]]
+        stopped = [reason for reason in reasons if reason is not None]
+        if stopped and 'tool_use' not in stopped:
+            begun = groups[key][-1] + 1
+    return begun
+
+
+def final_request_end(rows):
+    """The last row of the transcript's final request, counted from 0, or None."""
+    groups, order = {}, []
+    for position, row in enumerate(rows):
+        if transcripts._usage(row) is None:
+            continue
+        key = transcripts._group_key(row, position)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(position)
+    return groups[order[-1]][-1] if order else None
 
 
 def background_ending(folder, held, agent, stop, turn=None):

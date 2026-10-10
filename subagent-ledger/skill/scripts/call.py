@@ -15,8 +15,14 @@ The return record reads:
   * from the envelope the harness prints (`gemini -o json`, `cursor-agent --output-format json`):
     the outcome and the four counters;
   * from the harness's own record of the run (Gemini CLI's chat under its configuration folder,
-    Cursor's chat store): the model, and the isolation evidence, which is the folder that record
-    names and every tool call's path or command outside it.
+    Cursor's chat store): the model, the isolation evidence, which is the folder that record
+    names and every tool call's path or command outside it, and the run's session id.
+
+The run is a whole agent session, so the records name it as `agent_id`: the dispatch reads
+`unrecorded (not yet returned)`, and the return carries the session id the run's own record names
+(the first row of the Gemini CLI chat; the Cursor chat store's meta.json), or
+`unrecorded (the run's own record names no session: <why>)`. A script's own single model request,
+which has no agent, reads `unrecorded (no agent: script call)`; this script never writes that.
 
 A non-zero exit, a sign-in prompt or a usage limit gives `failed`, its class read from reasons.json.
 The answer is printed on standard output. The exit code is 0 when the call was served or came back
@@ -52,7 +58,9 @@ import capture_claude_code as shared  # noqa: E402
 import ledger  # noqa: E402
 import transcripts  # noqa: E402
 
-NO_AGENT = 'unrecorded (no agent: script call)'
+NOT_YET = 'unrecorded (not yet returned)'
+NO_SESSION = "unrecorded (the run's own record names no session: %s)"
+NOT_REACHED = 'the run did not reach the harness'
 NO_CALLER = 'unrecorded (a call script cannot tell a lane from its parent)'
 NO_COST = 'unrecorded (the harness reports no cost for this route)'
 NO_EFFORT = 'unrecorded (a call script reads no effort level)'
@@ -68,6 +76,8 @@ HARNESSES = {
 }
 MODEL_NAME = re.compile(r'"modelName"\s*:\s*"([^"]+)"')
 STDERR_KEPT = 2000
+# The keys a Cursor chat store's meta.json could name its session under. The stores seen so far name none.
+CURSOR_SESSION_KEYS = ('sessionId', 'agentId')
 NO_TRANSCRIPT = 'unrecorded (a call script reads no transcript of its caller)'
 
 
@@ -79,7 +89,7 @@ class Held:
 
     def error(self, folder, stage, reason, record='unknown'):
         ledger.error(ledger=folder, stage=stage, reason=reason, session=self.session, call_id=self.call_id,
-                     agent_id=NO_AGENT, harness=self.harness, event='call.py', record=record)
+                     agent_id=NOT_YET, harness=self.harness, event='call.py', record=record)
 
 
 def kind_fields(folder, brief, held):
@@ -105,7 +115,7 @@ def main(argv=None):
     session, caller_harness = calling_session(args.session)
     call_id = str(uuid.uuid4())
     home, home_reason = harness_home(folder, args.harness)
-    base = {'call_id': call_id, 'session': session, 'agent_id': NO_AGENT, 'route': 'script',
+    base = {'call_id': call_id, 'session': session, 'agent_id': NOT_YET, 'route': 'script',
             'harness': caller_harness, 'caller': NO_CALLER}
 
     try:
@@ -152,6 +162,7 @@ def main(argv=None):
 
 def finish(folder, base, outcome, reason, payload, answer, **fields):
     record = dict(base)
+    record['agent_id'] = session_of_run(fields)
     record.update({'outcome': outcome, 'outcome_reason': reason, 'cost': NO_COST, 'effort': NO_EFFORT,
                    'spend_line': NO_SPEND, 'harness_payload': payload})
     for name in ('model', 'tokens', 'isolation'):
@@ -162,6 +173,12 @@ def finish(folder, base, outcome, reason, payload, answer, **fields):
     if isinstance(answer, str):
         sys.stdout.write(answer if answer.endswith('\n') or not answer else answer + '\n')
     return 0 if outcome in ('served', 'empty') else 1
+
+
+def session_of_run(fields):
+    """The run's session id as its own record names it, or why there is none. Never `no agent`."""
+    found = fields.get('agent_id')
+    return found if isinstance(found, str) and found else NO_SESSION % NOT_REACHED
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +317,7 @@ def read_gemini(envelope, home, work):
         why = 'unrecorded (the envelope names no session, so the chat cannot be found)'
         out['model'] = ', '.join(printed) or why
         out['isolation'] = why
+        out['agent_id'] = NO_SESSION % 'the envelope names no session, so the chat cannot be found'
         return out
     root = Path(home).expanduser() if home else Path.home()
     pattern = str(root / '.gemini' / 'tmp' / '*' / 'chats' / ('session-*-%s.jsonl' % glob.escape(session[:8])))
@@ -313,7 +331,9 @@ def read_gemini(envelope, home, work):
         why = 'unrecorded (no chat for session %s at %s)' % (session, pattern)
         out['model'] = ', '.join(printed) or why
         out['isolation'] = why
+        out['agent_id'] = NO_SESSION % ('no chat for session %s at %s' % (session, pattern))
         return out
+    out['agent_id'] = chat_rows[0]['sessionId']
     names, uses, seen = [], [], set()
     for row in chat_rows:
         for message in [row] + list((row.get('$set') or {}).get('messages') or []):
@@ -338,6 +358,17 @@ def read_gemini(envelope, home, work):
     return out
 
 
+def cursor_session(meta, error, store):
+    """The session id the chat store's meta.json names, or why it names none. The store's `meta` table, which
+    also holds its encryption key, is never read."""
+    for key in CURSOR_SESSION_KEYS:
+        if isinstance(meta.get(key), str) and meta[key]:
+            return meta[key]
+    if error:
+        return NO_SESSION % error
+    return NO_SESSION % ('%s carries none of %s' % (store / 'meta.json', ', '.join(CURSOR_SESSION_KEYS)))
+
+
 def read_cursor(envelope, config, work):
     """Counters from the printed usage; model and isolation from the chat store under CURSOR_CONFIG_DIR."""
     out = {}
@@ -354,6 +385,7 @@ def read_cursor(envelope, config, work):
     if not isinstance(session, str) or not session:
         why = 'unrecorded (the envelope names no session, so the chat store cannot be found)'
         out['model'], out['isolation'] = why, why
+        out['agent_id'] = NO_SESSION % 'the envelope names no session, so the chat store cannot be found'
         return out
     root = Path(config).expanduser() if config else Path.home() / '.cursor'
     pattern = str(root / 'chats' / '*' / glob.escape(session))
@@ -361,12 +393,18 @@ def read_cursor(envelope, config, work):
     if not found:
         why = 'unrecorded (no chat store for session %s at %s)' % (session, pattern)
         out['model'], out['isolation'] = why, why
+        out['agent_id'] = NO_SESSION % ('no chat store for session %s at %s' % (session, pattern))
         return out
     store = Path(found[0])
     try:
-        folder = json.loads((store / 'meta.json').read_text(encoding='utf-8')).get('cwd')
-    except (OSError, ValueError, AttributeError):
-        folder = None
+        meta = json.loads((store / 'meta.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        meta, meta_error = {}, '%s could not be read: %s' % (store / 'meta.json', exc)
+    else:
+        meta_error = None
+    meta = meta if isinstance(meta, dict) else {}
+    folder = meta.get('cwd')
+    out['agent_id'] = cursor_session(meta, meta_error, store)
     names, uses = [], []
     try:
         db = sqlite3.connect('file:%s?mode=ro' % (store / 'store.db'), uri=True)

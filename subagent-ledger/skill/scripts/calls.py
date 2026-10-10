@@ -13,7 +13,9 @@ the frame from the return record where there is one, and each selectable field f
 carries it. Where both records carry a field and one fills it while the other reads `unrecorded
 (<reason>)`, the row shows the filled value; where both fill it, the return's. A field the record names
 in `fields_not_chosen` prints `not chosen`; a field on and unfilled prints as the record holds it,
-`unrecorded (<reason>)`. Nothing is filled in. A return with no dispatch record still has its row, its
+`unrecorded (<reason>)`. A field neither record carries nor names, because the record was written
+before the field existed, prints `unrecorded (not on this record: written before the field existed)`,
+never null. Nothing is filled in. A return with no dispatch record still has its row, its
 dispatch side reading `unrecorded (no dispatch record)`.
 
 Each row also carries `labels`, joined from the session's label lines by `call_id`: `labelled_because`,
@@ -80,6 +82,7 @@ TOOLS_FILE = HERE / 'subagent-tools.json'
 PENDING = '.pending'
 
 NOT_CHOSEN = 'not chosen'
+NOT_ON_RECORD = 'unrecorded (not on this record: written before the field existed)'
 NO_DISPATCH_SIDE = 'unrecorded (no dispatch record)'
 NO_RETURN = 'no return record'
 NO_DISPATCH = 'no dispatch record'
@@ -194,11 +197,14 @@ def pending_cli(folder, session, call_id):
 # ---------------------------------------------------------------------------
 
 def field_value(record, name):
-    """A field as the record holds it, or `not chosen` where the record names it so."""
+    """A field as the record holds it, `not chosen` where the record names it so, or, where the record neither
+    carries nor names it, why: it was written before the field existed."""
     if record is None:
         return None
     if name in (record.get('fields_not_chosen') or []):
         return NOT_CHOSEN
+    if name not in record:
+        return NOT_ON_RECORD
     return record.get(name)
 
 
@@ -215,6 +221,8 @@ def shared_value(sent, back, name):
         return field_value(sent, name)
     value = field_value(back, name)
     if not is_filled(value) and value != NOT_CHOSEN and sent is not None and is_filled(field_value(sent, name)):
+        return field_value(sent, name)
+    if value == NOT_ON_RECORD and sent is not None:
         return field_value(sent, name)
     return value
 

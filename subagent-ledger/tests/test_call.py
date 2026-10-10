@@ -171,7 +171,8 @@ class CB3_6Gemini(World):
         self.assertEqual((dispatch['route'], back['route']), ('script', 'script'))
         self.assertEqual(dispatch['harness'], 'claude-code', 'the calling session\'s harness')
         self.assertEqual(dispatch['session'], 'test-session-0001')
-        self.assertEqual(back['agent_id'], 'unrecorded (no agent: script call)')
+        self.assertEqual(dispatch['agent_id'], 'unrecorded (not yet returned)')
+        self.assertEqual(back['agent_id'], '08ed128a-0052-4138-8e16-7ccd7152056d', 'the run\'s own session (revision 3.11)')
         seen = self.standin()[-1]
         self.assertEqual(seen['variable'], str(self.homes['gemini-cli']), 'the variable reached the child')
         self.assertNotEqual(seen['cwd'], str(self.caller))

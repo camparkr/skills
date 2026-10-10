@@ -134,12 +134,15 @@ class CF2OldRecord(test_calls.World):
 
     def test_c_f_2_a_field_written_before_it_existed_says_so(self):
         copy = self.old_ledger()
-        code, data, text = self.run_reader(ledger=copy)
+        code, data, _ = self.run_reader(ledger=copy)
         self.assertEqual(code, 0)
         row = data['calls'][0]
         for name in NEW_FIELDS:
             self.assertEqual(row[name], OLD_FIELD, name)
-        self.assertNotIn('null', text, 'no field prints as null')
+        for row in data['calls']:
+            nulls = [name for name, value in row.items() if value is None]
+            self.assertEqual(nulls, [], 'no field prints as null')
+        # A value held verbatim inside harness_payload is the harness's own and may be null; it is not a field.
 
     def test_c_f_2_a_field_named_not_chosen_still_prints_not_chosen(self):
         copy = self.old_ledger(keep_not_chosen=('act_kind',))
@@ -167,7 +170,7 @@ class CF2OldRecord(test_calls.World):
         with mock.patch.object(calls, 'field_value', as_before):
             _, data, text = self.run_reader(module=calls, ledger=copy)
         self.assertIsNone(data['calls'][0]['act_kind'], 'with the rule switched off the field prints null')
-        self.assertIn('null', text)
+        self.assertIn('"act_kind": null', text)
 
 
 if __name__ == '__main__':

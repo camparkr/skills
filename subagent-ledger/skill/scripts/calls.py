@@ -10,9 +10,16 @@ It prints one JSON object on standard output:
 
 `calls` holds one row per call, in dispatch order, merging the call's dispatch and return records:
 the frame from the return record where there is one, and each selectable field from the record that
-carries it. A field the record names in `fields_not_chosen` prints `not chosen`; a field on and
-unfilled prints as the record holds it, `unrecorded (<reason>)`. Nothing is filled in. A return with
-no dispatch record still has its row, its dispatch side reading `unrecorded (no dispatch record)`.
+carries it. Where both records carry a field and one fills it while the other reads `unrecorded
+(<reason>)`, the row shows the filled value; where both fill it, the return's. A field the record names
+in `fields_not_chosen` prints `not chosen`; a field on and unfilled prints as the record holds it,
+`unrecorded (<reason>)`. Nothing is filled in. A return with no dispatch record still has its row, its
+dispatch side reading `unrecorded (no dispatch record)`.
+
+Each row also carries `labels`, joined from the session's label lines by `call_id`: `failure_modes`,
+`likelihoods`, `cutoff`, `roster_revision`, `labeller_model` and `labelled_at` from the newest label line
+for the call, and `earlier`, the number of older ones. A call with no label line reads
+`unrecorded (no label line for this call)`.
 
 `absences` names each call, or each failed capture, the rows cannot show, with the witness lines
 (`SubagentStart`, `SubagentStop`) the ledger holds for its subagent:
@@ -26,6 +33,7 @@ no dispatch record still has its row, its dispatch side reading `unrecorded (no 
   * `record rejected: <reason>` and `write failed: <reason>`: an error line in capture-errors.jsonl
     naming the session. One naming a call with a row is listed beside that row, in place of the two
     above.
+  * `label for no call`: a label line whose `call_id` names no row.
   * `unattributed capture error`: an error line with no session, timed inside the session's span.
   * `record unattributed: <reason>`: a record in unattributed.jsonl, timed inside the session's span.
   * `<n> subagent dispatches in the transcript have no record`, or the reverse, from the count check.
@@ -78,6 +86,10 @@ UNATTRIBUTED_ERROR = 'unattributed capture error'
 NO_CALL = 'unrecorded (a count names no call)'
 NO_TRANSCRIPT = 'unrecorded (no transcript was given for this caller)'
 NO_AGENT_ROUTES = ('unrecorded (no agent: cli call)', 'unrecorded (no agent: script call)')
+NO_LABEL = 'unrecorded (no label line for this call)'
+LABEL_FOR_NO_CALL = 'label for no call'
+# What a row's `labels` shows of a label line, beside `earlier`.
+LABEL_FIELDS = ('failure_modes', 'likelihoods', 'cutoff', 'roster_revision', 'labeller_model', 'labelled_at')
 REJECTED_STAGES = ('payload', 'setting', 'validate', 'scrub', 'copy')
 SESSION_SHAPE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.:-]*$')
 FRAME = ('call_id', 'agent_id', 'session', 'dispatched_at', 'returned_at', 'outcome')
@@ -188,6 +200,46 @@ def field_value(record, name):
     return record.get(name)
 
 
+def is_filled(value):
+    """A value a record holds: neither absent, `not chosen`, nor `unrecorded (<reason>)`."""
+    if isinstance(value, str):
+        return not is_unrecorded(value)
+    return value is not None
+
+
+def shared_value(sent, back, name):
+    """A field both records may carry: the return's, unless only the dispatch fills it."""
+    if back is None:
+        return field_value(sent, name)
+    value = field_value(back, name)
+    if not is_filled(value) and value != NOT_CHOSEN and sent is not None and is_filled(field_value(sent, name)):
+        return field_value(sent, name)
+    return value
+
+
+def newest_label(lines):
+    """The newest of one call's label lines: the latest `labelled_at`, the later line among equals."""
+    stamped = [(parse_time(line.get('labelled_at')) or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc),
+                number, line) for number, line in enumerate(lines)]
+    return max(stamped, key=lambda item: (item[0], item[1]))[2]
+
+
+def labels_of(lines):
+    """A row's `labels`, from the call's label lines in the ledger's order."""
+    if not lines:
+        return NO_LABEL
+    newest = newest_label(lines)
+    shown = dict((name, newest.get(name)) for name in LABEL_FIELDS)
+    shown['earlier'] = len(lines) - 1
+    return shown
+
+
+def labels_for_no_call(labels, row_ids):
+    """An absence for each label line whose call has no row, in the ledger's order."""
+    return [{'call_id': call_id, 'reason': LABEL_FOR_NO_CALL, 'witnesses': []}
+            for call_id, lines in labels.items() if call_id not in row_ids for _line in lines]
+
+
 def row_of(sent, back):
     """One call's row from its dispatch record and its return record, either of which may be absent."""
     frame = back if back is not None else sent
@@ -204,7 +256,7 @@ def row_of(sent, back):
         elif name in ledger.RETURN_ONLY:
             row[name] = field_value(back if back is not None else sent, name)
         else:
-            row[name] = field_value(back if back is not None else sent, name)
+            row[name] = shared_value(sent, back, name)
     on = set()
     for record in (sent, back):
         if record is not None:
@@ -246,7 +298,7 @@ def order_key(row):
 
 def listing(session, folder, records, bad_lines, errors, unattributed, joins, since=None, until=None):
     """The output object, less the count check."""
-    sent, back, witness_lines = {}, {}, []
+    sent, back, witness_lines, labels = {}, {}, [], {}
     for record in records:
         kind = record.get('record')
         if kind == 'dispatch' and isinstance(record.get('call_id'), str):
@@ -255,10 +307,14 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
             back.setdefault(record['call_id'], record)
         elif kind == 'witness':
             witness_lines.append(record)
+        elif kind == 'label' and isinstance(record.get('call_id'), str):
+            labels.setdefault(record['call_id'], []).append(record)
 
     rows = [row_of(record, back.get(call_id)) for call_id, record in sent.items()]
     rows += [row_of(None, record) for record in orphan_returns(sent, back)]
     rows.sort(key=order_key)
+    for row in rows:
+        row['labels'] = labels_of(labels.get(row['call_id'], []))
 
     def agent_of(call_id):
         record = back.get(call_id)
@@ -298,6 +354,7 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
     for line in own_errors:
         if line.get('call_id') in named:
             absences.append(error_absence(line))
+    absences.extend(labels_for_no_call(labels, set(row_ids)))
 
     for number in bad_lines:
         absences.append({'call_id': 'unrecorded (the line could not be read)',

@@ -25,7 +25,9 @@ What each event does:
     the subagent is still running.
   * SubagentStop: a witness line. For a background call, and for each message sent to the agent, the
     return record, joined through the pending files; for a foreground call, the transcript path and
-    effort level are stored for the PostToolUse that follows.
+    effort level are stored for the PostToolUse that follows, while the call has no return record. A
+    further stop, after the agent's calls have their returns, writes its witness line and no pending
+    file. Writing a return removes the pending files for its call and its agent.
   * PreToolUse on Bash (the shell tool subagent-tools.json names): a dispatch record, route cli, when
     the command matches cli-patterns.json.
   * PostToolUse on Bash: the return record for a matched command, which exited 0. Claude Code sends
@@ -40,8 +42,13 @@ A background return waits until the subagent's own transcript shows it has ended
 no limit of its own; the harness's time-out on hooks is the only bound. It has ended at the first of:
 its final request stopped for a reason other than tool_use and holds the answer SubagentStop reports;
 its final request is a call to one of the harness's hand-back tools (subagent-tools.json), whose
-input at the tool's answer key is then the answer; or the transcript does not exist when SubagentStop
-fires, so the harness kept none, and the model and counters read that it kept none. The wait is
+input at the tool's answer key is then the answer; the transcript does not exist when SubagentStop
+fires, so the harness kept none, and the model and counters read that it kept none; or the answer
+SubagentStop reports appears in a request after the one that preceded this stop's turn. That last
+covers a stop read after the agent was resumed, when the resumed run is already in the same file.
+The turn is found by what started it: a background dispatch's turn opens the transcript, and a
+message's turn starts at the user row holding that message. The model, the counters and the
+isolation evidence are then that turn's, ending at the request that holds the answer. The wait is
 recorded as `tokens.read_after_seconds`.
 
 The brief's frontmatter gives `persona-name`, `act_kind`, `user_answer` and `task`, each at the key of
@@ -430,8 +437,8 @@ def agent_known(folder, session, agent):
     return False
 
 
-def agent_called(folder, session, agent):
-    """(whether a dispatch or return record in the session's ledger names this agent id, the read error).
+def agent_called(folder, session, agent, records=('dispatch', 'return')):
+    """(whether a record of a kind in `records` in the session's ledger names this agent id, the read error).
 
     Witness lines are not counted: a witness names an agent whether or not its call was recorded. The read
     error is None when the ledger was read, or holds no file yet."""
@@ -449,7 +456,7 @@ def agent_called(folder, session, agent):
             row = json.loads(line)
         except ValueError:
             continue
-        if isinstance(row, dict) and row.get('agent_id') == agent and row.get('record') in ('dispatch', 'return'):
+        if isinstance(row, dict) and row.get('agent_id') == agent and row.get('record') in records:
             return True, None
     return False, None
 
@@ -488,7 +495,7 @@ def pre_resume(payload, folder, held):
         if known:
             write_pending(folder, held.session, 'resume-' + held.call_id, {
                 'call_id': held.call_id, 'agent_id': to, 'dispatched_at': at,
-                'caller': fields['caller']})
+                'caller': fields['caller'], 'message': message})
     ledger.dispatch(ledger=folder, brief=message or None, **fields)
 
 
@@ -539,6 +546,7 @@ def subagent_stop(payload, folder, held):
             # record, but an error line, since a call may truly be missing.
             called, unread = agent_called(folder, held.session, agent)
             if called:
+                clear_pending(folder, held.session, ['agent-' + agent, 'stop-' + agent])
                 return
             if unread:
                 held.error(folder, 'payload', 'no pending join for background agent %s, and the ledger could '
@@ -547,15 +555,23 @@ def subagent_stop(payload, folder, held):
                 held.error(folder, 'payload', 'no pending join for background agent %s: its PostToolUse '
                            'was not seen, so the return cannot be joined to a call' % agent, record='return')
             return
+        kept_for_return = False
         if join is None and not background:
-            # A foreground call: keep what the PostToolUse that follows needs; never the answer text.
-            kept = dict(stop)
-            kept.pop('last_assistant_message', None)
-            kept.pop('payload', None)
-            write_pending(folder, held.session, 'stop-' + agent, kept)
+            # A foreground call: keep what the PostToolUse that follows needs, never the answer text, but only
+            # while the agent's call has no return record. A further stop after that return writes its witness
+            # line above and no pending file, and the agent's own pending files go.
+            returned, unread = agent_called(folder, held.session, agent, records=('return',))
+            if returned and not unread:
+                clear_pending(folder, held.session, ['agent-' + agent, 'stop-' + agent])
+            else:
+                kept = dict(stop)
+                kept.pop('last_assistant_message', None)
+                kept.pop('payload', None)
+                write_pending(folder, held.session, 'stop-' + agent, kept)
+                kept_for_return = True
         if join is None and not resumes:
             return
-        ending = background_ending(folder, held, agent, stop)
+        ending = background_ending(folder, held, agent, stop, turn_starter(join, resumes))
         if join is not None:
             if not join.get('call_id'):
                 held.error(folder, 'payload', 'no pending join for background agent %s' % agent, record='return')
@@ -563,12 +579,30 @@ def subagent_stop(payload, folder, held):
                 write_background_return(folder, held, agent, stop, join, ending,
                                         [join['call_id'], 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
         for name, data in resumes:
-            write_background_return(folder, held, agent, stop, data, ending, [data['call_id'], name])
+            # The return removes the pending files for its call and its agent, except a stop file just kept
+            # for a foreground call whose PostToolUse has not yet come.
+            cleared = [data['call_id'], name, 'agent-' + agent]
+            if not kept_for_return:
+                cleared.append('stop-' + agent)
+            write_background_return(folder, held, agent, stop, data, ending, cleared)
 
 
-def background_ending(folder, held, agent, stop):
+def turn_starter(join, resumes):
+    """What started the turn this stop ends: ('dispatch', None) for a background dispatch, whose turn opens the
+    transcript; ('resume', <its message>) for the oldest message still waiting for a stop; None if neither is
+    known."""
+    if join is not None:
+        return ('dispatch', None)
+    for _, data in resumes:
+        message = data.get('message')
+        return ('resume', message) if isinstance(message, str) and message.strip() else None
+    return None
+
+
+def background_ending(folder, held, agent, stop, turn=None):
     """How the subagent's run ended, read from its transcript once it shows the end: the answer, how it
-    was read, and the transcript's path. Called under the pending lock."""
+    was read, the transcript's path, and the rows of this stop's turn where the end was read within a turn.
+    Called under the pending lock."""
     payload = stop.get('payload') or {}
     answer = stop.get('last_assistant_message')
     answer = answer if isinstance(answer, str) else ''
@@ -577,10 +611,10 @@ def background_ending(folder, held, agent, stop):
         if payload:
             held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = transcripts.lane_path(held.session, agent)
-    answer, how = wait_for_end(path, answer, handback_tools(HARNESS))
+    answer, how, span = wait_for_end(path, answer, handback_tools(HARNESS), turn)
     if how != 'handback' and 'last_assistant_message' not in payload and payload:
         held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
-    return {'answer': answer, 'how': how, 'path': path,
+    return {'answer': answer, 'how': how, 'path': path, 'span': span,
             'seconds': round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)}
 
 
@@ -612,7 +646,7 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
     if ending['how'] == 'no transcript':
         fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT})
     else:
-        fields.update(from_transcript(ending['path'], response.get('resolvedModel'), None))
+        fields.update(from_transcript(ending['path'], response.get('resolvedModel'), None, ending.get('span')))
     if isinstance(fields.get('tokens'), dict):
         fields['tokens']['read_after_seconds'] = ending['seconds']
     kept = dict(payload)
@@ -624,24 +658,94 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
     clear_pending(folder, held.session, cleared)
 
 
-def wait_for_end(path, answer, handbacks):
-    """(the answer, how the run's end was read), once the transcript shows the subagent has ended.
+def wait_for_end(path, answer, handbacks, turn=None):
+    """(the answer, how the run's end was read, the rows of the turn or None), once the transcript shows the
+    subagent has ended.
 
     It re-reads the transcript with no limit of its own, and ends at the first of: the transcript does
     not exist (`no transcript`), so the harness kept none; the final request is a call to a hand-back
     tool (`handback`), whose input at its answer key is the answer; the final request stopped for a
-    reason other than tool_use and holds `answer` (`text`). With no path to read it returns at once
-    (`no path`).
+    reason other than tool_use and holds `answer` (`text`); or `answer` appears in a request after the
+    one that preceded this stop's turn (`turn`), as when the agent was resumed and its later run is
+    already in the file. Then the third value is (first row, last row) of the turn, ending with the
+    request that holds the answer, so the counters are that turn's and not the later run's. `turn` says
+    what started the turn (see turn_starter); with none, that last check is not made. With no path to
+    read it returns at once (`no path`).
     """
     if not path:
-        return answer, 'no path'
+        return answer, 'no path', None
     if not os.path.exists(str(path)):
-        return answer, 'no transcript'
+        return answer, 'no transcript', None
     while True:
         found = transcript_end(path, answer, handbacks)
         if found is not None:
-            return found
+            return found + (None,)
+        span = answer_in_turn(path, answer, turn)
+        if span is not None:
+            return answer, 'turn', span
         time.sleep(REREAD_SECONDS)
+
+
+def turn_start(rows, turn):
+    """The row that starts the turn, counted from 0, or None where it is not found. A dispatch's turn opens
+    the transcript. A resume's turn starts at the first user row whose own text holds its message."""
+    if turn is None:
+        return None
+    kind, message = turn
+    if kind == 'dispatch':
+        return 0
+    wanted = message.strip()
+    for position, row in enumerate(rows):
+        if row.get('type') != 'user':
+            continue
+        content = (row.get('message') or {}).get('content')
+        if isinstance(content, str):
+            said = content
+        elif isinstance(content, list):
+            said = '\n'.join(part.get('text', '') for part in content
+                             if isinstance(part, dict) and part.get('type') == 'text'
+                             and isinstance(part.get('text'), str))
+        else:
+            continue
+        if wanted in said:
+            return position
+    return None
+
+
+def answer_in_turn(path, answer, turn):
+    """(first row, last row) of the turn when a request after the one that preceded the turn holds `answer`
+    in its text, else None. The last row is the last of that request's rows."""
+    wanted = (answer or '').strip()
+    if not wanted or turn is None:
+        return None
+    try:
+        rows = transcripts.rows_of(path)
+    except OSError:
+        return None
+    start = turn_start(rows, turn)
+    if start is None:
+        return None
+    groups, order = {}, []
+    for position, row in enumerate(rows):
+        if transcripts._usage(row) is None:
+            continue
+        key = transcripts._group_key(row, position)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(position)
+    for key in order:
+        if groups[key][0] < start:
+            continue
+        said = []
+        for position in groups[key]:
+            content = (rows[position].get('message') or {}).get('content')
+            if isinstance(content, list):
+                said.extend(part.get('text', '') for part in content
+                            if isinstance(part, dict) and isinstance(part.get('text'), str))
+        if wanted in '\n'.join(said):
+            return (start, groups[key][-1])
+    return None
 
 
 def final_request(path):
@@ -728,12 +832,13 @@ def effort_from_stop(stop):
     return stop.get('effort') or 'unrecorded (effort.level absent from SubagentStop)'
 
 
-def from_transcript(path, resolved, usage):
-    """model, tokens and isolation from the subagent's transcript; the checks beside them."""
+def from_transcript(path, resolved, usage, span=None):
+    """model, tokens and isolation from the subagent's transcript, or from one turn of it where `span` names
+    that turn's rows; the checks beside them."""
     if not path:
         why = 'unrecorded (the subagent transcript was not found)'
         return {'model': why, 'tokens': why, 'isolation': why}
-    reading = transcripts.read(path)
+    reading = transcripts.read(path, span)
     if reading['error']:
         why = 'unrecorded (%s)' % reading['error']
         return {'model': why, 'tokens': why, 'isolation': why}

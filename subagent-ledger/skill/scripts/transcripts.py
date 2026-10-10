@@ -122,8 +122,11 @@ def _group_key(row, position):
     return 'row-%d' % position
 
 
-def read(path):
-    """The reading of one transcript, as a dict. A file that cannot be read gives `error`."""
+def read(path, span=None):
+    """The reading of one transcript, as a dict. A file that cannot be read gives `error`.
+
+    With `span`, (first row, last row) counted from 0, only those rows of a Claude Code transcript are read: one
+    turn of a subagent that was resumed later in the same file."""
     reading = {'path': str(path), 'rows': 0, 'requests': 0, 'model': None, 'models': [],
                'tokens': None, 'last_request': None, 'cwd': None, 'tool_uses': [], 'error': None,
                'harness': 'claude-code'}
@@ -132,6 +135,9 @@ def read(path):
     except OSError as exc:
         reading['error'] = 'the transcript could not be read: %s' % exc
         return reading
+    if span is not None and not is_codex(rows):
+        rows = rows[span[0]:span[1] + 1]
+        reading['span'] = list(span)
     reading['rows'] = len(rows)
     if is_codex(rows):
         return read_codex(path, rows, reading)

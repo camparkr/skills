@@ -253,6 +253,77 @@ class FurtherStop(World):
         self.assertEqual(len(reasons), 1, reasons)
         self.assertIn('could not be read to find an earlier call to it: PermissionError: planted', reasons[0])
 
+class StopAfterResume(World):
+    """A stop read after the agent was resumed, when the resumed run is already in the same transcript: its
+    final request is not this stop's. The wait still ends, and the counters are this stop's turn's."""
+
+    LATER = [{'type': 'user', 'message': {'role': 'user', 'content': 'Go on, please.'}},
+             {'type': 'assistant', 'message': {
+                 'id': 'msg_later_run', 'role': 'assistant', 'model': 'claude-haiku-5-5', 'stop_reason': 'end_turn',
+                 'content': [{'type': 'text', 'text': 'A later answer.'}],
+                 'usage': {'input_tokens': 7, 'cache_creation_input_tokens': 11, 'cache_read_input_tokens': 13,
+                           'output_tokens': 17}}}]
+
+    def resumed(self):
+        rows = self.events('background-events.jsonl')
+        path = self.place_transcript('background-agent.jsonl', rows)
+        first = self.transcripts.read(path)['tokens']
+        with open(path, 'a', encoding='utf-8') as handle:
+            for row in self.LATER:
+                handle.write(json.dumps(row) + '\n')
+        return rows, first
+
+    def feed_once(self, rows):
+        """Feed the rows with the wait's sleep made to stop the capture; returns how often it slept."""
+        slept = []
+
+        def sleep(seconds):
+            slept.append(seconds)
+            raise KeyboardInterrupt('the wait did not end at its first look')
+
+        with mock.patch.object(self.capture.time, 'sleep', sleep):
+            try:
+                self.feed(rows)
+            except KeyboardInterrupt:
+                pass
+        return slept
+
+    def test_the_first_turn_is_read_though_a_resumed_run_follows_it(self):
+        rows, first = self.resumed()
+        self.assertEqual(self.feed_once(rows), [])
+        back = self.records()[-1]
+        self.assertEqual(back['record'], 'return')
+        self.assertEqual(dict((k, back['tokens'][k]) for k in first), first)
+        self.assertEqual(self.errors(), [])
+
+    def test_control_without_the_turn_check_the_wait_does_not_end(self):
+        rows, first = self.resumed()
+        with mock.patch.object(self.capture, 'answer_in_turn', lambda *a: None):
+            self.assertNotEqual(self.feed_once(rows), [])
+        self.assertNotIn('return', [line['record'] for line in self.records()])
+
+
+class PendingSwept(World):
+    """A stop keeps a pending file only while its agent's call has no return record, and a return takes the
+    pending files for its call and agent with it."""
+
+    def pending(self):
+        return sorted(p.name for p in (self.ledger / '.pending').rglob('*.json'))
+
+    def test_a_foreground_call_stopped_twice_leaves_no_pending_file(self):
+        rows = self.foreground()
+        self.feed(rows + [rows[1], rows[2]])
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.errors(), [])
+
+    def test_a_background_call_stopped_twice_leaves_no_pending_file(self):
+        rows = self.events('background-events.jsonl')
+        self.place_transcript('background-agent.jsonl', rows)
+        starts = [row for row in rows if row['event'] == 'SubagentStart']
+        self.feed(rows + starts + [rows[-1]])
+        self.assertEqual(self.pending(), [])
+
+
 class BackgroundTranscriptSettles(World):
     """Live control 1 found a background transcript with no usage row yet when SubagentStop fired.
 

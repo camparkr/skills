@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Codex's capture: each hook event on `spawn_agent` runs it, and it writes the call records through ledger.py.
+"""Codex's capture: each hook event on `spawn_agent` and on its shell tool runs it, and it writes the call
+records through ledger.py.
 
     python3 capture_codex.py <event> [--ledger <folder>]
 
@@ -23,6 +24,16 @@ What each event does (Codex 0.142.5, as observed):
     no limit on the wait beyond the harness's own time-out on hooks. The model, the
     four counters, the effort and the isolation evidence come from the rollout; the answer from
     `last_assistant_message`.
+  * PreToolUse on the shell tool subagent-tools.json names (`exec_command`): a dispatch record, route
+    cli, when the command (`tool_input.cmd`, or `command`) matches cli-patterns.json, as the Claude
+    Code capture's shell route does. A command that makes no model call writes nothing.
+  * PostToolUse on the shell tool: the matched command's return record. Codex sends no separate event
+    for a command that fails: its exit code is read from the tool response, an object's `exit_code`
+    or the text's 'Process exited with code <n>', and a non-zero code is a failed call.
+
+The shell tool's payloads were reconstructed from a rollout's `exec_command` rows, since Codex runs
+no hook it does not trust; the shapes read here are those rows' (the tool name, `cmd` and `workdir`
+in the input, the output text).
 
 A failure at any stage writes one error line through ledger.error(), naming the session, call id and
 event read from the raw payload before anything else.
@@ -32,6 +43,8 @@ import contextlib
 import io
 import json
 import os
+import re
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -52,6 +65,7 @@ NOT_A_SCRIPT = 'unrecorded (not a call script)'
 ON_DISPATCH_BRIEF = shared.ON_DISPATCH_BRIEF
 # How often the rollout is re-read while its last turn has not ended. No limit is set on the wait.
 REREAD_SECONDS = 0.1
+EXIT_LINE = re.compile(r'Process exited with code (-?\d+)')
 _ARRIVAL = {}
 
 
@@ -129,6 +143,10 @@ def _route(event, payload, folder, held):
         return pre_spawn(payload, folder, held)
     if event == 'PostToolUse' and tool in SUBAGENT_TOOLS:
         return post_spawn(payload, folder, held)
+    if event == 'PreToolUse' and tool in shared.shell_tools(HARNESS):
+        return pre_shell(payload, folder, held)
+    if event == 'PostToolUse' and tool in shared.shell_tools(HARNESS):
+        return post_shell(payload, folder, held)
     if event == 'SubagentStart':
         return subagent_start(payload, folder, held)
     if event == 'SubagentStop':
@@ -188,6 +206,54 @@ def pre_spawn(payload, folder, held):
                              {'call_id': held.call_id, 'dispatched_at': at})
     ledger.dispatch(ledger=folder, brief=brief or None, prompt=message if source and message else None,
                     **fields)
+
+
+def command_of(payload):
+    """The shell command a payload carries: `tool_input.cmd` or `command`, a string or an argument list."""
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    command = given.get('cmd') if given.get('cmd') is not None else given.get('command')
+    if isinstance(command, list) and all(isinstance(word, str) for word in command):
+        if len(command) >= 3 and command[1] in ('-c', '-lc'):
+            return command[2]
+        return ' '.join(shlex.quote(word) for word in command)
+    return command if isinstance(command, str) else None
+
+
+def shell_output(response):
+    """(the command's output, its exit code or None) from the shell tool's response."""
+    if isinstance(response, dict):
+        code = response.get('exit_code', response.get('exitCode'))
+        for key in ('output', 'aggregated_output', 'stdout', 'formatted_output'):
+            if isinstance(response.get(key), str):
+                return response[key], code if isinstance(code, int) else None
+        return json.dumps(response, ensure_ascii=False), code if isinstance(code, int) else None
+    if not isinstance(response, str):
+        return '', None
+    found = EXIT_LINE.search(response)
+    code = int(found.group(1)) if found else None
+    output = response.split('\nOutput:\n', 1)[1] if '\nOutput:\n' in response else response
+    return output, code
+
+
+def pre_shell(payload, folder, held):
+    shared.cli_dispatch(folder, held, command_of(payload), common(payload, route='cli'), payload, HARNESS,
+                        auth_route, 'PreToolUse')
+
+
+def post_shell(payload, folder, held):
+    raw = payload.get('tool_response')
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            parsed = None
+        raw = parsed if isinstance(parsed, dict) else raw
+    output, code = shell_output(raw)
+    kept = dict(payload)
+    if isinstance(raw, str) and '\nOutput:\n' in raw:
+        # Split so the output, which is the answer, is moved to its file like any other answer.
+        kept['tool_response'] = {'header': raw.split('\nOutput:\n', 1)[0], 'output': output}
+    shared.cli_return(folder, held, common(payload, route='cli'), command_of(payload), output, code, kept)
 
 
 def store_join(folder, session, agent, data):
@@ -276,7 +342,7 @@ def subagent_stop(payload, folder, held):
 
 
 def wait_for_rollout(path, answer):
-    """Re-read the rollout until it holds the answer and the counter row after it (§3e).
+    """Re-read the rollout until it holds the answer and the counter row after it.
 
     No limit of the capture's own: the harness's time-out on hooks is the only bound.
     """

@@ -1,6 +1,6 @@
 """Tests for Codex's capture, `skill/scripts/capture_codex.py`, and the Codex half of `transcripts.py`.
 
-Controls C-B3-1, C-B3-2 (the reader's half), C-B3-3 and the Codex half of C-B3-9. Each has a half
+Each control has a half
 that runs on the code as built and must pass, and a half that switches one part off by a patch in
 this file and shows the fault. Before the capture existed every test here failed, because the module
 it loads was missing.
@@ -132,7 +132,7 @@ class World(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-1: dry run 3's four payloads give one dispatch, two witnesses and one return
+# Four recorded payloads give one dispatch, two witnesses and one return
 # ---------------------------------------------------------------------------
 
 class CB3_1Dispatch(World):
@@ -217,7 +217,7 @@ class CB3_1AllFields(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-2: the reader takes the last cumulative value, not a sum
+# The reader takes the last cumulative value, not a sum
 # ---------------------------------------------------------------------------
 
 class CB3_2Reader(unittest.TestCase):
@@ -266,7 +266,7 @@ class CB3_2Reader(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-3: the rollout is incomplete at SubagentStop, so the read waits on its content
+# The rollout is incomplete at SubagentStop, so the read waits on its content
 # ---------------------------------------------------------------------------
 
 def split_before_last_token_count(text):
@@ -302,7 +302,7 @@ class CB3_3Wait(World):
     def test_c_b3_3_the_observed_split_is_read_at_once_and_in_full(self):
         # When SubagentStop fired, the rollout already held the answer and its counter row; only
         # task_complete was missing, and Codex writes that after the hook returns. Waiting for it
-        # would never end (the B3 live run), so the read must not.
+        # would never end, so the read must not.
         rows = self.events('p1-events.jsonl')
         self.place(rows, 'p1-agent-rollout-at-stop.jsonl')
         self.feed(rows)
@@ -342,7 +342,7 @@ class CB3_3Wait(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-9: bad input exits 0, prints nothing and leaves one error line
+# Bad input exits 0, prints nothing and leaves one error line
 # ---------------------------------------------------------------------------
 
 class CB3_9BadInput(World):

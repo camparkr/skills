@@ -8,7 +8,7 @@ x-component:
   name: commands
   type: engine
   lifecycle: planned
-  runtime: 'imported by the Claude Code capture and the command sorter'
+  runtime: 'imported by the Claude Code capture'
   secrets: []
   gcs: {reads: [], writes: []}
   external-apis:

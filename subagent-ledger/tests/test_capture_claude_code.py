@@ -1,6 +1,6 @@
 """Tests for Claude Code's capture, `skill/scripts/capture_claude_code.py`, and its transcript reader.
 
-Controls C-B2-1 to C-B2-10 each have two halves. One runs on the capture as built and must pass. The
+Each control has two halves. One runs on the capture as built and must pass. The
 other switches one part of the capture off, by a patch in this file, and checks that the fault then
 shows: a control that cannot fail proves nothing. Before the capture existed every test here failed,
 because the module it loads was missing.
@@ -144,7 +144,7 @@ class World(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-1: a foreground call
+# A foreground call
 # ---------------------------------------------------------------------------
 
 class CB2_1Foreground(World):
@@ -185,7 +185,7 @@ class CB2_1Foreground(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-2: a background call
+# A background call
 # ---------------------------------------------------------------------------
 
 class CB2_2Background(World):
@@ -252,7 +252,7 @@ class BackgroundTranscriptSettles(World):
 
 
 # ---------------------------------------------------------------------------
-# B2 rework: R-B2-1, a background call read once its transcript holds the answer
+# A background call read once its transcript holds the answer
 # ---------------------------------------------------------------------------
 
 L1_FULL = {'input': 4, 'cache_write': 31384, 'cache_read': 28892, 'output': 86}
@@ -308,7 +308,7 @@ class CRB2_1WaitOnContent(World):
 
 
 # ---------------------------------------------------------------------------
-# B2 rework: R-B2-2, R-B2-3 and R-B2-5
+# A failed subagent call, and the command-line route's failures
 # ---------------------------------------------------------------------------
 
 class CRB2_2AgentFailure(World):
@@ -363,7 +363,7 @@ class CRB2_5RelativeBrief(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-3: streamed rows grouped by message id
+# Streamed rows grouped by message id
 # ---------------------------------------------------------------------------
 
 class CB2_3Streamed(unittest.TestCase):
@@ -383,7 +383,7 @@ class CB2_3Streamed(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-4: the hook's usage disagrees with the transcript's last request
+# The hook's usage disagrees with the transcript's last request
 # ---------------------------------------------------------------------------
 
 class CB2_4CounterCheck(World):
@@ -410,7 +410,7 @@ class CB2_4CounterCheck(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-5: no credential value under the ledger
+# No credential value under the ledger
 # ---------------------------------------------------------------------------
 
 class CB2_5Credential(World):
@@ -442,7 +442,7 @@ class CB2_5Credential(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-6: bad input never stops the hook
+# Bad input never stops the hook
 # ---------------------------------------------------------------------------
 
 class CB2_6BadInput(World):
@@ -475,7 +475,7 @@ class CB2_6BadInput(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-7: the Bash route
+# The Bash route
 # ---------------------------------------------------------------------------
 
 class CB2_7Shell(World):
@@ -539,7 +539,7 @@ class CB2_7Shell(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-8: briefs named by path, and inline
+# Briefs named by path, and inline
 # ---------------------------------------------------------------------------
 
 class CB2_8Brief(World):
@@ -573,7 +573,7 @@ class CB2_8Brief(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-9: the optional fields from the brief's frontmatter
+# The optional fields from the brief's frontmatter
 # ---------------------------------------------------------------------------
 
 BRIEF_WITH_FRONTMATTER = """---
@@ -627,7 +627,7 @@ class CB2_9Optional(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B2-10: isolation evidence
+# Isolation evidence
 # ---------------------------------------------------------------------------
 
 class CB2_10Isolation(unittest.TestCase):
@@ -702,7 +702,7 @@ class ProbeFindings(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-8: a `claude -p` call through Bash reads its counters from its own transcript
+# A `claude -p` call through Bash reads its counters from its own transcript
 # ---------------------------------------------------------------------------
 
 INNER_SESSION = '005d0379-66fe-45ea-96d8-d013ce25b6b1'

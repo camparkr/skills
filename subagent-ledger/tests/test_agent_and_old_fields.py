@@ -1,13 +1,13 @@
-"""Controls C-F-1 and C-F-2, public half: call.py's records carry an agent, and the reader names an old record's gaps.
+"""Controls: call.py's records carry an agent, and the reader names an old record's gaps.
 
-C-F-1. A call made through call.py runs a whole agent session, so its records carry that run's session id as
+A call made through call.py runs a whole agent session, so its records carry that run's session id as
 `agent_id`: the dispatch reads `unrecorded (not yet returned)`, and the return carries the id the run's own record
 names, or `unrecorded (the run's own record names no session: <why>)`. Neither ever reads
 `unrecorded (no agent: script call)`, which stays the wording of a script's own single model request. Stand-in
 harnesses, as in test_call.py: the Gemini CLI stand-in writes a chat whose first row names a session; the Cursor
 stand-in writes a chat store whose meta.json names none; a failed run writes no record at all.
 
-C-F-2. A record written before a field existed neither carries it nor names it in `fields_not_chosen`. The reader
+A record written before a field existed neither carries it nor names it in `fields_not_chosen`. The reader
 prints such a field as `unrecorded (not on this record: written before the field existed)`, never null. The old
 record here is the l1 session's call, written by the capture from its recorded hook payloads, with `act_kind` and
 `user_answer` taken out of both records and their field lists, as a record written before those fields reads.
@@ -38,7 +38,7 @@ NEW_FIELDS = ('act_kind', 'user_answer')
 
 
 # ---------------------------------------------------------------------------
-# C-F-1: call.py has an agent
+# Call.py has an agent
 # ---------------------------------------------------------------------------
 
 class CF1CallHasAnAgent(test_call.World):
@@ -101,7 +101,7 @@ class CF1CallHasAnAgent(test_call.World):
 
 
 # ---------------------------------------------------------------------------
-# C-F-2: the reader names an old record's missing field
+# The reader names an old record's missing field
 # ---------------------------------------------------------------------------
 
 def as_written_before(record, names=NEW_FIELDS):
@@ -153,7 +153,7 @@ class CF2OldRecord(test_calls.World):
     def test_c_f_2_a_field_carried_unrecorded_still_prints_as_carried(self):
         copy = self.old_ledger()
         _, data, _ = self.run_reader(ledger=copy)
-        self.assertEqual(data['calls'][0]['effort_assigned'], 'unrecorded (no triage: slice B7 not built)')
+        self.assertEqual(data['calls'][0]['effort_assigned'], 'unrecorded (no triage ran)')
 
     def test_c_f_2_control_switched_off_the_field_prints_null(self):
         copy = self.old_ledger()

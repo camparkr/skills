@@ -11,6 +11,11 @@ What each event does:
 
   * PreToolUse on Agent or Task: the dispatch record. A pending file,
     <ledger>/.pending/<session>/<tool_use_id>.json, holds what the return needs.
+  * PreToolUse on SendMessage, which resumes a subagent or sends it a message: a dispatch record, route
+    subagent, the message as its brief. Its agent is the one `to` names when the ledger already holds
+    that agent id; otherwise the record says the message is addressed to something else. The return
+    is written at that agent's next SubagentStop, as a background call's is. PostToolUse on
+    SendMessage keeps the tool response for it; PostToolUseFailure writes a failed return.
   * SubagentStart: a witness line, and a pending file keyed by the agent id.
   * PostToolUse on Agent or Task, a foreground call: the return record. The tool response is the one
     payload carrying both the call id and the agent id. The model, the four counters and the
@@ -18,10 +23,11 @@ What each event does:
     or at <CLAUDE_CONFIG_DIR or ~/.claude>/projects/*/<session>/subagents/agent-<id>.jsonl.
   * PostToolUse on Agent or Task, a background call: only the join of call id to agent id, since
     the subagent is still running.
-  * SubagentStop: a witness line. For a background call, the return record, joined through the
-    pending files; for a foreground call, the transcript path and effort level are stored for the
-    PostToolUse that follows.
-  * PreToolUse on Bash: a dispatch record, route cli, when the command matches cli-patterns.json.
+  * SubagentStop: a witness line. For a background call, and for each message sent to the agent, the
+    return record, joined through the pending files; for a foreground call, the transcript path and
+    effort level are stored for the PostToolUse that follows.
+  * PreToolUse on Bash (the shell tool subagent-tools.json names): a dispatch record, route cli, when
+    the command matches cli-patterns.json.
   * PostToolUse on Bash: the return record for a matched command, which exited 0. Claude Code sends
     a command that exits non-zero to PostToolUseFailure instead, which writes a failed return. Where
     the command printed a `claude -p --output-format json` envelope naming its session, the inner
@@ -30,8 +36,18 @@ What each event does:
     A transcript that is absent, or that does not carry the envelope's result, leaves each of them
     unrecorded, saying why.
 
-Every dispatch record carries `act_kind`, the kind of act the call performs: the brief's frontmatter
-at the key `config.json`'s `frontmatter` names for `act_kind`, translated through the file its
+A background return waits until the subagent's own transcript shows it has ended, re-reading it with
+no limit of its own; the harness's time-out on hooks is the only bound. It has ended at the first of:
+its final request stopped for a reason other than tool_use and holds the answer SubagentStop reports;
+its final request is a call to one of the harness's hand-back tools (subagent-tools.json), whose
+input at the tool's answer key is then the answer; or the transcript does not exist when SubagentStop
+fires, so the harness kept none, and the model and counters read that it kept none. The wait is
+recorded as `tokens.read_after_seconds`.
+
+The brief's frontmatter gives `persona-name`, `act_kind`, `user_answer` and `task`, each at the key of
+the same name unless `config.json`'s `frontmatter` map names another; a map replaces a default key by
+key. Every dispatch record carries `act_kind`, the kind of act the call performs: the brief's value,
+translated through the file `config.json`'s
 `kind_names` names (each kind in kinds.json to the value a brief gives for it). A brief value that
 is already one of the kinds is kept. A value that is neither is `unrecorded (<value> is not a
 kind)`, with an error line at stage `setting`, and the record is still written. A brief naming no
@@ -71,15 +87,20 @@ import transcripts  # noqa: E402
 
 HARNESS = 'claude-code'
 SUBAGENT_TOOLS = ('Agent', 'Task')
-SHELL_TOOL = 'Bash'
+RESUME_TOOL = 'SendMessage'
 PATTERNS_FILE = HERE / 'cli-patterns.json'
 KINDS_FILE = HERE / 'kinds.json'
+TOOLS_FILE = HERE / 'subagent-tools.json'
 PENDING = '.pending'
 AUTH_VARIABLES = ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN',
                   'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX')
 FRONTMATTER_FIELDS = ('persona-name', 'act_kind', 'task')
-NO_KIND = 'unrecorded (the brief names no kind; no triage: slice B7 not built)'
-NO_KIND_CLI = 'unrecorded (the command names no kind; no triage: slice B7 not built)'
+# The brief's frontmatter keys read when config.json has no `frontmatter` map; a map replaces them key by key.
+DEFAULT_FRONTMATTER = {'act_kind': 'act_kind', 'user_answer': 'user_answer', 'persona-name': 'persona-name',
+                       'task': 'task'}
+NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
+NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
+NO_TRANSCRIPT_KEPT = 'unrecorded (the harness kept no transcript for this subagent)'
 USER_DECISION = 'user-decision'
 NOT_A_DECISION = 'none (not a user decision)'
 # Each harness's tool for putting a question to the user and getting the answer back.
@@ -97,9 +118,9 @@ ABSENT_FROM_BRIEF = {
     'task': 'unrecorded (the brief names no task)',
 }
 # A background call's transcript may still be written when SubagentStop fires, so its counters are
-# read only once the transcript holds the answer SubagentStop reports, in a final request whose stop
-# reason is not tool_use. The capture sets no limit on that wait: the harness's own time-out on hooks
-# is the only bound. This is how often it re-reads.
+# read only once the transcript shows the subagent has ended (see wait_for_end). The capture sets no
+# limit on that wait: the harness's own time-out on hooks is the only bound. This is how often it
+# re-reads.
 REREAD_SECONDS = 0.1
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
@@ -177,17 +198,43 @@ def _route(event, payload, folder, held):
         return pre_agent(payload, folder, held)
     if event == 'PostToolUse' and tool in SUBAGENT_TOOLS:
         return post_agent(payload, folder, held)
-    if event == 'PostToolUseFailure' and tool in SUBAGENT_TOOLS:
+    if event == 'PostToolUseFailure' and tool in SUBAGENT_TOOLS + (RESUME_TOOL,):
         return post_agent_failure(payload, folder, held)
+    if event == 'PreToolUse' and tool == RESUME_TOOL:
+        return pre_resume(payload, folder, held)
+    if event == 'PostToolUse' and tool == RESUME_TOOL:
+        return post_resume(payload, folder, held)
     if event == 'SubagentStart':
         return subagent_start(payload, folder, held)
     if event == 'SubagentStop':
         return subagent_stop(payload, folder, held)
-    if event == 'PreToolUse' and tool == SHELL_TOOL:
+    if event == 'PreToolUse' and tool in shell_tools(HARNESS):
         return pre_shell(payload, folder, held)
-    if event in ('PostToolUse', 'PostToolUseFailure') and tool == SHELL_TOOL:
+    if event in ('PostToolUse', 'PostToolUseFailure') and tool in shell_tools(HARNESS):
         return post_shell(event, payload, folder, held)
     return None
+
+
+def harness_entry(harness):
+    """The harness's entry in subagent-tools.json. Raises if the file cannot be read: the capture's
+    own fault, written as an error line by handle()."""
+    entry = json.loads(TOOLS_FILE.read_text(encoding='utf-8'))['harnesses'].get(harness)
+    return entry if isinstance(entry, dict) else {}
+
+
+def shell_tools(harness):
+    """The names of the harness's shell tools, from subagent-tools.json."""
+    names = harness_entry(harness).get('shell_tools')
+    return tuple(name for name in names if isinstance(name, str)) if isinstance(names, list) else ()
+
+
+def handback_tools(harness):
+    """{tool name: the input key holding the answer} for the harness's hand-back tools."""
+    out = {}
+    for item in harness_entry(harness).get('handback') or []:
+        if isinstance(item, dict) and isinstance(item.get('tool'), str) and isinstance(item.get('answer_key'), str):
+            out[item['tool']] = item['answer_key']
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +358,99 @@ def post_agent_failure(payload, folder, held):
         if sent and sent.get('dispatched_at'):
             fields['dispatched_at'] = sent['dispatched_at']
         ledger.ret(ledger=folder, **fields)
-        clear_pending(folder, held.session, [held.call_id])
+        clear_pending(folder, held.session, [held.call_id, 'resume-' + held.call_id])
+
+
+# ---------------------------------------------------------------------------
+# SendMessage: a message to a subagent, which resumes it if it has stopped
+# ---------------------------------------------------------------------------
+
+def message_text(value):
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False) if value is not None else ''
+
+
+def agent_known(folder, session, agent):
+    """Whether the session's ledger, or its pending files, already hold this agent id."""
+    target = pending_dir(folder, session)
+    if (target / ('agent-%s.json' % _safe(agent))).is_file() or (target / ('join-%s.json' % _safe(agent))).is_file():
+        return True
+    path = Path(folder) / ('%s.jsonl' % session)
+    try:
+        lines = path.read_text(encoding='utf-8', errors='replace').splitlines() if path.is_file() else []
+    except OSError:
+        return False
+    for line in lines:
+        if agent not in line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get('agent_id') == agent:
+            return True
+    return False
+
+
+def pre_resume(payload, folder, held):
+    if held.call_id.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'no call_id (tool_use_id absent from PreToolUse)', record='dispatch')
+        return
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    to = given.get('to')
+    message = message_text(given.get('message'))
+    known = isinstance(to, str) and to and agent_known(folder, held.session, to)
+    if known:
+        agent_field = to
+    else:
+        agent_field = 'unrecorded (the message is addressed to %s, not an agent id this ledger holds)' % (
+            to if isinstance(to, str) and to else 'no one named')
+    at = ledger.now()
+    fields = common(payload, folder, route='subagent')
+    fields.update({
+        'call_id': held.call_id,
+        'agent_id': agent_field,
+        'dispatched_at': at,
+        'model_requested': None,
+        'auth_route': auth_route(),
+        'brief_source': None,
+        'harness_payload': payload,
+    })
+    fields.update(optional_fields(folder, message, held))
+    fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
+                                           payload.get('transcript_path'), fields['act_kind'], message)
+    with pending_lock(folder, held.session):
+        write_pending(folder, held.session, held.call_id, {'call_id': held.call_id, 'dispatched_at': at})
+        if known:
+            write_pending(folder, held.session, 'resume-' + held.call_id, {
+                'call_id': held.call_id, 'agent_id': to, 'dispatched_at': at,
+                'caller': fields['caller']})
+    ledger.dispatch(ledger=folder, brief=message or None, **fields)
+
+
+def post_resume(payload, folder, held):
+    """Keep the tool response for the return written at the agent's next stop; write nothing yet."""
+    response = payload.get('tool_response')
+    with pending_lock(folder, held.session):
+        kept = read_pending(folder, held.session, 'resume-' + held.call_id)
+        if kept is None:
+            return
+        kept['tool_response'] = response
+        write_pending(folder, held.session, 'resume-' + held.call_id, kept)
+
+
+def read_resumes(folder, session, agent):
+    """The messages sent to this agent still waiting for its next stop: (pending name, data), oldest first."""
+    found = []
+    for path in sorted(pending_dir(folder, session).glob('resume-*.json')):
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and data.get('agent_id') == agent and isinstance(data.get('call_id'), str):
+            found.append((path.stem, data))
+    return sorted(found, key=lambda item: item[1].get('dispatched_at') or '')
 
 
 def subagent_stop(payload, folder, held):
@@ -328,41 +467,60 @@ def subagent_stop(payload, folder, held):
             'stopped_at': ledger.now(), 'payload': payload}
     with pending_lock(folder, held.session):
         join = read_join(folder, held.session, agent)
-        if join is not None:
-            write_background_return(folder, held, agent, stop, join=join)
-            return
-        if agent in background_ids(payload):
+        resumes = read_resumes(folder, held.session, agent)
+        background = agent in background_ids(payload)
+        if join is None and not resumes and background:
             # A background call whose PostToolUse join was never written: no guessed record.
             held.error(folder, 'payload', 'no pending join for background agent %s: its PostToolUse '
                        'was not seen, so the return cannot be joined to a call' % agent, record='return')
             return
-        # A foreground call: keep what the PostToolUse that follows needs; never the answer text.
-        kept = dict(stop)
-        kept.pop('last_assistant_message', None)
-        kept.pop('payload', None)
-        write_pending(folder, held.session, 'stop-' + agent, kept)
+        if join is None and not background:
+            # A foreground call: keep what the PostToolUse that follows needs; never the answer text.
+            kept = dict(stop)
+            kept.pop('last_assistant_message', None)
+            kept.pop('payload', None)
+            write_pending(folder, held.session, 'stop-' + agent, kept)
+        if join is None and not resumes:
+            return
+        ending = background_ending(folder, held, agent, stop)
+        if join is not None:
+            if not join.get('call_id'):
+                held.error(folder, 'payload', 'no pending join for background agent %s' % agent, record='return')
+            else:
+                write_background_return(folder, held, agent, stop, join, ending,
+                                        [join['call_id'], 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
+        for name, data in resumes:
+            write_background_return(folder, held, agent, stop, data, ending, [data['call_id'], name])
 
 
-def write_background_return(folder, held, agent, stop, join=None):
-    """The return record of a background call, at SubagentStop. Called under the pending lock."""
-    join = join if join is not None else read_join(folder, held.session, agent)
+def background_ending(folder, held, agent, stop):
+    """How the subagent's run ended, read from its transcript once it shows the end: the answer, how it
+    was read, and the transcript's path. Called under the pending lock."""
     payload = stop.get('payload') or {}
-    call_id = join.get('call_id') if join else None
-    if not call_id:
-        held.error(folder, 'payload', 'no pending join for background agent %s' % agent, record='return')
-        return
-    response = join.get('tool_response') or {}
-    sent = read_pending(folder, held.session, call_id)
     answer = stop.get('last_assistant_message')
     answer = answer if isinstance(answer, str) else ''
-    if 'last_assistant_message' not in payload and payload:
-        held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
-    outcome, reason = agent_outcome('completed', answer)
     path = stop.get('agent_transcript_path')
     if not path:
         if payload:
             held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = transcripts.lane_path(held.session, agent)
+    answer, how = wait_for_end(path, answer, handback_tools(HARNESS))
+    if how != 'handback' and 'last_assistant_message' not in payload and payload:
+        held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
+    return {'answer': answer, 'how': how, 'path': path,
+            'seconds': round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)}
+
+
+def write_background_return(folder, held, agent, stop, join, ending, cleared):
+    """The return record of a background call, or of a message sent to the agent, at SubagentStop.
+    Called under the pending lock."""
+    payload = stop.get('payload') or {}
+    call_id = join['call_id']
+    response = join.get('tool_response')
+    response = response if isinstance(response, dict) else {}
+    sent = read_pending(folder, held.session, call_id)
+    answer = ending['answer']
+    outcome, reason = agent_outcome('completed', answer)
     fields = common(payload or {'cwd': None, 'agent_id': None}, folder, route='subagent')
     fields['caller'] = join.get('caller') or fields['caller']
     fields.update({
@@ -376,33 +534,49 @@ def write_background_return(folder, held, agent, stop, join=None):
     })
     if sent and sent.get('dispatched_at'):
         fields['dispatched_at'] = sent['dispatched_at']
-    wait_for_transcript(path, answer)
-    fields.update(from_transcript(path, response.get('resolvedModel'), None))
+    elif join.get('dispatched_at'):
+        fields['dispatched_at'] = join['dispatched_at']
+    if ending['how'] == 'no transcript':
+        fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT})
+    else:
+        fields.update(from_transcript(ending['path'], response.get('resolvedModel'), None))
     if isinstance(fields.get('tokens'), dict):
-        fields['tokens']['read_after_seconds'] = round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)
+        fields['tokens']['read_after_seconds'] = ending['seconds']
     kept = dict(payload)
-    kept['post_tool_use_response'] = response
-    if isinstance(kept.get('last_assistant_message'), str):
+    kept['post_tool_use_response'] = join.get('tool_response')
+    if isinstance(kept.get('last_assistant_message'), str) and ending['how'] != 'handback':
         kept['last_assistant_message'] = answer
     fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
     ledger.ret(ledger=folder, answer=answer, **fields)
-    clear_pending(folder, held.session, [call_id, 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
+    clear_pending(folder, held.session, cleared)
 
 
-def wait_for_transcript(path, answer):
-    """Re-read the transcript until it is complete. No limit of the capture's own (specification §3e)."""
+def wait_for_end(path, answer, handbacks):
+    """(the answer, how the run's end was read), once the transcript shows the subagent has ended.
+
+    It re-reads the transcript with no limit of its own, and ends at the first of: the transcript does
+    not exist (`no transcript`), so the harness kept none; the final request is a call to a hand-back
+    tool (`handback`), whose input at its answer key is the answer; the final request stopped for a
+    reason other than tool_use and holds `answer` (`text`). With no path to read it returns at once
+    (`no path`).
+    """
     if not path:
-        return
-    while not transcript_complete(path, answer):
+        return answer, 'no path'
+    if not os.path.exists(str(path)):
+        return answer, 'no transcript'
+    while True:
+        found = transcript_end(path, answer, handbacks)
+        if found is not None:
+            return found
         time.sleep(REREAD_SECONDS)
 
 
-def transcript_complete(path, answer):
-    """True when the final request carries `answer` and stopped for a reason other than tool_use."""
+def final_request(path):
+    """The rows of the transcript's final request, grouped by message id, or None."""
     try:
         rows = transcripts.rows_of(path)
     except OSError:
-        return False
+        return None
     groups, order = {}, []
     for position, row in enumerate(row for row in rows if transcripts._usage(row) is not None):
         key = transcripts._group_key(row, position)
@@ -410,9 +584,26 @@ def transcript_complete(path, answer):
             groups[key] = []
             order.append(key)
         groups[key].append(row)
-    if not order:
+    return groups[order[-1]] if order else None
+
+
+def transcript_end(path, answer, handbacks):
+    """(answer, how) when the final request ends the run, else None."""
+    for row in final_request(path) or []:
+        content = (row.get('message') or {}).get('content')
+        for part in content if isinstance(content, list) else []:
+            if isinstance(part, dict) and part.get('type') == 'tool_use' and part.get('name') in handbacks:
+                given = part.get('input') if isinstance(part.get('input'), dict) else {}
+                value = given.get(handbacks[part['name']])
+                return (value if isinstance(value, str) else message_text(value)), 'handback'
+    return (answer, 'text') if transcript_complete(path, answer) else None
+
+
+def transcript_complete(path, answer):
+    """True when the final request carries `answer` and stopped for a reason other than tool_use."""
+    last = final_request(path)
+    if last is None:
         return False
-    last = groups[order[-1]]
     reasons = [(row.get('message') or {}).get('stop_reason') for row in last]
     stopped = [reason for reason in reasons if reason is not None]
     if not stopped or 'tool_use' in stopped:
@@ -502,8 +693,8 @@ def match_command(command, patterns=None):
     if not isinstance(command, str) or not command.strip():
         return None, None
     patterns = patterns or load_patterns()
-    # The split is commands.py's, which the B4 sorter shares: at shell operators outside quotes, with
-    # here-document bodies set aside, so a quoted `|` or a here-document line is never a command.
+    # The split is commands.py's: at shell operators outside quotes, with here-document bodies set
+    # aside, so a quoted `|` or a here-document line is never a command.
     for part in commands.parts(command):
         words = part.words
         if not words:
@@ -534,21 +725,31 @@ def requested_model(words, entry):
 
 def pre_shell(payload, folder, held):
     given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
-    command = given.get('command')
+    cli_dispatch(folder, held, given.get('command'), common(payload, folder, route='cli'), payload,
+                 HARNESS, auth_route, 'PreToolUse')
+
+
+def cli_dispatch(folder, held, command, fields, payload, harness, own_auth, event):
+    """The dispatch record of a command-line model call made through a harness's shell tool.
+
+    Nothing is written when the command makes no model call by cli-patterns.json. `fields` holds the
+    session, harness, caller and project of the calling harness; `own_auth` gives the sign-in route
+    when the command runs that same harness, whose sign-in the capture can read.
+    """
     entry, words = match_command(command)
     if entry is None:
         return
     if held.call_id.startswith('unrecorded ('):
-        held.error(folder, 'payload', 'no call_id (tool_use_id absent from PreToolUse)', record='dispatch')
+        held.error(folder, 'payload', 'no call_id (the call id is absent from %s)' % event, record='dispatch')
         return
     at = ledger.now()
-    fields = common(payload, folder, route='cli')
+    fields = dict(fields, route='cli')
     fields.update({
         'call_id': held.call_id,
         'agent_id': CLI_AGENT,
         'dispatched_at': at,
         'model_requested': requested_model(words, entry),
-        'auth_route': auth_route() if entry['harness'] == HARNESS else
+        'auth_route': own_auth() if entry['harness'] == harness else
         'unrecorded (the command runs %s, whose sign-in this capture does not read)' % entry['program'],
         'brief_source': 'unrecorded (the brief is the command itself)',
         'harness_payload': payload,
@@ -557,8 +758,55 @@ def pre_shell(payload, folder, held):
     fields['user_answer'] = NOT_A_DECISION
     with pending_lock(folder, held.session):
         write_pending(folder, held.session, 'cli-' + held.call_id,
-                      {'call_id': held.call_id, 'dispatched_at': at, 'program': entry['program']})
+                      {'call_id': held.call_id, 'dispatched_at': at, 'program': entry['program'],
+                       'harness': entry['harness']})
     ledger.dispatch(ledger=folder, brief=command, **fields)
+
+
+def cli_return(folder, held, fields, command, output, exit_code, kept):
+    """The return record of a matched command-line call, from what the shell tool gave back.
+
+    `output` is the command's printed output and `exit_code` its exit code, or None where the harness
+    reports none. Where the output is a JSON result envelope, the model, outcome and cost come from
+    it; otherwise a non-zero exit is `failed`, its class read from reasons.json, and the model and
+    cost read that the output names none. Nothing is written for a command that was not matched.
+    """
+    with pending_lock(folder, held.session):
+        sent = read_pending(folder, held.session, 'cli-' + held.call_id)
+        if sent is None:
+            return  # not a command-line model call
+        output = output if isinstance(output, str) else ''
+        fields = dict(fields, route='cli')
+        fields.update({
+            'call_id': held.call_id, 'agent_id': CLI_AGENT, 'spend_line': NOT_A_SCRIPT,
+            'dispatched_at': sent.get('dispatched_at'),
+            'effort': 'unrecorded (a command-line call reports no effort to this capture)',
+            'tokens': 'unrecorded (a command-line call\'s counters are not read by this capture)',
+            'isolation': 'unrecorded (a command-line call\'s own record is not read by this capture)',
+        })
+        failed = isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code != 0
+        envelope, _ = envelope_in(output)
+        if envelope is not None:
+            answer = envelope.get('result') if isinstance(envelope.get('result'), str) else ''
+            outcome, reason, model, cost = envelope_fields(envelope)
+        else:
+            answer = output
+            model = 'unrecorded (the command\'s output names no model)'
+            cost = 'unrecorded (the command\'s output reports no cost)'
+            if failed:
+                outcome, reason = 'failed', None
+            elif answer.strip():
+                outcome, reason = 'served', 'none (served)'
+            else:
+                outcome, reason = 'empty', dict(EMPTY_REASON)
+        if reason is None or (failed and outcome != 'failed'):
+            outcome = 'failed'
+            reason = ledger.reason_for(sent.get('harness') or HARNESS, output,
+                                       'the command exited with code %s' % exit_code)
+        fields.update({'outcome': outcome, 'outcome_reason': reason, 'model': model, 'cost': cost})
+        fields['harness_payload'] = without_texts(kept, command, ON_DISPATCH_BRIEF)
+        ledger.ret(ledger=folder, answer=answer, **fields)
+        clear_pending(folder, held.session, ['cli-' + held.call_id])
 
 
 def post_shell(event, payload, folder, held):
@@ -668,7 +916,7 @@ def answer_texts(rows):
 
 
 def inner_reading(envelope, command, payload, envelope_model=None):
-    """tokens, model and isolation from the inner `claude -p` session's own transcript (§5b, B3).
+    """tokens, model and isolation from the inner `claude -p` session's own transcript.
 
     The transcript is <config>/projects/*/<session_id>.jsonl, where <config> is the CLAUDE_CONFIG_DIR
     the command set, or else the calling session's configuration folder. It is read only when it
@@ -851,21 +1099,17 @@ def optional_fields(folder, brief, held=None, cli=False):
     `act_kind` is the brief's value translated by kind_of(); a command-line call has no brief to read.
     """
     config, path = read_config(folder)
-    keys = config.get('frontmatter')
+    keys = frontmatter_keys(config)
     out = {}
-    if not isinstance(keys, dict):
-        for name in FRONTMATTER_FIELDS:
-            out[name] = 'unrecorded (no frontmatter map in %s)' % ledger.CONFIG_FILE
-    else:
-        front = frontmatter(brief) if isinstance(brief, str) else {}
-        for name in FRONTMATTER_FIELDS:
-            value = lookup(front, keys.get(name)) if keys.get(name) else None
-            if not keys.get(name):
-                out[name] = 'unrecorded (%s names no frontmatter key for %s)' % (ledger.CONFIG_FILE, name)
-            elif isinstance(value, str) and value:
-                out[name] = kind_of(folder, value, held) if name == 'act_kind' else value
-            else:
-                out[name] = ABSENT_FROM_BRIEF[name]
+    front = frontmatter(brief) if isinstance(brief, str) else {}
+    for name in FRONTMATTER_FIELDS:
+        value = lookup(front, keys[name]) if keys.get(name) else None
+        if not keys.get(name):
+            out[name] = 'unrecorded (%s names no frontmatter key for %s)' % (ledger.CONFIG_FILE, name)
+        elif isinstance(value, str) and value:
+            out[name] = kind_of(folder, value, held) if name == 'act_kind' else value
+        else:
+            out[name] = ABSENT_FROM_BRIEF[name]
     if cli:
         out['act_kind'] = NO_KIND_CLI
     table_name = config.get('grouping_table')
@@ -885,6 +1129,16 @@ def optional_fields(folder, brief, held=None, cli=False):
             out['grouping'] = found if isinstance(found, str) and found else (
                 'unrecorded (%s is not in the grouping table)' % persona)
     return out
+
+
+def frontmatter_keys(config):
+    """The brief's frontmatter key for each field: the defaults, each replaced where config.json's
+    `frontmatter` map names the field."""
+    keys = dict(DEFAULT_FRONTMATTER)
+    named = config.get('frontmatter') if isinstance(config, dict) else None
+    if isinstance(named, dict):
+        keys.update((name, key) for name, key in named.items() if isinstance(key, str) or key is None)
+    return keys
 
 
 def kind_names(folder):
@@ -986,7 +1240,7 @@ def user_answer_of(folder, harness, session, caller, transcript_path, kind, brie
     found = [call for call in calls if _time(call['asked_at']) is not None
              and (since is None or _time(call['asked_at']) > since)]
     config, _path = read_config(folder)
-    keys = config.get('frontmatter') if isinstance(config.get('frontmatter'), dict) else {}
+    keys = frontmatter_keys(config)
     statement = lookup(frontmatter(brief), keys['user_answer']) if (
         isinstance(brief, str) and keys.get('user_answer')) else None
     record = statement if isinstance(statement, str) and statement else 'none'

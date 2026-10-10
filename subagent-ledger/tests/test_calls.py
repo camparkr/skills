@@ -1,6 +1,6 @@
 """Tests for the call reader, `skill/scripts/calls.py`, and its count check.
 
-Controls C-B6-1 to C-B6-5. Each has a half that runs on the reader as built and must pass, and a half
+Each control has a half that runs on the reader as built and must pass, and a half
 that switches one part of the reader off, by a patch in this file, and shows the fault: a control
 that cannot fail proves nothing. Before the reader existed every test here failed, because the
 module it loads was missing.
@@ -16,7 +16,7 @@ path a placeholder (${CONFIG}, ${WORK}, ${TASKROOT}) each test fills with a fold
   * l1-parent.jsonl: the session's own transcript, cut to the two rows that carry its `Agent` tool
     calls.
 
-The third call of C-B6-1 is the PreToolUse payload of fixtures/claude-code/foreground-events.jsonl,
+The third call of the three-call test is the PreToolUse payload of fixtures/claude-code/foreground-events.jsonl,
 moved into the l1 session; its other three payloads are never sent, so it has no return. A stream
 of three rows for one call is the l1 parent's first `Agent` row written three times, as Claude Code
 writes a message while it streams. Each is a reconstruction from recorded payloads, said so here.
@@ -200,7 +200,7 @@ class World(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B6-1: three calls, one without a return
+# Three calls, one without a return
 # ---------------------------------------------------------------------------
 
 class CB6_1Reader(World):
@@ -282,7 +282,7 @@ class CB6_1Reader(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B6-2: Gap 1, a record rejected, a write that failed, and unattributed lines
+# A record rejected, a write that failed, and unattributed lines
 # ---------------------------------------------------------------------------
 
 class CB6_2Gap1(World):
@@ -357,7 +357,7 @@ class CB6_2Gap1(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B6-3: Gap 2, a return with no dispatch, and a dispatch with no return
+# A return with no dispatch, and a dispatch with no return
 # ---------------------------------------------------------------------------
 
 class CB6_3Gap2(World):
@@ -387,7 +387,7 @@ class CB6_3Gap2(World):
         self.feed(background[:3], pause=0.01)
         stop = background[3]
         # The transcript as it stood part-written, so the capture waits, and the harness's time-out
-        # stops it after its witness line: the case §3e names.
+        # stops it after its witness line.
         path = Path(stop['payload']['agent_transcript_path'])
         path.write_text(''.join(path.read_text(encoding='utf-8').splitlines(True)[:2]), encoding='utf-8')
         with self.assertRaises(subprocess.TimeoutExpired):
@@ -423,7 +423,7 @@ class CB6_3Gap2(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B6-4: Gap 3, the count check
+# The count check
 # ---------------------------------------------------------------------------
 
 class CB6_4Count(World):
@@ -481,7 +481,8 @@ class CB6_4Count(World):
         code, data, _ = self.run_reader(*self.transcripts())
         parent = [entry for entry in data['count_check']['by_caller'] if entry['caller'] == 'parent'][0]
         self.assertRegex(parent['transcript_count'], UNRECORDED)
-        self.assertEqual(code, 0)
+        self.assertEqual(data['count_check']['difference'], 'unrecorded (1 transcripts could not be read)')
+        self.assertEqual(code, 3)
 
     def test_c_b6_4_opencode_has_no_transcript_reader(self):
         code, data, _ = self.run_reader('--count-check', '--harness', 'opencode', '--transcript',
@@ -509,7 +510,7 @@ class CB6_4Count(World):
 
 
 class CB6_4CodexCount(unittest.TestCase):
-    """The count check on Codex: dry run 3's parent rollout against the ledger its capture wrote."""
+    """The count check on Codex: a recorded parent rollout against the ledger its capture wrote."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='calls-codex-test-'))
@@ -555,7 +556,7 @@ class CB6_4CodexCount(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B6-5: a field not chosen, and a field on and unfilled
+# A field not chosen, and a field on and unfilled
 # ---------------------------------------------------------------------------
 
 class CB6_5Frame(World):
@@ -585,7 +586,7 @@ class CB6_5All(World):
         self.feed(self.l1()[:4], pause=0.01)
         _, data, _ = self.run_reader()
         row = data['calls'][0]
-        self.assertEqual(row['effort_assigned'], 'unrecorded (no triage: slice B7 not built)')
+        self.assertEqual(row['effort_assigned'], 'unrecorded (no triage ran)')
         self.assertEqual(row['fields_on'], list(SELECTABLE))
         for name in SELECTABLE:
             self.assertNotEqual(row[name], 'not chosen', name)

@@ -219,8 +219,8 @@ def codex_complete(path, answer=None):
     """True once the rollout holds the run's end, as far as Codex writes it before SubagentStop returns.
 
     Codex writes `task_complete` only after its SubagentStop hook has returned, so a hook that waited
-    for it would wait for ever (the B3 live run, 9 October 2026). What it has written by then is the
-    answer, as an `agent_message`, and the counter row after it. So the last turn is complete when it
+    for it would wait for ever. What it has written by then is the answer, as an `agent_message`, and
+    the counter row after it. So the last turn is complete when it
     holds `answer` in an `agent_message` followed by a `token_count`, or when it has ended
     (`task_complete` or `turn_aborted`). With no answer to look for, a `token_count` after the last
     `agent_message` will do.
@@ -335,7 +335,7 @@ ABSOLUTE = re.compile(r'''(?:^|[\s'"=:(])((?:~|/)[^\s'";|&<>()]*)''')
 
 
 def isolation(reading):
-    """What the run touched outside its folder, read from its own transcript (§3h)."""
+    """What the run touched outside its folder, read from its own transcript."""
     folder = reading.get('cwd')
     if not folder:
         return 'unrecorded (the transcript records no working folder)'

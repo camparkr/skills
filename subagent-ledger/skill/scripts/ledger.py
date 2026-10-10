@@ -3,7 +3,7 @@
 
 A call to a subagent, or to another model through a command-line tool or a call script, leaves two
 records: a dispatch record when it is sent and a return record when it comes back, joined by
-`call_id`. A harness's subagent start and stop events may also leave witness lines, a roster labeller
+`call_id`. A harness's subagent start and stop events may also leave witness lines, a labeller
 leaves a label line beside a call it has labelled, and a capture that could not write its record
 leaves an error line saying why.
 
@@ -95,17 +95,17 @@ ON_LABEL_LINE = 'unrecorded (labelled on the label line)'
 # Why a field that is on has no value, where the capture gave none.
 NOT_GIVEN = {
     'model_requested': 'unrecorded (none asked)',
-    'effort_assigned': 'unrecorded (no triage: slice B7 not built)',
-    'recommended_harness': 'unrecorded (no triage: slice B7 not built)',
-    'recommended_model': 'unrecorded (no triage: slice B7 not built)',
-    'triage_model': 'unrecorded (no triage: slice B7 not built)',
+    'effort_assigned': 'unrecorded (no triage ran)',
+    'recommended_harness': 'unrecorded (no triage ran)',
+    'recommended_model': 'unrecorded (no triage ran)',
+    'triage_model': 'unrecorded (no triage ran)',
     'failure_modes': ON_LABEL_LINE,
     'roster_revision': ON_LABEL_LINE,
     'labeller_model': ON_LABEL_LINE,
     'brief_source': 'unrecorded (the prompt named no file)',
     'persona-name': 'unrecorded (the brief names no persona)',
     'grouping': 'unrecorded (the brief names no persona)',
-    'act_kind': 'unrecorded (the brief names no kind; no triage: slice B7 not built)',
+    'act_kind': 'unrecorded (the brief names no kind; no triage ran)',
     'task': 'unrecorded (the brief names no task)',
 }
 NO_VALUE = 'unrecorded (the capture supplied no value)'
@@ -117,7 +117,7 @@ ON_RETURN = 'unrecorded (filled on the return record)'
 NOT_PASSED = 'unrecorded (not passed to the writer)'
 # Special arguments: text the writer moves to a file, and where the ledger is. Never record fields.
 SPECIAL = ('brief', 'answer', 'prompt', 'ledger')
-# A label line's keys in §7's order, the writer's own `schema`, `record` and `withheld` among them.
+# A label line's keys in their documented order, the writer's own `schema`, `record` and `withheld` among them.
 LABEL_ORDER = ('schema', 'record', 'call_id', 'session', 'labelled_at', 'labelled_because', 'failure_modes',
                'likelihoods', 'cutoff', 'roster_revision', 'question_revision', 'labeller_model', 'labeller_call_ids',
                'withheld')

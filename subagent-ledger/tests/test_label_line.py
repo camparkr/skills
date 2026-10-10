@@ -1,10 +1,10 @@
-"""Controls for the label line (slice B5, ruling L-1 (b)): the writer's `label`, its schema, and the reader's join.
+"""Controls for the label line: the writer's `label`, its schema, and the reader's join.
 
 The labeller writes one `record: label` line per labelled return into the session's own ledger file, and never
 rewrites a record. The reader joins each label line to its call's row by `call_id`, shows the newest and counts the
 older ones, and names a label line whose call has no row as the absence `label for no call`. This file holds the
-public skill's half of the delegation's controls (C-L-1's join, C-L-3, C-L-4, C-L-6) and the reader fix found in the
-B3 rework verification. The labeller's half (C-L-1's writes, C-L-2, C-L-5) is in the workspace's tests.
+public skill's half of the controls, the reader's join among them, and a fix to how the reader merges a call's two
+records. The labeller's half is with the labeller, which this skill does not ship.
 
 Each control has a half that runs on the code as built and must pass, and a half that switches one part off, by a
 patch in this file, and shows the fault. Before the code existed every test here failed, for the reason each names.
@@ -37,8 +37,9 @@ CAPTURES = ('capture_claude_code.py', 'capture_codex.py', 'capture_opencode.py',
 SESSION = 'b5label-0000-4000-8000-000000000001'
 UNSET = 'unrecorded (cut-off not yet set)'
 ON_LABEL_LINE = 'unrecorded (labelled on the label line)'
-OLD_WORDINGS = ('slice B5 not built', 'no labeller has read this record')
-# The label line's keys at profile v37 (B5 rebuild, specification §7e).
+# The wordings a record carried before label lines: an unbuilt labeller, or none having read it.
+OLD_WORDINGS = re.compile(r'not built|no labeller has read this record')
+# The label line's keys, in their documented order.
 LABEL_KEYS = ['schema', 'record', 'call_id', 'session', 'labelled_at', 'labelled_because', 'failure_modes',
               'likelihoods', 'cutoff', 'roster_revision', 'question_revision', 'labeller_model', 'labeller_call_ids',
               'withheld']
@@ -120,14 +121,14 @@ class LabelWorld(unittest.TestCase):
         back = self.ledger.ret(**fields)
         self.assertTrue(back.ok, back.error)
 
-    def a_label(self, call_id, labelled_at, high=None, labeller_call_id='jev-call-1'):
+    def a_label(self, call_id, labelled_at, high=None, labeller_call_id='label-call-1'):
         if not hasattr(self.ledger, 'label'):
             raise AssertionError('ledger.py has no label(): the label line\'s writer is not built')
         return self.ledger.label(call_id=call_id, session=SESSION, labelled_at=labelled_at,
                                  labelled_because=['always: verdict-or-review'], failure_modes=marks(high),
                                  likelihoods=likelihoods(high), cutoff=2, roster_revision=REVISION,
-                                 question_revision=QUESTION_REVISION, labeller_model='jev-1.13.0',
-                                 labeller_call_ids=[labeller_call_id, 'jev-call-b', 'jev-call-c'])
+                                 question_revision=QUESTION_REVISION, labeller_model='labeller-1.0.0',
+                                 labeller_call_ids=[labeller_call_id, 'label-call-b', 'label-call-c'])
 
     def session_lines(self):
         return lines_of(self.folder / ('%s.jsonl' % SESSION))
@@ -147,7 +148,7 @@ class LabelWorld(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# The line itself: §7's shape, validated, no field setting
+# The line itself: its documented shape, validated, no field setting
 # ---------------------------------------------------------------------------
 
 class TheLine(LabelWorld):
@@ -159,7 +160,7 @@ class TheLine(LabelWorld):
         written = self.a_label('call-1', '2026-10-09T02:00:00.000Z', high='mode_03')
         self.assertTrue(written.ok, written.error)
         line = [r for r in self.session_lines() if r['record'] == 'label'][0]
-        self.assertEqual(list(line), LABEL_KEYS, 'the label line\'s keys, in §7\'s order')
+        self.assertEqual(list(line), LABEL_KEYS, 'the label line\'s keys, in their documented order')
         self.assertEqual(line['schema'], 'subagent-ledger/1')
         self.assertEqual(line['failure_modes'], [{'mode': 'mode_03', 'level': 3, 'p': 0.6}])
         self.assertEqual(line['cutoff'], 2)
@@ -178,8 +179,8 @@ class TheLine(LabelWorld):
                                     labelled_because=['outcome: failed'],
                                     failure_modes=[{'mode': 'mode_03', 'level': 2, 'p': 0.4}],
                                     likelihoods=likelihoods('mode_03'), cutoff=2, roster_revision=REVISION,
-                                    question_revision=QUESTION_REVISION, labeller_model='jev-1.13.0',
-                                    labeller_call_ids=['jev-call-1', 'jev-call-2', 'jev-call-3'])
+                                    question_revision=QUESTION_REVISION, labeller_model='labeller-1.0.0',
+                                    labeller_call_ids=['label-call-1', 'label-call-2', 'label-call-3'])
         self.assertTrue(written.ok, written.error)
 
     def test_switched_off_a_line_with_a_field_setting_or_no_likelihoods_is_rejected(self):
@@ -187,8 +188,8 @@ class TheLine(LabelWorld):
         good = {'schema': 'subagent-ledger/1', 'record': 'label', 'call_id': 'c', 'session': SESSION,
                 'labelled_at': '2026-10-09T02:00:00Z', 'labelled_because': ['always: verdict-or-review'],
                 'failure_modes': [], 'likelihoods': likelihoods(), 'cutoff': 2, 'roster_revision': REVISION,
-                'question_revision': QUESTION_REVISION, 'labeller_model': 'jev-1.13.0',
-                'labeller_call_ids': ['jev-call-1', 'jev-call-2', 'jev-call-3'], 'withheld': 0}
+                'question_revision': QUESTION_REVISION, 'labeller_model': 'labeller-1.0.0',
+                'labeller_call_ids': ['label-call-1', 'label-call-2', 'label-call-3'], 'withheld': 0}
         self.assertEqual(self.ledger.validate(good, schema), [])
         with_setting = dict(good, fields_on=[], fields_not_chosen=[])
         self.assertTrue(self.ledger.validate(with_setting, schema))
@@ -196,11 +197,11 @@ class TheLine(LabelWorld):
         del no_likelihoods['likelihoods']
         self.assertTrue(self.ledger.validate(no_likelihoods, schema))
         old_name = dict(no_likelihoods, all=likelihoods())
-        self.assertTrue(self.ledger.validate(old_name, schema), '`all` is renamed `likelihoods` at profile v36')
+        self.assertTrue(self.ledger.validate(old_name, schema), '`all` was the earlier name of `likelihoods`')
 
 
 # ---------------------------------------------------------------------------
-# C-L-1, the reader's half: the newest label shown, the older counted
+# The newest label shown, the older counted
 # ---------------------------------------------------------------------------
 
 class CL1Join(LabelWorld):
@@ -211,7 +212,7 @@ class CL1Join(LabelWorld):
         self.assertTrue(self.a_label('call-1', '2026-10-09T02:00:00.000Z', high='mode_01').ok)
         self.assertTrue(self.a_label('call-2', '2026-10-09T02:00:00.000Z', high='mode_02').ok)
         self.assertTrue(self.a_label('call-1', '2026-10-09T03:00:00.000Z', high='mode_09',
-                                     labeller_call_id='jev-call-3').ok)
+                                     labeller_call_id='label-call-3').ok)
 
     def test_c_l_1_the_newest_label_and_one_earlier(self):
         self.two_calls_labelled()
@@ -225,9 +226,9 @@ class CL1Join(LabelWorld):
         self.assertEqual(first['labels']['failure_modes'], [{'mode': 'mode_09', 'level': 3, 'p': 0.6}])
         self.assertEqual(first['labels']['cutoff'], 2)
         self.assertEqual(first['labels']['question_revision'], QUESTION_REVISION)
-        self.assertEqual(first['labels']['labeller_call_ids'], ['jev-call-3', 'jev-call-b', 'jev-call-c'])
+        self.assertEqual(first['labels']['labeller_call_ids'], ['label-call-3', 'label-call-b', 'label-call-c'])
         self.assertEqual(first['labels']['roster_revision'], REVISION)
-        self.assertEqual(first['labels']['labeller_model'], 'jev-1.13.0')
+        self.assertEqual(first['labels']['labeller_model'], 'labeller-1.0.0')
         self.assertEqual(second['labels']['earlier'], 0)
         self.assertEqual(second['labels']['likelihoods']['mode_02'], score(HIGH))
         self.assertEqual(data['absences'], [])
@@ -246,7 +247,7 @@ class CL1Join(LabelWorld):
 
 
 # ---------------------------------------------------------------------------
-# C-L-3: a label line whose call has no row
+# A label line whose call has no row
 # ---------------------------------------------------------------------------
 
 class CL3NoCall(LabelWorld):
@@ -269,7 +270,7 @@ class CL3NoCall(LabelWorld):
 
 
 # ---------------------------------------------------------------------------
-# C-L-4: the return record's own three fields
+# The return record's own three fields
 # ---------------------------------------------------------------------------
 
 class CL4ReturnFields(LabelWorld):
@@ -283,19 +284,18 @@ class CL4ReturnFields(LabelWorld):
     def test_c_l_4_no_writer_or_capture_carries_an_old_wording(self):
         for name in ('ledger.py',) + CAPTURES:
             text = (SCRIPTS / name).read_text(encoding='utf-8')
-            for old in OLD_WORDINGS:
-                self.assertFalse(old in text, '%s still reads %r' % (name, old))
+            self.assertIsNone(OLD_WORDINGS.search(text), '%s still reads an old wording' % name)
 
     def test_c_l_4_switched_off_the_old_default_is_seen(self):
-        self.ledger.NOT_GIVEN = dict(self.ledger.NOT_GIVEN, failure_modes='unrecorded (slice B5 not built)')
+        self.ledger.NOT_GIVEN = dict(self.ledger.NOT_GIVEN, failure_modes='unrecorded (labeller not built)')
         self.a_call('call-1')
         back = [r for r in self.session_lines() if r['record'] == 'return'][0]
-        self.assertEqual(back['failure_modes'], 'unrecorded (slice B5 not built)')
+        self.assertEqual(back['failure_modes'], 'unrecorded (labeller not built)')
         self.assertNotEqual(back['failure_modes'], ON_LABEL_LINE)
 
 
 # ---------------------------------------------------------------------------
-# C-L-6: a label line that cannot be written
+# A label line that cannot be written
 # ---------------------------------------------------------------------------
 
 class CL6WriteFails(LabelWorld):
@@ -334,7 +334,7 @@ class CL6WriteFails(LabelWorld):
 
 
 # ---------------------------------------------------------------------------
-# The reader fix from the B3 rework verification: a filled value over an unrecorded one
+# The reader shows a filled value over an unrecorded one
 # ---------------------------------------------------------------------------
 
 class FilledOverUnrecorded(LabelWorld):

@@ -1,14 +1,14 @@
 """Tests for OpenCode's capture: `skill/scripts/capture_opencode.py` and the plugin that feeds it,
 `skill/scripts/opencode-plugin/subagent-ledger.js`.
 
-Controls C-B3-4, C-B3-5 and the OpenCode half of C-B3-9. Each has a half that runs on the code as
+Each control has a half that runs on the code as
 built and must pass, and a half that switches one part off and shows the fault. Before the capture
 existed every test here failed, because the files it loads were missing.
 
 Fixtures, under fixtures/opencode/, with machine paths as placeholders (${WORK}):
 
   * dr3-events.jsonl: a live run's plugin events, `tool.execute.before` and `after` on `task`, and the
-    subagent's own `read`. Dry run 3's recording plugin wrote `args: output.args` for `before`; the
+    subagent's own `read`. The recording plugin wrote `args: output.args` for `before`; the
     lines are put here in the shape this skill's plugin sends, `{event, input, output}`, nothing else
     changed;
   * p2-failed-events.jsonl: a live run whose subagent failed (its read was refused). OpenCode 1.18.30
@@ -125,7 +125,7 @@ class World(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-4: before and after on task give both records
+# Before and after on task give both records
 # ---------------------------------------------------------------------------
 
 class CB3_4Task(World):
@@ -196,7 +196,7 @@ class CB3_4AllFields(World):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-5: the plugin never throws, never prints and never changes the call
+# The plugin never throws, never prints and never changes the call
 # ---------------------------------------------------------------------------
 
 DRIVER = r'''
@@ -273,7 +273,7 @@ class CB3_5Plugin(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-B3-9: bad input exits 0, prints nothing and leaves one error line
+# Bad input exits 0, prints nothing and leaves one error line
 # ---------------------------------------------------------------------------
 
 class CB3_9BadInput(World):
@@ -307,9 +307,9 @@ class CB3_9BadInput(World):
 
 
 # ---------------------------------------------------------------------------
-# C-RB3-1 to C-RB3-4: a failed subagent's return from OpenCode's general event stream (B3 rework)
+# A failed subagent's return from OpenCode's general event stream
 #
-# Fixtures, from the rework's probe of 9 October 2026 (OpenCode 1.18.30), every event the recording
+# Fixtures, recorded from OpenCode 1.18.30, every event the recording
 # plugin saw, in the shape this skill's plugin sends. Tool hooks are {event, input, output}; the
 # general event hook is {event: "event", type, payload: {event}}. Bulk events with no session or
 # tool state (plugin.added, catalog, reference and integration updates, message.part.delta) are

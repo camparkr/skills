@@ -35,7 +35,8 @@ older ones. A call with no label line reads
   * `no dispatch record`: a return whose dispatch was never written.
   * `record rejected: <reason>` and `write failed: <reason>`: an error line in capture-errors.jsonl
     naming the session. One naming a call with a row is listed beside that row, in place of the two
-    above.
+    above. Error lines naming the same call, stage and reason are one absence, whose `records` names
+    each record that failed, such as ["dispatch", "return"].
   * `label for no call`: a label line whose `call_id` names no row.
   * `unattributed capture error`: an error line with no session, timed inside the session's span.
   * `record unattributed: <reason>`: a record in unattributed.jsonl, timed inside the session's span.
@@ -48,11 +49,14 @@ Without --count-check the reader opens the ledger folder's own files only, and n
 it counts in each transcript given the distinct tool-call ids of the harness's subagent tools
 (subagent-tools.json), and compares each caller's count with the ledger's: its subagent dispatch
 records, its returns with no dispatch, and the error lines naming a call that has no row. It prints
-counts only, never an id or a tool input.
+counts only, never an id or a tool input. A transcript it cannot read gives its caller's count as
+`unrecorded (<why>)`, and the difference as `unrecorded (<n> transcripts could not be read)`, never a
+number made over a count it did not make; where a readable caller still shows a difference, that
+difference is printed and the exit is 4.
 
 Exit codes: 0 listed; 1 refused on its input; 2 cannot run (the ledger folder, the schema or the
-writer missing); 3 a declared absence, such as no ledger file for the session; 4 the count check found
-a difference. No other.
+writer missing); 3 a declared absence, such as no ledger file for the session, or a transcript the
+count check could not read; 4 the count check found a difference. No other.
 
 The ledger folder is --ledger, then $SUBAGENT_LEDGER_DIR, then .subagent-ledger in the git top-level
 folder of the working folder. The reader makes no model call and writes nothing.
@@ -98,7 +102,7 @@ LABEL_FIELDS = ('labelled_because', 'failure_modes', 'likelihoods', 'cutoff', 'r
 REJECTED_STAGES = ('payload', 'setting', 'validate', 'scrub', 'copy')
 SESSION_SHAPE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.:-]*$')
 FRAME = ('call_id', 'agent_id', 'session', 'dispatched_at', 'returned_at', 'outcome')
-# The row's keys in §8's order; every other selectable field follows in the schema's order.
+# The row's keys in the documented order; every other selectable field follows in the schema's order.
 ROW_FIRST = ('call_id', 'route', 'harness', 'caller', 'agent_id', 'dispatched_at', 'returned_at',
              'model_requested', 'model', 'outcome', 'outcome_reason', 'brief_path', 'answer_path',
              'spend_line', 'auth_route')
@@ -339,31 +343,52 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
 
     absences = []
 
-    def error_absence(line):
-        stage = line.get('stage')
-        prefix = 'write failed' if stage == 'write' else 'record rejected'
-        call_id = line.get('call_id')
-        agent = agent_of(call_id) if isinstance(call_id, str) else None
-        if agent is None and not is_unrecorded(line.get('agent_id')) and line.get('record') == 'witness':
-            agent = line.get('agent_id')
-        return {'call_id': call_id, 'reason': '%s: %s' % (prefix, line.get('reason')),
-                'witnesses': witnesses_for(witness_lines, agent)}
+    def error_absences(lines):
+        """One absence per call, stage and reason, naming every record that failed so. Lines naming no
+        call are never merged: they may be different calls."""
+        grouped, order = {}, []
+        for number, line in enumerate(lines):
+            call_id = line.get('call_id')
+            named_call = isinstance(call_id, str) and not is_unrecorded(call_id)
+            key = (call_id if named_call else number, line.get('stage'), line.get('reason'))
+            if key not in grouped:
+                grouped[key] = []
+                order.append(key)
+            grouped[key].append(line)
+        out = []
+        for key in order:
+            group = grouped[key]
+            line = group[0]
+            prefix = 'write failed' if line.get('stage') == 'write' else 'record rejected'
+            call_id = line.get('call_id')
+            agent = agent_of(call_id) if isinstance(call_id, str) else None
+            if agent is None:
+                for each in group:
+                    if not is_unrecorded(each.get('agent_id')) and each.get('record') == 'witness':
+                        agent = each.get('agent_id')
+                        break
+            records = []
+            for each in group:
+                name = each.get('record') if isinstance(each.get('record'), str) else 'unknown'
+                if name not in records:
+                    records.append(name)
+            out.append({'call_id': call_id, 'reason': '%s: %s' % (prefix, line.get('reason')),
+                        'records': records, 'witnesses': witnesses_for(witness_lines, agent)})
+        return out
 
     row_ids = [row['call_id'] for row in rows]
     lacking_return = set(missing_returns(sent, back))
     lacking_dispatch = set(record['call_id'] for record in orphan_returns(sent, back))
     for call_id in row_ids:
         if call_id in named:
-            absences.extend(error_absence(line) for line in named.pop(call_id))
+            absences.extend(error_absences(named.pop(call_id)))
         elif call_id in lacking_return:
             absences.append({'call_id': call_id, 'reason': NO_RETURN,
                              'witnesses': witnesses_for(witness_lines, agent_of(call_id))})
         elif call_id in lacking_dispatch:
             absences.append({'call_id': call_id, 'reason': NO_DISPATCH,
                              'witnesses': witnesses_for(witness_lines, agent_of(call_id))})
-    for line in own_errors:
-        if line.get('call_id') in named:
-            absences.append(error_absence(line))
+    absences.extend(error_absences([line for line in own_errors if line.get('call_id') in named]))
     absences.extend(labels_for_no_call(labels, set(row_ids)))
 
     for number in bad_lines:
@@ -413,7 +438,7 @@ def shown(folder):
 
 
 # ---------------------------------------------------------------------------
-# The count check (§8a, Gap 3)
+# The count check
 # ---------------------------------------------------------------------------
 
 def count_of(ids):
@@ -498,13 +523,14 @@ def count_check(harness, paths, rows, errors, session, folder):
         return 'unrecorded (no declaration for %s)' % harness, []
     tools = set(table[harness].get('tools') or [])
 
-    seen_ids, unreadable, order = {}, {}, []
+    seen_ids, unreadable, order, unread_paths = {}, {}, [], 0
     for path in paths:
         try:
             caller, ids = tool_call_ids(path, tools, reader)
         except OSError as exc:
             caller = caller_from_name(path, reader) or 'unrecorded (%s could not be read)' % Path(path).name
             unreadable[caller] = 'unrecorded (the transcript could not be read: %s)' % (exc.strerror or exc)
+            unread_paths += 1
             ids = None
         if caller not in order:
             order.append(caller)
@@ -531,7 +557,7 @@ def count_check(harness, paths, rows, errors, session, folder):
             entries.append((caller, count, held.count(caller)))
     for caller, count, kept in entries:
         by_caller.append({'caller': caller, 'transcript_count': count, 'ledger_count': kept})
-        if isinstance(count, int):
+        if isinstance(count, int) and caller not in unreadable:
             difference += abs(count - kept)
             if count > kept:
                 absences.append({'call_id': NO_CALL, 'witnesses': [],
@@ -540,6 +566,9 @@ def count_check(harness, paths, rows, errors, session, folder):
                 absences.append({'call_id': NO_CALL, 'witnesses': [],
                                  'reason': '%d subagent dispatch records have no dispatch in the transcript'
                                            % (kept - count)})
+    if unread_paths and not difference:
+        # A difference is never made over a count the reader did not make.
+        difference = 'unrecorded (%d transcripts could not be read)' % unread_paths
     return {'harness': harness, 'transcripts': [str(p) for p in paths], 'by_caller': by_caller,
             'difference': difference}, absences
 
@@ -621,8 +650,11 @@ def main(argv=None):
             return 2
         out['count_check'] = check
         out['absences'].extend(more)
-        if code == 0 and isinstance(check, dict) and check['difference']:
+        if code == 0 and isinstance(check, dict) and isinstance(check['difference'], int) and check['difference']:
             code = 4
+        elif code == 0 and isinstance(check, dict) and isinstance(check['difference'], str):
+            code = 3
+            declared = 'the count check could not read every transcript: %s' % check['difference']
     print(json.dumps(out, ensure_ascii=False))
     if declared:
         print('calls: %s' % declared, file=sys.stderr)

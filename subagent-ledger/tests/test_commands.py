@@ -1,6 +1,6 @@
 """Tests for the command splitter, `skill/scripts/commands.py`, through the capture that uses it.
 
-Control C-B6-8. Three commands made the capture's `Bash` route write a false `cli` dispatch when it
+Three commands made the capture's `Bash` route write a false `cli` dispatch when it
 split commands with a regular expression: a here-document whose body holds a `claude -p` line, and a
 `|` inside quotes, twice. With the splitter, they write nothing, and three true calls still write a
 dispatch. The control's other half restores the old split, by a patch in this file, and shows the

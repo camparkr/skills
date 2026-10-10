@@ -587,7 +587,7 @@ class Lines(Folder):
         self.assertEqual(self.errors()[-1]['stage'], 'payload')
 
     def test_the_rework_classes_exist(self):
-        """caller_time_limit and empty_answer are classes of reasons.json and the schema (rework S5, Time)."""
+        """caller_time_limit and empty_answer are classes of reasons.json and the schema."""
         classes = json.loads((SCRIPTS / 'reasons.json').read_text(encoding='utf-8'))['classes']
         schema_classes = ledger.load_schema()['$defs']['reasonClass']['enum']
         for name in ('caller_time_limit', 'empty_answer'):

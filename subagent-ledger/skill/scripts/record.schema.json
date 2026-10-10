@@ -539,7 +539,7 @@
         },
         "roster_revision": {
           "$ref": "#/$defs/text",
-          "description": "The revision of the roster the labeller read."
+          "description": "The revision of the list of failure modes the labeller read."
         },
         "labeller_model": {
           "$ref": "#/$defs/text",
@@ -1818,7 +1818,7 @@
     },
     "likelihoods": {
       "type": "object",
-      "description": "Every failure mode's Score answer, by mode name, less its legend: the expected level, each level's probability and the confidence.",
+      "description": "Every failure mode's answer on a four-level scale, by mode name, less its legend: the expected level, each level's probability and the confidence.",
       "additionalProperties": {
         "type": "object",
         "required": [
@@ -1902,7 +1902,7 @@
     },
     "label": {
       "type": "object",
-      "description": "A label line: the failure modes one call's return shows, written beside the call by the roster labeller and never on its records. It takes no field setting. Each mode is asked as a Score with four levels, 0 to 3. A mode is marked when its likeliest level, the level with the highest probability, is the cutoff or above; a tie between levels goes to the lower level.",
+      "description": "A label line: the failure modes one call's return shows, written beside the call by a labeller and never on its records. It takes no field setting. Each mode is asked on a four-level scale, 0 to 3. A mode is marked when its likeliest level, the level with the highest probability, is the cutoff or above; a tie between levels goes to the lower level.",
       "required": [
         "schema",
         "record",
@@ -1956,7 +1956,7 @@
         },
         "roster_revision": {
           "$ref": "#/$defs/text",
-          "description": "The git blob id of the roster chapter as read."
+          "description": "The git blob id of the list of failure modes it read."
         },
         "question_revision": {
           "$ref": "#/$defs/text",

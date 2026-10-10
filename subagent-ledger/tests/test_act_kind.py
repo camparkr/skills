@@ -1,17 +1,17 @@
 """Controls for the kind of act on a dispatch record, the user's answer, and the label line's new shape.
 
-The public skill's half of the B5 rebuild's controls:
+The public skill's controls:
 
-  * C-R-7: each capture writes `act_kind` on the dispatch record. It reads the brief's kind at the
+  * each capture writes `act_kind` on the dispatch record. It reads the brief's kind at the
     frontmatter key `config.json` names, translates it through the `kind_names` file, and writes one
-    of the plain names in kinds.json, or `unrecorded (<reason>)` in the words the specification gives.
+    of the plain names in kinds.json, or `unrecorded (<reason>)` saying why.
     A value that maps to no kind is unrecorded, logged as an error line at stage `setting`, and the
     record is still written.
-  * C-R-11: a dispatch of the kind `user-decision` carries `user_answer`, read from the caller's
+  * a dispatch of the kind `user-decision` carries `user_answer`, read from the caller's
     transcript: an answered question call between the caller's previous dispatch and this one gives
     `answered_first: yes`; none gives `not found`. The brief's own statement goes in `agent_record`
     only. The call goes out unchanged in every case.
-  * C-R-8: the label line's shape, and the reader's `labels`.
+  * the label line's shape, and the reader's `labels`.
 
 The kind values used here are this file's own; no workspace's values appear in a public file.
 
@@ -43,8 +43,8 @@ KIND_NAMES = ['verdict-or-review', 'deliberation', 'build', 'inquiry', 'archivin
               'user-decision']
 # This file's own values for each kind, standing in for whatever a workspace's briefs carry.
 VALUES = dict((name, 'value-for-%s' % name) for name in KIND_NAMES)
-NO_KIND = 'unrecorded (the brief names no kind; no triage: slice B7 not built)'
-NO_KIND_CLI = 'unrecorded (the command names no kind; no triage: slice B7 not built)'
+NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
+NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
 NO_AGENT = 'unrecorded (no agent: script call)'
 NOT_DECISION = 'none (not a user decision)'
 SESSION = '6449f88e-c7fa-40ca-8065-7558230a320d'
@@ -196,7 +196,7 @@ class TheKinds(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# C-R-7: the kind on the record
+# The kind on the record
 # ---------------------------------------------------------------------------
 
 class CR7Kind(KindWorld):
@@ -308,7 +308,7 @@ class CR7OtherCaptures(KindWorld):
 
 
 # ---------------------------------------------------------------------------
-# C-R-11: the user's answer
+# The user's answer
 # ---------------------------------------------------------------------------
 
 QUESTION_ID = 'toolu_question_0001'
@@ -418,7 +418,7 @@ class CR11UserAnswer(KindWorld):
 
 
 # ---------------------------------------------------------------------------
-# C-R-8: the label line's shape, and the reader
+# The label line's shape, and the reader
 # ---------------------------------------------------------------------------
 
 REVISION = '178097501b17147731b194d3a88211bbc53d03aa'
@@ -437,7 +437,7 @@ def new_line(**changes):
             'likelihoods': {'mode_a': score({'0': 0.15, '1': 0.32, '2': 0.18, '3': 0.35}),
                             'mode_b': score({'0': 0.8, '1': 0.1, '2': 0.05, '3': 0.05})},
             'cutoff': 2, 'roster_revision': REVISION, 'question_revision': QUESTION_REVISION,
-            'labeller_model': 'jev-1.13.0', 'labeller_call_ids': ['j-1', 'j-2', 'j-3'], 'withheld': 0}
+            'labeller_model': 'labeller-1.0.0', 'labeller_call_ids': ['j-1', 'j-2', 'j-3'], 'withheld': 0}
     line.update(changes)
     return line
 

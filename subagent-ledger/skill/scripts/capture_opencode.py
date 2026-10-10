@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenCode's capture: the plugin `opencode-plugin/subagent-ledger.js` runs it on each `task` call.
+"""OpenCode's capture: the plugin `opencode-plugin/subagent-ledger.js` runs it on each `task` and `bash` call.
 
     python3 capture_opencode.py before|after [--ledger <folder>]
 
@@ -27,6 +27,12 @@ read from reasons.json against the error text, and `harness_payload.event_type` 
 The tie is the call id, never timing. An error event whose call id is not pending and has no return
 writes one error line naming every pending call id, and no return. A call that already has a return
 gets no second one. Every other event is passed over.
+
+  * before, on `bash` (the shell tool subagent-tools.json names): a dispatch record, route cli, when the
+    command in `args.command` matches cli-patterns.json, as the Claude Code capture's shell route does.
+    A command that makes no model call writes nothing.
+  * after, on `bash`: the matched command's return record. OpenCode sends `after` for a command that
+    fails too, with its exit code in `output.metadata.exit`; a non-zero code is a failed call.
 
 Any other tool is passed over.
 
@@ -58,6 +64,7 @@ SUBAGENT_COST = 'unrecorded (the harness reports no cost for a subagent)'
 NOT_A_SCRIPT = 'unrecorded (not a call script)'
 NO_PROVIDER = 'unrecorded (tool.execute.before names no model, so no provider)'
 NO_EFFORT = 'unrecorded (OpenCode reports no effort level to a plugin)'
+NO_SIGN_IN = 'unrecorded (OpenCode reports no sign-in route to a plugin)'
 LIMIT = ('each tool call is listed as the model wrote it, when it names an absolute path outside the '
          'folder; a read inside a script its shell tool ran is not seen')
 STATE = re.compile(r'<task\b[^>]*\bstate="([^"]*)"')
@@ -66,6 +73,10 @@ RESULT = re.compile(r'<task_result>(.*?)</task_result>', re.S)
 
 def is_subagent_tool(tool):
     return tool == 'task'
+
+
+def is_shell_tool(tool):
+    return tool in shared.shell_tools(HARNESS)
 
 
 class Held(shared.Held):
@@ -125,12 +136,16 @@ def handle(event, text, folder=None):
     try:
         folder = ledger.ledger_folder(folder)
         given = payload.get('input') if isinstance(payload.get('input'), dict) else {}
-        if not is_subagent_tool(given.get('tool')):
-            return
-        if event == 'before':
-            return before(payload, folder, held)
-        if event == 'after':
-            return after(payload, folder, held)
+        if is_subagent_tool(given.get('tool')):
+            if event == 'before':
+                return before(payload, folder, held)
+            if event == 'after':
+                return after(payload, folder, held)
+        elif is_shell_tool(given.get('tool')):
+            if event == 'before':
+                return before_shell(payload, folder, held)
+            if event == 'after':
+                return after_shell(payload, folder, held)
     except Exception as exc:  # the capture's own fault: recorded, never raised to the plugin
         held.error(folder, 'payload', 'the capture failed: %s: %s' % (type(exc).__name__, exc))
 
@@ -332,6 +347,24 @@ def after(payload, folder, held):
         shared.clear_pending(folder, held.session, [held.call_id])
 
 
+def before_shell(payload, folder, held):
+    command = args_of(payload).get('command')
+    shared.cli_dispatch(folder, held, command if isinstance(command, str) else None, common(payload, held),
+                        {'input': payload.get('input'), 'args': args_of(payload), 'directory': payload.get('directory')},
+                        HARNESS, lambda: NO_SIGN_IN, 'tool.execute.before')
+
+
+def after_shell(payload, folder, held):
+    output = payload.get('output') if isinstance(payload.get('output'), dict) else {}
+    metadata = output.get('metadata') if isinstance(output.get('metadata'), dict) else {}
+    text = output.get('output') if isinstance(output.get('output'), str) else metadata.get('output')
+    code = metadata.get('exit')
+    command = args_of(payload).get('command')
+    kept = {'input': payload.get('input'), 'output': output, 'directory': payload.get('directory')}
+    shared.cli_return(folder, held, common(payload, held), command if isinstance(command, str) else None,
+                      text, code if isinstance(code, int) else None, kept)
+
+
 def task_outcome(text):
     """served, empty or failed, from the task tool's output: `<task ... state="completed">`."""
     state = STATE.search(text or '')
@@ -351,7 +384,7 @@ def database():
 
 
 def isolation_from_db(agent_id):
-    """The child session's folder and its tool calls' inputs, read from the database read-only (§3h)."""
+    """The child session's folder and its tool calls' inputs, read from the database read-only."""
     if not isinstance(agent_id, str) or agent_id.startswith('unrecorded ('):
         return 'unrecorded (no subagent session id to look up)'
     path = database()

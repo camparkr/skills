@@ -325,10 +325,10 @@ class PendingSwept(World):
 
 
 class QueuedMessage(World):
-    """A message sent to a running agent is queued ('Message queued for delivery …') and may be answered by a
-    later turn. Its return is written at the first stop after the message appears in the agent's transcript, with
-    that turn's answer and counters; with no transcript, at the first stop of a turn that started after it was
-    sent. A message to a stopped agent is unchanged."""
+    """A message sent to a running agent is queued and may be answered by a later turn; a message to a stopped
+    agent resumes it. Either way its return is written at the first stop after the message appears in the agent's
+    transcript, with that turn's answer and counters; with no transcript, at the first stop of a turn that started
+    after it was sent. No response wording is read to tell the two apart."""
 
     fields = 'all'
     MESSAGE = 'Please also count the files in the folder.'
@@ -396,19 +396,49 @@ class QueuedMessage(World):
         self.assertEqual(self.errors(), [])
         self.assertEqual(self.answer(self.returns()['toolu_queued_message_0001']), self.LATER_ANSWER)
 
-    def test_a_message_to_a_stopped_agent_returns_at_the_next_stop(self):
-        rows = self.events('background-events.jsonl')
-        self.place_transcript('background-agent.jsonl', rows)
-        sent = self.message_rows(rows, said='Resuming agent %s')
-        self.feed(rows[:3] + sent + [rows[3]])
-        self.assertIn('toolu_queued_message_0001', self.returns())
+    def resumed(self, transcript=True):
+        """The background call and its stop, then a message to the stopped agent ('Resuming agent …') and the
+        turn it starts."""
+        rows, first = self.session(transcript)
+        rows[4]['payload']['tool_response']['message'] = 'Resuming agent %s' % BACKGROUND_AGENT
+        return rows[:3] + [rows[5]] + rows[3:5] + rows[6:], first
 
-    def test_control_read_as_not_queued_it_takes_the_first_turns_answer(self):
-        rows, _ = self.session()
-        with mock.patch.object(self.capture, 'is_queued', lambda response: False):
-            self.feed(rows[:6])
+    def test_a_message_to_a_stopped_agent_returns_with_its_own_turns_counters(self):
+        rows, first = self.resumed()
+        self.feed(rows)
+        self.assertEqual(self.errors(), [])
         back = self.returns()['toolu_queued_message_0001']
-        self.assertNotEqual(self.answer(back), self.LATER_ANSWER)
+        self.assertEqual(self.answer(back), self.LATER_ANSWER)
+        self.assertEqual(dict((k, back['tokens'][k]) for k in self.LATER_TOKENS), self.LATER_TOKENS,
+                         'its own turn\'s counters, not the whole transcript\'s')
+        self.assertEqual(sorted(p.name for p in (self.ledger / '.pending').rglob('*.json')), [])
+
+    def test_with_no_transcript_a_message_to_a_stopped_agent_returns_at_its_turns_stop(self):
+        rows, _ = self.resumed(transcript=False)
+        self.feed(rows[:-2])
+        self.assertNotIn('toolu_queued_message_0001', self.returns(), 'not before a turn has started')
+        self.feed(rows[-2:])
+        self.assertEqual(self.answer(self.returns()['toolu_queued_message_0001']), self.LATER_ANSWER)
+
+    def reworded(self, response):
+        """The queued message's session with its response replaced: a message is told by its delivery alone."""
+        rows, _ = self.session()
+        rows[4]['payload']['tool_response'] = response
+        self.feed(rows[:6])
+        self.assertNotIn('toolu_queued_message_0001', self.returns(), 'not at the first stop')
+        self.feed(rows[6:])
+        back = self.returns()['toolu_queued_message_0001']
+        self.assertEqual(self.answer(back), self.LATER_ANSWER)
+        self.assertEqual(dict((k, back['tokens'][k]) for k in self.LATER_TOKENS), self.LATER_TOKENS)
+
+    def test_a_queued_message_said_to_resume_the_agent_still_waits_for_its_delivery(self):
+        self.reworded({'success': True, 'message': 'Resuming agent %s' % BACKGROUND_AGENT})
+
+    def test_a_queued_message_with_other_words_still_waits_for_its_delivery(self):
+        self.reworded({'success': True, 'message': 'The message was passed on.'})
+
+    def test_a_queued_message_with_no_response_text_still_waits_for_its_delivery(self):
+        self.reworded({'success': True})
 
 
 class BackgroundTranscriptSettles(World):

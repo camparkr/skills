@@ -16,11 +16,12 @@ What each event does:
     that agent id; otherwise the record says the message is addressed to something else. The return
     is written at that agent's next SubagentStop, as a background call's is. PostToolUse on
     SendMessage keeps the tool response for it; PostToolUseFailure writes a failed return.
-    A message the response says was queued for a running agent is answered by the turn it is
-    delivered in: its return is written at the first SubagentStop after the message appears in the
-    agent's transcript as delivered (a user row holding its text), with that turn's answer and
-    counters. Where the transcript cannot be read, it is written at the first stop of a turn that
-    started (SubagentStart) after the message was sent.
+    Every message, whether it was queued for a running agent or resumed a stopped one, is answered by
+    the turn it is delivered in, and no response wording is read to tell the two apart: its return is
+    written at the first SubagentStop after the message appears in the agent's transcript as
+    delivered (a user row holding its text), with that turn's answer, counters, model and isolation.
+    Where the transcript cannot be read, it is written at the first stop of a turn that started
+    (SubagentStart) after the message was sent.
   * SubagentStart: a witness line, and a pending file keyed by the agent id. Each message still
     waiting for this agent's stop is marked as sent before a turn that started.
   * PostToolUse on Agent or Task, a foreground call: the return record. The tool response is the one
@@ -172,8 +173,6 @@ ABSENT_FROM_BRIEF = {
 # limit on that wait: the harness's own time-out on hooks is the only bound. This is how often it
 # re-reads.
 REREAD_SECONDS = 0.1
-# SendMessage's response to a message for a running agent, which the agent reads at its next tool round.
-QUEUED = re.compile(r'^Message queued for delivery\b')
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
 
@@ -338,7 +337,7 @@ def subagent_start(payload, folder, held):
             'agent_id': held.agent_id, 'agent_type': payload.get('agent_type'),
             'started_at': ledger.now()})
         # A turn has started after each message still waiting for this agent's stop: where the transcript
-        # cannot be read, a queued message's return is written at this turn's stop.
+        # cannot be read, the message's return is written at this turn's stop.
         for name, data in read_resumes(folder, held.session, held.agent_id):
             if not data.get('turn_started_after'):
                 data['turn_started_after'] = True
@@ -523,14 +522,7 @@ def post_resume(payload, folder, held):
         if kept is None:
             return
         kept['tool_response'] = response
-        kept['queued'] = is_queued(response)
         write_pending(folder, held.session, 'resume-' + held.call_id, kept)
-
-
-def is_queued(response):
-    """Whether SendMessage's response says the message was queued for a running agent."""
-    said = response.get('message') if isinstance(response, dict) else None
-    return isinstance(said, str) and bool(QUEUED.match(said))
 
 
 def read_resumes(folder, session, agent):
@@ -602,12 +594,10 @@ def subagent_stop(payload, folder, held):
                 write_background_return(folder, held, agent, stop, join, ending,
                                         [join['call_id'], 'agent-' + agent, 'stop-' + agent, 'join-' + agent])
         for name, data in resumes:
-            own = ending
-            if data.get('queued'):
-                # A queued message is answered by the turn it is delivered in, which may be a later one.
-                own = queued_ending(ending, data)
-                if own is None:
-                    continue
+            # A message is answered by the turn it is delivered in, which may be a later one.
+            own = delivered_ending(ending, data)
+            if own is None:
+                continue
             # The return removes the pending files for its call and its agent, except a stop file just kept
             # for a foreground call whose PostToolUse has not yet come.
             cleared = [data['call_id'], name, 'agent-' + agent]
@@ -619,21 +609,17 @@ def subagent_stop(payload, folder, held):
 def turn_starter(join, resumes, foreground=False):
     """What started the turn this stop ends: ('dispatch', None) for a background dispatch, or a foreground call
     still waiting for its return, whose turn opens the transcript; ('resume', <its message>) for the oldest
-    message still waiting for a stop, a message to a stopped agent before a queued one; None if neither is
-    known."""
+    message still waiting for a stop; None if neither is known."""
     if join is not None or foreground:
         return ('dispatch', None)
-    ordered = [data for _, data in resumes if not data.get('queued')] + [data for _, data in resumes
-                                                                         if data.get('queued')]
-    for data in ordered:
+    for _, data in resumes:
         message = data.get('message')
         return ('resume', message) if isinstance(message, str) and message.strip() else None
     return None
 
 
-def queued_ending(ending, data):
-    """The ending a queued message's return is written with at this stop, or None where it waits for a later
-    stop.
+def delivered_ending(ending, data):
+    """The ending a message's return is written with at this stop, or None where it waits for a later stop.
 
     Where the transcript can be read, the message has been delivered by this stop when a user row holding it
     comes before the end of the request that holds this stop's answer; its return then takes this stop's

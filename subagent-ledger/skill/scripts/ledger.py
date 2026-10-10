@@ -79,9 +79,9 @@ SELECTABLE = (
     'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
     'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
 )
-# Fields no longer selectable. A record written before they were retired keeps them as written, the
-# schema still accepts them there, and the reader prints them where a record carries them. A `fields`
-# list naming one turns nothing on.
+# Fields no longer selectable, and gone from the schema. A record written before they were retired
+# keeps them as written, and the reader prints them where a record carries them. A `fields` list
+# naming one turns nothing on.
 RETIRED = ('recommended_harness', 'recommended_model', 'triage_model')
 DEFAULT_FIELDS = ('model_requested', 'model', 'tokens', 'cost', 'outcome_reason')
 # Which record a selectable field belongs to. A field that is on and belongs to the other record

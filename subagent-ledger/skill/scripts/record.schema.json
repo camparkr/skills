@@ -117,25 +117,10 @@
         "triage_kind"
       ]
     },
-    "retiredName": {
-      "description": "A field no longer selectable. A record written before it was retired may name it in fields_on or fields_not_chosen and carry it as written.",
-      "enum": [
-        "recommended_harness",
-        "recommended_model",
-        "triage_model"
-      ]
-    },
     "fieldList": {
       "type": "array",
       "items": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/selectableName"
-          },
-          {
-            "$ref": "#/$defs/retiredName"
-          }
-        ]
+        "$ref": "#/$defs/selectableName"
       },
       "uniqueItems": true
     },
@@ -561,18 +546,6 @@
         "triage_kind": {
           "$ref": "#/$defs/actKind",
           "description": "The kind a triage read from the brief, kept beside act_kind."
-        },
-        "recommended_harness": {
-          "$ref": "#/$defs/text",
-          "description": "Retired: a triage's recommended harness. Kept as written on records written before it was retired."
-        },
-        "recommended_model": {
-          "$ref": "#/$defs/text",
-          "description": "Retired: a triage's recommended model. Kept as written on records written before it was retired."
-        },
-        "triage_model": {
-          "$ref": "#/$defs/text",
-          "description": "Retired: the triage's model. Kept as written on records written before it was retired."
         },
         "model_check": {
           "$ref": "#/$defs/anyValue",

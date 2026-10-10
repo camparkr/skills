@@ -14,8 +14,8 @@ generated: { by: process:okf-projectdocs }
 * [call.py](call.py) - Make one call to Gemini CLI or Cursor from a fresh working folder, and write both records.
 * [calls.py](calls.py) - List a session's calls from its ledger, and name every call the ledger cannot show.
 * [capture_claude_code.py](capture_claude_code.py) - Claude Code's capture: every hook event runs it, and it writes the call records through ledger.py.
-* [capture_codex.py](capture_codex.py) - Codex's capture: each hook event on `spawn_agent` runs it, and it writes the call records through ledger.py.
-* [capture_opencode.py](capture_opencode.py) - OpenCode's capture: the plugin `opencode-plugin/subagent-ledger.js` runs it on each `task` call.
+* [capture_codex.py](capture_codex.py) - Codex's capture: hook events on `spawn_agent` and its shell tool run it, and it writes the call records.
+* [capture_opencode.py](capture_opencode.py) - OpenCode's capture: the plugin `opencode-plugin/subagent-ledger.js` runs it on each `task` and `bash` call.
 * [commands.py](commands.py) - Split a shell command into the parts the shell runs, and name each part's program.
 * [ledger.py](ledger.py) - The subagent ledger's one writer: every line in a ledger folder is written here.
 * [transcripts.py](transcripts.py) - Read a Claude Code transcript: the model that ran, its four counters, its folder and its tool calls.

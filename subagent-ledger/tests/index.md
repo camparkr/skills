@@ -12,12 +12,12 @@ generated: { by: process:okf-projectdocs }
 ## Scripts
 
 * [test_act_kind.py](test_act_kind.py) - Controls for the kind of act on a dispatch record, the user's answer, and the label line's new shape.
-* [test_agent_and_old_fields.py](test_agent_and_old_fields.py) - Controls C-F-1 and C-F-2, public half: call.py's records carry an agent, and the reader names an old record's gaps.
+* [test_agent_and_old_fields.py](test_agent_and_old_fields.py) - Controls: call.py's records carry an agent, and the reader names an old record's gaps.
 * [test_call.py](test_call.py) - Tests for the call script, `skill/scripts/call.py`, with stand-in harnesses.
 * [test_calls.py](test_calls.py) - Tests for the call reader, `skill/scripts/calls.py`, and its count check.
 * [test_capture_claude_code.py](test_capture_claude_code.py) - Tests for Claude Code's capture, `skill/scripts/capture_claude_code.py`, and its transcript reader.
 * [test_capture_codex.py](test_capture_codex.py) - Tests for Codex's capture, `skill/scripts/capture_codex.py`, and the Codex half of `transcripts.py`.
 * [test_capture_opencode.py](test_capture_opencode.py) - Tests for OpenCode's capture: `skill/scripts/capture_opencode.py` and the plugin that feeds it,
 * [test_commands.py](test_commands.py) - Tests for the command splitter, `skill/scripts/commands.py`, through the capture that uses it.
-* [test_label_line.py](test_label_line.py) - Controls for the label line (slice B5, ruling L-1 (b)): the writer's `label`, its schema, and the reader's join.
+* [test_label_line.py](test_label_line.py) - Controls for the label line: the writer's `label`, its schema, and the reader's join.
 * [test_ledger.py](test_ledger.py) - Tests for the subagent ledger's writer, `skill/scripts/ledger.py`, and its record schema.

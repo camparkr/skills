@@ -30,11 +30,26 @@ What each event does:
     A transcript that is absent, or that does not carry the envelope's result, leaves each of them
     unrecorded, saying why.
 
+Every dispatch record carries `act_kind`, the kind of act the call performs: the brief's frontmatter
+at the key `config.json`'s `frontmatter` names for `act_kind`, translated through the file its
+`kind_names` names (each kind in kinds.json to the value a brief gives for it). A brief value that
+is already one of the kinds is kept. A value that is neither is `unrecorded (<value> is not a
+kind)`, with an error line at stage `setting`, and the record is still written. A brief naming no
+kind, or a command-line call, is unrecorded, saying so.
+
+For a call of the kind `user-decision`, `user_answer` notes whether the user answered first: the
+caller's transcript (`transcript_path`) is read for an answered AskUserQuestion call between the
+caller's previous dispatch in the ledger (or the start of the transcript) and this PreToolUse. The
+brief's own statement, at the key `frontmatter` names for `user_answer`, is kept beside it as
+`agent_record` and never read as the evidence. Any other kind reads `none (not a user decision)`.
+Reading it never stops, delays or changes the call.
+
 A failure at any stage writes one error line through ledger.error(), naming the session, call id
 and event read from the raw payload before anything else.
 """
 
 import contextlib
+import datetime
 import fcntl
 import glob
 import io
@@ -58,10 +73,17 @@ HARNESS = 'claude-code'
 SUBAGENT_TOOLS = ('Agent', 'Task')
 SHELL_TOOL = 'Bash'
 PATTERNS_FILE = HERE / 'cli-patterns.json'
+KINDS_FILE = HERE / 'kinds.json'
 PENDING = '.pending'
 AUTH_VARIABLES = ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN',
                   'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX')
-FRONTMATTER_FIELDS = ('persona-name', 'characteristic', 'task')
+FRONTMATTER_FIELDS = ('persona-name', 'act_kind', 'task')
+NO_KIND = 'unrecorded (the brief names no kind; no triage: slice B7 not built)'
+NO_KIND_CLI = 'unrecorded (the command names no kind; no triage: slice B7 not built)'
+USER_DECISION = 'user-decision'
+NOT_A_DECISION = 'none (not a user decision)'
+# Each harness's tool for putting a question to the user and getting the answer back.
+QUESTION_TOOLS = {'claude-code': 'AskUserQuestion'}
 DISPATCH_AGENT = 'unrecorded (not yet returned)'
 CLI_AGENT = 'unrecorded (no agent: cli call)'
 SUBAGENT_COST = 'unrecorded (the harness reports no cost for a subagent)'
@@ -71,7 +93,7 @@ COUNTER_NAMES = (('input', 'input_tokens'), ('cache_write', 'cache_creation_inpu
                  ('cache_read', 'cache_read_input_tokens'), ('output', 'output_tokens'))
 ABSENT_FROM_BRIEF = {
     'persona-name': 'unrecorded (the brief names no persona)',
-    'characteristic': 'unrecorded (not given in the brief)',
+    'act_kind': NO_KIND,
     'task': 'unrecorded (the brief names no task)',
 }
 # A background call's transcript may still be written when SubagentStop fires, so its counters are
@@ -190,7 +212,10 @@ def pre_agent(payload, folder, held):
         'brief_source': source,
         'harness_payload': payload,
     })
-    fields.update(optional_fields(folder, brief if source else prompt))
+    fields.update(optional_fields(folder, brief if source else prompt, held))
+    fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
+                                           payload.get('transcript_path'), fields['act_kind'],
+                                           brief if source else prompt)
     with pending_lock(folder, held.session):
         write_pending(folder, held.session, held.call_id, {
             'call_id': held.call_id, 'dispatched_at': at,
@@ -528,7 +553,8 @@ def pre_shell(payload, folder, held):
         'brief_source': 'unrecorded (the brief is the command itself)',
         'harness_payload': payload,
     })
-    fields.update(optional_fields(folder, None))
+    fields.update(optional_fields(folder, None, held, cli=True))
+    fields['user_answer'] = NOT_A_DECISION
     with pending_lock(folder, held.session):
         write_pending(folder, held.session, 'cli-' + held.call_id,
                       {'call_id': held.call_id, 'dispatched_at': at, 'program': entry['program']})
@@ -819,8 +845,11 @@ def read_config(folder):
     return (data if isinstance(data, dict) else {}), path
 
 
-def optional_fields(folder, brief):
-    """persona-name, characteristic, task and grouping, from the brief's frontmatter (§3b)."""
+def optional_fields(folder, brief, held=None, cli=False):
+    """persona-name, act_kind, task and grouping, from the brief's frontmatter.
+
+    `act_kind` is the brief's value translated by kind_of(); a command-line call has no brief to read.
+    """
     config, path = read_config(folder)
     keys = config.get('frontmatter')
     out = {}
@@ -834,9 +863,11 @@ def optional_fields(folder, brief):
             if not keys.get(name):
                 out[name] = 'unrecorded (%s names no frontmatter key for %s)' % (ledger.CONFIG_FILE, name)
             elif isinstance(value, str) and value:
-                out[name] = value
+                out[name] = kind_of(folder, value, held) if name == 'act_kind' else value
             else:
                 out[name] = ABSENT_FROM_BRIEF[name]
+    if cli:
+        out['act_kind'] = NO_KIND_CLI
     table_name = config.get('grouping_table')
     persona = out['persona-name']
     if not isinstance(table_name, str) or not table_name:
@@ -854,6 +885,117 @@ def optional_fields(folder, brief):
             out['grouping'] = found if isinstance(found, str) and found else (
                 'unrecorded (%s is not in the grouping table)' % persona)
     return out
+
+
+def kind_names(folder):
+    """{kind: the value a brief gives for it} for every kind in kinds.json, and why not where it cannot be read.
+
+    Without `kind_names` in config.json each kind maps to itself. An entry of the named file's `kinds`
+    object is either the value itself or an object holding it under `value`.
+    """
+    try:
+        names = [entry['name'] for entry in json.loads(KINDS_FILE.read_text(encoding='utf-8'))['kinds']]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return None, 'kinds.json could not be read: %s' % type(exc).__name__
+    config, path = read_config(folder)
+    named = config.get('kind_names')
+    if not named:
+        return dict((name, name) for name in names), None
+    table_path = Path(named) if os.path.isabs(named) else path.parent / named
+    try:
+        table = json.loads(table_path.read_text(encoding='utf-8'))['kinds']
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return None, 'the kind map %s could not be read: %s' % (named, type(exc).__name__)
+    out = {}
+    for name in names:
+        entry = table.get(name) if isinstance(table, dict) else None
+        value = entry.get('value') if isinstance(entry, dict) else entry
+        out[name] = value if isinstance(value, str) and value else None
+    return out, None
+
+
+def kind_of(folder, value, held=None):
+    """The kind a brief's value names, or `unrecorded (<why>)` with an error line at stage `setting`."""
+    table, why = kind_names(folder)
+    if table is not None:
+        if value in table:
+            return value
+        found = [name for name, mapped in table.items() if mapped == value]
+        if len(found) == 1:
+            return found[0]
+        why = '%s is not a kind' % value
+    reason = why
+    if held is not None:
+        held.error(folder, 'setting', reason, record='dispatch')
+    else:
+        ledger.error(ledger=folder, stage='setting', reason=reason, record='dispatch', harness=HARNESS)
+    return 'unrecorded (%s)' % reason
+
+
+def _time(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
+def previous_dispatch_at(folder, session, caller):
+    """When the caller last dispatched a call in this session's ledger, or None if it has not.
+
+    A dispatch record whose `caller` is not filled is counted as the caller's, so the window is never
+    wider than the ledger can show.
+    """
+    path = Path(folder) / ('%s.jsonl' % session)
+    latest = None
+    try:
+        rows = path.read_text(encoding='utf-8').splitlines() if path.is_file() else []
+    except OSError:
+        return None
+    for raw in rows:
+        try:
+            row = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(row, dict) or row.get('record') != 'dispatch':
+            continue
+        who = row.get('caller')
+        if isinstance(who, str) and who and not who.startswith('unrecorded (') and who != caller:
+            continue
+        at = _time(row.get('dispatched_at'))
+        if at is not None and (latest is None or at > latest):
+            latest = at
+    return latest
+
+
+def user_answer_of(folder, harness, session, caller, transcript_path, kind, brief):
+    """user_answer for a dispatch: the evidence from the caller's transcript, and the agent's own statement."""
+    if kind != USER_DECISION:
+        return NOT_A_DECISION
+    tool = QUESTION_TOOLS.get(harness)
+    if not tool:
+        return 'unrecorded (no question tool for %s)' % harness
+    if not isinstance(transcript_path, str) or not transcript_path:
+        return 'unrecorded (transcript_path absent from PreToolUse)'
+    try:
+        calls = transcripts.question_calls(transcript_path, tool)
+    except (OSError, ValueError) as exc:
+        return "unrecorded (the caller's transcript could not be read: %s)" % type(exc).__name__
+    since = previous_dispatch_at(folder, session, caller)
+    found = [call for call in calls if _time(call['asked_at']) is not None
+             and (since is None or _time(call['asked_at']) > since)]
+    config, _path = read_config(folder)
+    keys = config.get('frontmatter') if isinstance(config.get('frontmatter'), dict) else {}
+    statement = lookup(frontmatter(brief), keys['user_answer']) if (
+        isinstance(brief, str) and keys.get('user_answer')) else None
+    record = statement if isinstance(statement, str) and statement else 'none'
+    if not found:
+        return {'answered_first': 'not found', 'question_call': None, 'asked_at': None, 'answered_at': None,
+                'agent_record': record}
+    latest = max(found, key=lambda call: _time(call['answered_at']) or _time(call['asked_at']))
+    return {'answered_first': 'yes', 'question_call': latest['id'], 'asked_at': latest['asked_at'],
+            'answered_at': latest['answered_at'], 'agent_record': record}
 
 
 def frontmatter(text):

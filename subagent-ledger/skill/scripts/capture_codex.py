@@ -179,7 +179,10 @@ def pre_spawn(payload, folder, held):
         'brief_source': source,
         'harness_payload': payload,
     })
-    fields.update(shared.optional_fields(folder, brief if source else message))
+    fields.update(shared.optional_fields(folder, brief if source else message, held))
+    fields['user_answer'] = shared.user_answer_of(folder, HARNESS, held.session, fields.get('caller'),
+                                                  payload.get('transcript_path'), fields['act_kind'],
+                                                  brief if source else message)
     with shared.pending_lock(folder, held.session):
         shared.write_pending(folder, held.session, held.call_id,
                              {'call_id': held.call_id, 'dispatched_at': at})

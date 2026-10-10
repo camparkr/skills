@@ -580,7 +580,7 @@ BRIEF_WITH_FRONTMATTER = """---
 type: brief
 meta:
   persona: builder
-  character: craft
+  character: build
   task: 2026-01-01-example-task
 ---
 
@@ -593,7 +593,7 @@ class CB2_9Optional(World):
     def setting(self, fields, mapped=True):
         config = {'fields': fields}
         if mapped:
-            config['frontmatter'] = {'persona-name': 'meta.persona', 'characteristic': 'meta.character',
+            config['frontmatter'] = {'persona-name': 'meta.persona', 'act_kind': 'meta.character',
                                      'task': 'meta.task'}
             config['grouping_table'] = 'grouping.json'
             (self.ledger / 'grouping.json').write_text(json.dumps({'grouping': {'builder': 'workshop'}}),
@@ -609,20 +609,20 @@ class CB2_9Optional(World):
     def test_c_b2_9_all_fills_the_four_fields(self):
         self.setting('all')
         dispatch = self.dispatch_of_brief()
-        self.assertEqual((dispatch['persona-name'], dispatch['characteristic'], dispatch['task'],
-                          dispatch['grouping']), ('builder', 'craft', '2026-01-01-example-task', 'workshop'))
+        self.assertEqual((dispatch['persona-name'], dispatch['act_kind'], dispatch['task'],
+                          dispatch['grouping']), ('builder', 'build', '2026-01-01-example-task', 'workshop'))
 
     def test_c_b2_9_frame_writes_none_of_them(self):
         self.setting('frame')
         dispatch = self.dispatch_of_brief()
-        for name in ('persona-name', 'characteristic', 'task', 'grouping'):
+        for name in ('persona-name', 'act_kind', 'task', 'grouping'):
             self.assertNotIn(name, dispatch)
             self.assertIn(name, dispatch['fields_not_chosen'])
 
     def test_c_b2_9_control_with_no_map_each_says_why(self):
         self.setting('all', mapped=False)
         dispatch = self.dispatch_of_brief()
-        for name in ('persona-name', 'characteristic', 'task', 'grouping'):
+        for name in ('persona-name', 'act_kind', 'task', 'grouping'):
             self.assertTrue(UNRECORDED.match(dispatch[name]), dispatch[name])
 
 

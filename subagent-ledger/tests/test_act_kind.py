@@ -183,6 +183,11 @@ class TheKinds(unittest.TestCase):
             raise AssertionError('ledger.py has no act_kind field yet')
         schema = writer.load_schema()
         record = json.loads((FIXTURES / 'valid-dispatch.json').read_text(encoding='utf-8'))
+        for name in ('act_kind', 'user_answer'):
+            if name in record['fields_not_chosen']:
+                record['fields_not_chosen'].remove(name)
+                record['fields_on'].append(name)
+        record['fields_on'] = [n for n in writer.SELECTABLE if n in record['fields_on']]
         record['act_kind'] = 'build'
         record['user_answer'] = NOT_DECISION
         self.assertEqual(writer.validate(record, schema, ref='#/$defs/dispatch'), [])
@@ -231,9 +236,12 @@ class CR7Kind(KindWorld):
         if not hasattr(self.capture, 'kind_of'):
             raise AssertionError('capture_claude_code.py has no kind_of() yet')
         with mock.patch.object(self.capture, 'kind_of', lambda folder, value, held=None: value):
-            sent = self.dispatch_kind(brief_text(VALUES['verdict-or-review']))
-        self.assertEqual(sent['act_kind'], VALUES['verdict-or-review'], 'the check sees an untranslated value')
-        self.assertNotIn(sent['act_kind'], KIND_NAMES)
+            self.capture.handle('PreToolUse', json.dumps(self.pre_agent(brief_text(VALUES['verdict-or-review']))),
+                                None)
+        self.assertEqual(self.dispatches(), [], 'the untranslated value is refused, so no record is written')
+        errors = self.errors()
+        self.assertEqual([e['stage'] for e in errors], ['validate'])
+        self.assertIn('act_kind', errors[0]['reason'])
 
 
 class CR7NoMap(KindWorld):

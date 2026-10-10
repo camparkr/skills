@@ -33,7 +33,12 @@ non-zero while every counter it breaks into is zero is passed over. The models a
 each `exec_command`'s text is kept for `isolation()`. A rollout that Codex continued in a second file
 after compaction is not read short: its counters are unrecorded, saying so.
 
-Use it as a module (`read(path)`, `isolation(reading)`, `lane_path(...)`) or as a command:
+`question_calls(path, tool)` lists the answered calls of the harness's tool for putting a question to
+the user (Claude Code's `AskUserQuestion`): each `tool_use` of that name whose `tool_result` stands
+later in the transcript and is not an error, with the time of each row.
+
+Use it as a module (`read(path)`, `isolation(reading)`, `lane_path(...)`, `question_calls(...)`) or as a
+command:
 
     python3 transcripts.py <transcript.jsonl>
 
@@ -356,6 +361,30 @@ def isolation(reading):
                 outside.append({'tool': use.get('name'), key: value, 'paths': named})
     return {'folder': folder, 'outside': outside, 'read_from': reading.get('path'),
             'limit': reading.get('isolation_limit') or ISOLATION_LIMIT}
+
+
+def question_calls(path, tool):
+    """[{id, asked_at, answered_at}] for each answered call of `tool` in the transcript, in order.
+
+    A call counts when its `tool_result` is in the file and is not marked `is_error`. Raises OSError
+    when the file cannot be read.
+    """
+    asked, answered = {}, {}
+    for row in rows_of(path):
+        message = row.get('message') if isinstance(row.get('message'), dict) else {}
+        content = message.get('content')
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'tool_use' and block.get('name') == tool and isinstance(block.get('id'), str):
+                asked.setdefault(block['id'], row.get('timestamp'))
+            elif (block.get('type') == 'tool_result' and block.get('tool_use_id') in asked
+                  and not block.get('is_error')):
+                answered.setdefault(block['tool_use_id'], row.get('timestamp'))
+    return [{'id': call_id, 'asked_at': at, 'answered_at': answered[call_id]}
+            for call_id, at in asked.items() if call_id in answered]
 
 
 def main(argv=None):

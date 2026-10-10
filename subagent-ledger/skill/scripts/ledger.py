@@ -76,7 +76,7 @@ STRUCTURAL = ('schema', 'record', 'fields_on', 'fields_not_chosen', 'withheld')
 SELECTABLE = (
     'model_requested', 'model', 'tokens', 'cost', 'outcome_reason', 'route', 'harness', 'machine',
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
-    'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'characteristic',
+    'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
     'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'recommended_harness',
     'recommended_model', 'triage_model',
 )
@@ -84,7 +84,7 @@ DEFAULT_FIELDS = ('model_requested', 'model', 'tokens', 'cost', 'outcome_reason'
 # Which record a selectable field belongs to. A field that is on and belongs to the other record
 # reads `unrecorded (<reason>)` saying where it is.
 DISPATCH_ONLY = {'model_requested', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
-                 'persona-name', 'characteristic', 'grouping', 'task', 'recommended_harness',
+                 'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'recommended_harness',
                  'recommended_model', 'triage_model'}
 RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'isolation',
                'spend_line', 'failure_modes', 'roster_revision', 'labeller_model'}
@@ -105,18 +105,22 @@ NOT_GIVEN = {
     'brief_source': 'unrecorded (the prompt named no file)',
     'persona-name': 'unrecorded (the brief names no persona)',
     'grouping': 'unrecorded (the brief names no persona)',
-    'characteristic': 'unrecorded (not given in the brief)',
+    'act_kind': 'unrecorded (the brief names no kind; no triage: slice B7 not built)',
     'task': 'unrecorded (the brief names no task)',
 }
 NO_VALUE = 'unrecorded (the capture supplied no value)'
+# user_answer for any call whose kind is not user-decision.
+NOT_A_DECISION = 'none (not a user decision)'
+USER_DECISION = 'user-decision'
 ON_DISPATCH = 'unrecorded (carried on the dispatch record)'
 ON_RETURN = 'unrecorded (filled on the return record)'
 NOT_PASSED = 'unrecorded (not passed to the writer)'
 # Special arguments: text the writer moves to a file, and where the ledger is. Never record fields.
 SPECIAL = ('brief', 'answer', 'prompt', 'ledger')
 # A label line's keys in §7's order, the writer's own `schema`, `record` and `withheld` among them.
-LABEL_ORDER = ('schema', 'record', 'call_id', 'session', 'labelled_at', 'failure_modes', 'likelihoods', 'cutoff',
-               'roster_revision', 'labeller_model', 'labeller_call_id', 'withheld')
+LABEL_ORDER = ('schema', 'record', 'call_id', 'session', 'labelled_at', 'labelled_because', 'failure_modes',
+               'likelihoods', 'cutoff', 'roster_revision', 'question_revision', 'labeller_model', 'labeller_call_ids',
+               'withheld')
 # The line kinds that take no field setting.
 UNSET_LINES = ('witness', 'label')
 
@@ -383,6 +387,8 @@ def _build(kind, folder, fields, on, brief, answer):
         value = given.pop(name, None)
         if name not in on:
             continue
+        if value is None and name == 'user_answer' and kind == 'dispatch':
+            value = NO_VALUE if record.get('act_kind') == USER_DECISION else NOT_A_DECISION
         if value is None:
             value = _not_given(kind, name, brief, answer)
         record[name] = value
@@ -599,8 +605,8 @@ def _git_top(start):
 # ---------------------------------------------------------------------------
 
 IMPLEMENTED_KEYWORDS = ('$ref', '$defs', 'type', 'enum', 'const', 'pattern', 'minLength', 'maxLength',
-                        'minimum', 'properties', 'required', 'additionalProperties', 'items',
-                        'uniqueItems', 'contains', 'not', 'if', 'then', 'else', 'allOf', 'anyOf',
+                        'minimum', 'properties', 'required', 'additionalProperties', 'items', 'minItems',
+                        'maxItems', 'uniqueItems', 'contains', 'not', 'if', 'then', 'else', 'allOf', 'anyOf',
                         'oneOf')
 # Keywords that describe and never validate.
 ANNOTATION_KEYWORDS = ('$schema', '$id', '$comment', 'title', 'description', 'x-opentelemetry')
@@ -737,6 +743,10 @@ def _validate(value, schema, root, at):
                     problems += _validate(value[name], schema['additionalProperties'], root,
                                           '%s.%s' % (at, name))
     if isinstance(value, list):
+        if 'minItems' in schema and len(value) < schema['minItems']:
+            problems.append('at %s: fewer than %d items' % (at, schema['minItems']))
+        if 'maxItems' in schema and len(value) > schema['maxItems']:
+            problems.append('at %s: more than %d items' % (at, schema['maxItems']))
         if 'items' in schema:
             for n, item in enumerate(value):
                 problems += _validate(item, schema['items'], root, '%s[%d]' % (at, n))

@@ -286,7 +286,9 @@ def before(payload, folder, held):
         'harness_payload': {'input': payload.get('input'), 'args': args,
                             'directory': payload.get('directory')},
     })
-    fields.update(shared.optional_fields(folder, brief if source else prompt))
+    fields.update(shared.optional_fields(folder, brief if source else prompt, held))
+    fields['user_answer'] = shared.user_answer_of(folder, HARNESS, held.session, fields.get('caller'), None,
+                                                  fields['act_kind'], brief if source else prompt)
     with shared.pending_lock(folder, held.session):
         shared.write_pending(folder, held.session, held.call_id, {'call_id': held.call_id, 'dispatched_at': at})
     ledger.dispatch(ledger=folder, brief=brief or None, prompt=prompt if source and prompt else None, **fields)

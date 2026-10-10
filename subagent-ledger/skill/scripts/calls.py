@@ -16,9 +16,10 @@ in `fields_not_chosen` prints `not chosen`; a field on and unfilled prints as th
 `unrecorded (<reason>)`. Nothing is filled in. A return with no dispatch record still has its row, its
 dispatch side reading `unrecorded (no dispatch record)`.
 
-Each row also carries `labels`, joined from the session's label lines by `call_id`: `failure_modes`,
-`likelihoods`, `cutoff`, `roster_revision`, `labeller_model` and `labelled_at` from the newest label line
-for the call, and `earlier`, the number of older ones. A call with no label line reads
+Each row also carries `labels`, joined from the session's label lines by `call_id`: `labelled_because`,
+`failure_modes`, `likelihoods`, `cutoff`, `roster_revision`, `question_revision`, `labeller_model`,
+`labeller_call_ids` and `labelled_at` from the newest label line for the call, and `earlier`, the number of
+older ones. A call with no label line reads
 `unrecorded (no label line for this call)`.
 
 `absences` names each call, or each failed capture, the rows cannot show, with the witness lines
@@ -89,7 +90,8 @@ NO_AGENT_ROUTES = ('unrecorded (no agent: cli call)', 'unrecorded (no agent: scr
 NO_LABEL = 'unrecorded (no label line for this call)'
 LABEL_FOR_NO_CALL = 'label for no call'
 # What a row's `labels` shows of a label line, beside `earlier`.
-LABEL_FIELDS = ('failure_modes', 'likelihoods', 'cutoff', 'roster_revision', 'labeller_model', 'labelled_at')
+LABEL_FIELDS = ('labelled_because', 'failure_modes', 'likelihoods', 'cutoff', 'roster_revision', 'question_revision',
+                'labeller_model', 'labeller_call_ids', 'labelled_at')
 REJECTED_STAGES = ('payload', 'setting', 'validate', 'scrub', 'copy')
 SESSION_SHAPE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.:-]*$')
 FRAME = ('call_id', 'agent_id', 'session', 'dispatched_at', 'returned_at', 'outcome')

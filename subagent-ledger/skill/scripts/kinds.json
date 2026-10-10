@@ -1,0 +1,37 @@
+{
+  "description": "The kinds of act a call can perform, each with its yes-or-no test. A dispatch record's act_kind holds one of these names, or unrecorded (<reason>) when no test was applied or none passed. A kind is never given by guess.",
+  "kinds": [
+    {
+      "name": "verdict-or-review",
+      "test": "Does the call return a ruling on whether work may go ahead, or a review of instructions an agent loads, measured against a standard that existed before the work?"
+    },
+    {
+      "name": "deliberation",
+      "test": "Does the call settle or challenge how work still to be done should be shaped, without ruling on whether it may go ahead?"
+    },
+    {
+      "name": "build",
+      "test": "Does the call change what a program does, following a design already settled?"
+    },
+    {
+      "name": "inquiry",
+      "test": "Does the call return an account or a catalogue entry with its sources, without ruling on anything?"
+    },
+    {
+      "name": "archiving",
+      "test": "Does the call put a stored record out of use, bring it back or delete it, while it stays where it's stored?"
+    },
+    {
+      "name": "transfer",
+      "test": "Does the call move something from one place or system to another, so that it arrives unchanged?"
+    },
+    {
+      "name": "conversion",
+      "test": "Does the call change the conditions a program runs in, or the form of its input, without changing what the program does?"
+    },
+    {
+      "name": "user-decision",
+      "test": "Does the call need someone with authority over the work to set its objective, accept a risk no standing rule covers, or approve or refuse its result?"
+    }
+  ]
+}

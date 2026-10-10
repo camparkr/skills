@@ -38,11 +38,16 @@ SESSION = 'b5label-0000-4000-8000-000000000001'
 UNSET = 'unrecorded (cut-off not yet set)'
 ON_LABEL_LINE = 'unrecorded (labelled on the label line)'
 OLD_WORDINGS = ('slice B5 not built', 'no labeller has read this record')
-LABEL_KEYS = ['schema', 'record', 'call_id', 'session', 'labelled_at', 'failure_modes', 'likelihoods', 'cutoff',
-              'roster_revision', 'labeller_model', 'labeller_call_id', 'withheld']
-ROW_LABEL_KEYS = {'failure_modes', 'likelihoods', 'cutoff', 'roster_revision', 'labeller_model', 'labelled_at',
-                  'earlier'}
+# The label line's keys at profile v37 (B5 rebuild, specification §7e).
+LABEL_KEYS = ['schema', 'record', 'call_id', 'session', 'labelled_at', 'labelled_because', 'failure_modes',
+              'likelihoods', 'cutoff', 'roster_revision', 'question_revision', 'labeller_model', 'labeller_call_ids',
+              'withheld']
+ROW_LABEL_KEYS = {'labelled_because', 'failure_modes', 'likelihoods', 'cutoff', 'roster_revision', 'question_revision',
+                  'labeller_model', 'labeller_call_ids', 'labelled_at', 'earlier'}
 REVISION = '178097501b17147731b194d3a88211bbc53d03aa'
+QUESTION_REVISION = 'f' * 40
+LOW = {'0': 0.7, '1': 0.2, '2': 0.06, '3': 0.04}
+HIGH = {'0': 0.05, '1': 0.1, '2': 0.25, '3': 0.6}
 
 
 def load(path, name):
@@ -66,11 +71,20 @@ def lines_of(path):
     return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
 
 
+def score(levels):
+    return {'score': round(sum(int(k) * v for k, v in levels.items()), 2), 'probabilities': dict(levels),
+            'confidence': 0.3}
+
+
 def likelihoods(high=None):
-    out = dict(('mode_%02d' % n, 0.05) for n in range(18))
+    out = dict(('mode_%02d' % n, score(LOW)) for n in range(18))
     if high:
-        out[high] = 0.9
+        out[high] = score(HIGH)
     return out
+
+
+def marks(high=None):
+    return [{'mode': high, 'level': 3, 'p': 0.6}] if high else []
 
 
 class LabelWorld(unittest.TestCase):
@@ -109,9 +123,11 @@ class LabelWorld(unittest.TestCase):
     def a_label(self, call_id, labelled_at, high=None, labeller_call_id='jev-call-1'):
         if not hasattr(self.ledger, 'label'):
             raise AssertionError('ledger.py has no label(): the label line\'s writer is not built')
-        return self.ledger.label(call_id=call_id, session=SESSION, labelled_at=labelled_at, failure_modes=UNSET,
-                                 likelihoods=likelihoods(high), cutoff=UNSET, roster_revision=REVISION,
-                                 labeller_model='jev-1.13.0', labeller_call_id=labeller_call_id)
+        return self.ledger.label(call_id=call_id, session=SESSION, labelled_at=labelled_at,
+                                 labelled_because=['always: verdict-or-review'], failure_modes=marks(high),
+                                 likelihoods=likelihoods(high), cutoff=2, roster_revision=REVISION,
+                                 question_revision=QUESTION_REVISION, labeller_model='jev-1.13.0',
+                                 labeller_call_ids=[labeller_call_id, 'jev-call-b', 'jev-call-c'])
 
     def session_lines(self):
         return lines_of(self.folder / ('%s.jsonl' % SESSION))
@@ -145,9 +161,9 @@ class TheLine(LabelWorld):
         line = [r for r in self.session_lines() if r['record'] == 'label'][0]
         self.assertEqual(list(line), LABEL_KEYS, 'the label line\'s keys, in §7\'s order')
         self.assertEqual(line['schema'], 'subagent-ledger/1')
-        self.assertEqual(line['failure_modes'], UNSET)
-        self.assertEqual(line['cutoff'], UNSET)
-        self.assertEqual(line['likelihoods']['mode_03'], 0.9)
+        self.assertEqual(line['failure_modes'], [{'mode': 'mode_03', 'level': 3, 'p': 0.6}])
+        self.assertEqual(line['cutoff'], 2)
+        self.assertEqual(line['likelihoods']['mode_03'], score(HIGH))
         self.assertEqual(line['withheld'], 0)
         self.assertNotIn('fields_on', line, 'a label line takes no field setting, even under "frame"')
         self.assertEqual(self.ledger.validate(line, self.ledger.load_schema(), ref='#/$defs/label'), [])
@@ -159,17 +175,20 @@ class TheLine(LabelWorld):
         if not hasattr(self.ledger, 'label'):
             raise AssertionError('ledger.py has no label(): the label line\'s writer is not built')
         written = self.ledger.label(call_id='call-1', session=SESSION, labelled_at='2026-10-09T02:00:00.000Z',
-                                    failure_modes=[{'mode': 'mode_03', 'p': 0.9}], likelihoods=likelihoods('mode_03'),
-                                    cutoff=0.5, roster_revision=REVISION, labeller_model='jev-1.13.0',
-                                    labeller_call_id='jev-call-1')
+                                    labelled_because=['outcome: failed'],
+                                    failure_modes=[{'mode': 'mode_03', 'level': 2, 'p': 0.4}],
+                                    likelihoods=likelihoods('mode_03'), cutoff=2, roster_revision=REVISION,
+                                    question_revision=QUESTION_REVISION, labeller_model='jev-1.13.0',
+                                    labeller_call_ids=['jev-call-1', 'jev-call-2', 'jev-call-3'])
         self.assertTrue(written.ok, written.error)
 
     def test_switched_off_a_line_with_a_field_setting_or_no_likelihoods_is_rejected(self):
         schema = self.ledger.load_schema()
         good = {'schema': 'subagent-ledger/1', 'record': 'label', 'call_id': 'c', 'session': SESSION,
-                'labelled_at': '2026-10-09T02:00:00Z', 'failure_modes': UNSET, 'likelihoods': likelihoods(),
-                'cutoff': UNSET, 'roster_revision': REVISION, 'labeller_model': 'jev-1.13.0',
-                'labeller_call_id': 'jev-call-1', 'withheld': 0}
+                'labelled_at': '2026-10-09T02:00:00Z', 'labelled_because': ['always: verdict-or-review'],
+                'failure_modes': [], 'likelihoods': likelihoods(), 'cutoff': 2, 'roster_revision': REVISION,
+                'question_revision': QUESTION_REVISION, 'labeller_model': 'jev-1.13.0',
+                'labeller_call_ids': ['jev-call-1', 'jev-call-2', 'jev-call-3'], 'withheld': 0}
         self.assertEqual(self.ledger.validate(good, schema), [])
         with_setting = dict(good, fields_on=[], fields_not_chosen=[])
         self.assertTrue(self.ledger.validate(with_setting, schema))
@@ -201,14 +220,16 @@ class CL1Join(LabelWorld):
         first, second = self.row(data, 'call-1'), self.row(data, 'call-2')
         self.assertEqual(set(first['labels']), ROW_LABEL_KEYS)
         self.assertEqual(first['labels']['labelled_at'], '2026-10-09T03:00:00.000Z')
-        self.assertEqual(first['labels']['likelihoods']['mode_09'], 0.9)
+        self.assertEqual(first['labels']['likelihoods']['mode_09'], score(HIGH))
         self.assertEqual(first['labels']['earlier'], 1)
-        self.assertEqual(first['labels']['failure_modes'], UNSET)
-        self.assertEqual(first['labels']['cutoff'], UNSET)
+        self.assertEqual(first['labels']['failure_modes'], [{'mode': 'mode_09', 'level': 3, 'p': 0.6}])
+        self.assertEqual(first['labels']['cutoff'], 2)
+        self.assertEqual(first['labels']['question_revision'], QUESTION_REVISION)
+        self.assertEqual(first['labels']['labeller_call_ids'], ['jev-call-3', 'jev-call-b', 'jev-call-c'])
         self.assertEqual(first['labels']['roster_revision'], REVISION)
         self.assertEqual(first['labels']['labeller_model'], 'jev-1.13.0')
         self.assertEqual(second['labels']['earlier'], 0)
-        self.assertEqual(second['labels']['likelihoods']['mode_02'], 0.9)
+        self.assertEqual(second['labels']['likelihoods']['mode_02'], score(HIGH))
         self.assertEqual(data['absences'], [])
 
     def test_c_l_1_a_call_with_no_label_line_says_so(self):

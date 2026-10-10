@@ -22,6 +22,10 @@ A non-zero exit, a sign-in prompt or a usage limit gives `failed`, its class rea
 The answer is printed on standard output. The exit code is 0 when the call was served or came back
 empty, 1 when it failed, and 2 for a usage error, which writes no record.
 
+The dispatch record's `act_kind` is read from the brief's frontmatter and translated as the hook
+captures do (capture_claude_code.py's kind_of()); `user_answer` for a user-decision call is
+unrecorded, since a call script is given no transcript of its caller.
+
 The calling session is `--session`, or the one self-identification variable set
 (`CLAUDE_CODE_SESSION_ID` for Claude Code, `CODEX_THREAD_ID` for Codex), whose harness the records
 name; with neither, or both, the session is unrecorded and says why.
@@ -44,6 +48,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import capture_claude_code as shared  # noqa: E402
 import ledger  # noqa: E402
 import transcripts  # noqa: E402
 
@@ -63,6 +68,25 @@ HARNESSES = {
 }
 MODEL_NAME = re.compile(r'"modelName"\s*:\s*"([^"]+)"')
 STDERR_KEPT = 2000
+NO_TRANSCRIPT = 'unrecorded (a call script reads no transcript of its caller)'
+
+
+class Held:
+    """What an error line written before the dispatch names: the call script's session and call id."""
+
+    def __init__(self, session, call_id, harness):
+        self.session, self.call_id, self.harness = session, call_id, harness
+
+    def error(self, folder, stage, reason, record='unknown'):
+        ledger.error(ledger=folder, stage=stage, reason=reason, session=self.session, call_id=self.call_id,
+                     agent_id=NO_AGENT, harness=self.harness, event='call.py', record=record)
+
+
+def kind_fields(folder, brief, held):
+    """act_kind and user_answer for the dispatch record, from the brief's frontmatter."""
+    kind = (shared.optional_fields(folder, brief, held)['act_kind'] if isinstance(brief, str)
+            else shared.NO_KIND)
+    return {'act_kind': kind, 'user_answer': NO_TRANSCRIPT if kind == shared.USER_DECISION else shared.NOT_A_DECISION}
 
 
 def main(argv=None):
@@ -91,9 +115,10 @@ def main(argv=None):
     else:
         brief_error = None
     command = command_for(args.harness, '<the brief>', args.model)
+    kinds = kind_fields(folder, brief, Held(session, call_id, caller_harness))
     ledger.dispatch(ledger=folder, model_requested=args.model, brief=brief,
                     auth_route=auth_route(spec, home, home_reason), brief_source=args.brief,
-                    harness_payload={'called_harness': args.harness, 'command': command}, **base)
+                    harness_payload={'called_harness': args.harness, 'command': command}, **dict(base, **kinds))
     if brief is None:
         return finish(folder, base, 'failed', {'class': 'other', 'text': brief_error},
                       payload={'called_harness': args.harness}, answer=None)

@@ -107,7 +107,8 @@
         "harness_payload",
         "spend_line",
         "persona-name",
-        "characteristic",
+        "act_kind",
+        "user_answer",
         "grouping",
         "task",
         "failure_modes",
@@ -267,6 +268,89 @@
         },
         {
           "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "actKind": {
+      "description": "One of the kinds in kinds.json, or unrecorded (<reason>). A test holds this list equal to kinds.json's.",
+      "anyOf": [
+        {
+          "enum": [
+            "verdict-or-review",
+            "deliberation",
+            "build",
+            "inquiry",
+            "archiving",
+            "transfer",
+            "conversion",
+            "user-decision"
+          ]
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "userAnswer": {
+      "description": "For a user-decision call: whether an answered question call stands in the caller's transcript between the caller's previous dispatch and this one, and the dispatching agent's own statement, kept apart and never read as the evidence. Any other kind reads none (not a user decision).",
+      "anyOf": [
+        {
+          "const": "none (not a user decision)"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        },
+        {
+          "type": "object",
+          "required": [
+            "answered_first",
+            "question_call",
+            "asked_at",
+            "answered_at",
+            "agent_record"
+          ],
+          "properties": {
+            "answered_first": {
+              "enum": [
+                "yes",
+                "not found"
+              ]
+            },
+            "question_call": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "asked_at": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agent_record": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -433,9 +517,13 @@
           "$ref": "#/$defs/text",
           "description": "Who the call speaks as."
         },
-        "characteristic": {
-          "$ref": "#/$defs/text",
-          "description": "The character of the act."
+        "act_kind": {
+          "$ref": "#/$defs/actKind",
+          "description": "The kind of act the call performs."
+        },
+        "user_answer": {
+          "$ref": "#/$defs/userAnswer",
+          "description": "Whether the user's answer came before a user-decision call went out."
         },
         "grouping": {
           "$ref": "#/$defs/text",
@@ -1259,20 +1347,20 @@
         {
           "if": {
             "required": [
-              "characteristic"
+              "act_kind"
             ]
           },
           "then": {
             "properties": {
               "fields_on": {
                 "contains": {
-                  "const": "characteristic"
+                  "const": "act_kind"
                 }
               },
               "fields_not_chosen": {
                 "not": {
                   "contains": {
-                    "const": "characteristic"
+                    "const": "act_kind"
                   }
                 }
               }
@@ -1282,13 +1370,52 @@
             "properties": {
               "fields_not_chosen": {
                 "contains": {
-                  "const": "characteristic"
+                  "const": "act_kind"
                 }
               },
               "fields_on": {
                 "not": {
                   "contains": {
-                    "const": "characteristic"
+                    "const": "act_kind"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "user_answer"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "user_answer"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "user_answer"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "user_answer"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "user_answer"
                   }
                 }
               }
@@ -1691,38 +1818,105 @@
     },
     "likelihoods": {
       "type": "object",
-      "description": "Every failure mode's likelihood, by mode name.",
+      "description": "Every failure mode's Score answer, by mode name, less its legend: the expected level, each level's probability and the confidence.",
       "additionalProperties": {
-        "type": "number",
-        "minimum": 0
+        "type": "object",
+        "required": [
+          "score",
+          "probabilities",
+          "confidence"
+        ],
+        "properties": {
+          "score": {
+            "type": "number",
+            "minimum": 0
+          },
+          "probabilities": {
+            "type": "object",
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3"
+            ],
+            "properties": {
+              "0": {
+                "type": "number",
+                "minimum": 0
+              },
+              "1": {
+                "type": "number",
+                "minimum": 0
+              },
+              "2": {
+                "type": "number",
+                "minimum": 0
+              },
+              "3": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       }
     },
     "cutoff": {
-      "anyOf": [
-        {
-          "type": "number",
-          "minimum": 0
+      "type": "integer",
+      "minimum": 0,
+      "description": "The lowest likeliest level that marks a mode: 2."
+    },
+    "labelFailureModes": {
+      "type": "array",
+      "description": "The marked modes, each with its likeliest level and that level's probability; level 3 before level 2, then by probability, highest first. [] for none.",
+      "items": {
+        "type": "object",
+        "required": [
+          "mode",
+          "level",
+          "p"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/$defs/text"
+          },
+          "level": {
+            "enum": [
+              2,
+              3
+            ]
+          },
+          "p": {
+            "type": "number",
+            "minimum": 0
+          }
         },
-        {
-          "$ref": "#/$defs/unrecorded"
-        }
-      ]
+        "additionalProperties": false
+      }
     },
     "label": {
       "type": "object",
-      "description": "A label line: the failure modes one call's return shows, written beside the call by the roster labeller and never on its records. It takes no field setting (profile v36, 'Call record fields').",
+      "description": "A label line: the failure modes one call's return shows, written beside the call by the roster labeller and never on its records. It takes no field setting. Each mode is asked as a Score with four levels, 0 to 3. A mode is marked when its likeliest level, the level with the highest probability, is the cutoff or above; a tie between levels goes to the lower level.",
       "required": [
         "schema",
         "record",
         "call_id",
         "session",
         "labelled_at",
+        "labelled_because",
         "failure_modes",
         "likelihoods",
         "cutoff",
         "roster_revision",
+        "question_revision",
         "labeller_model",
-        "labeller_call_id",
+        "labeller_call_ids",
         "withheld"
       ],
       "properties": {
@@ -1743,27 +1937,42 @@
           "$ref": "#/$defs/time",
           "description": "When the label line was written."
         },
+        "labelled_because": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "description": "Why the call was labelled: always: <kind>, outcome: <outcome>, or failure row: <file>:<line>, each that applies."
+        },
         "failure_modes": {
-          "$ref": "#/$defs/failureModes",
-          "description": "The modes at or above the cut-off, [] for none; unrecorded until a cut-off is set."
+          "$ref": "#/$defs/labelFailureModes"
         },
         "likelihoods": {
           "$ref": "#/$defs/likelihoods"
         },
         "cutoff": {
-          "$ref": "#/$defs/cutoff",
-          "description": "The likelihood a mode must reach to be marked."
+          "$ref": "#/$defs/cutoff"
         },
         "roster_revision": {
           "$ref": "#/$defs/text",
           "description": "The git blob id of the roster chapter as read."
         },
+        "question_revision": {
+          "$ref": "#/$defs/text",
+          "description": "The git blob id of the question file as asked."
+        },
         "labeller_model": {
           "$ref": "#/$defs/text"
         },
-        "labeller_call_id": {
-          "$ref": "#/$defs/id",
-          "description": "The call_id of the labeller's own Jev request."
+        "labeller_call_ids": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "description": "The call_id of each of the labeller's three requests, in request order."
         },
         "withheld": {
           "$ref": "#/$defs/count"
@@ -1838,7 +2047,8 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "A capture error line, in capture-errors.jsonl. Its record is the line the capture could not write: dispatch, return, witness, label (a label line the labeller could not write), or unknown."
     }
   }
 }

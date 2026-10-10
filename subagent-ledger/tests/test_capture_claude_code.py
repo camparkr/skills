@@ -220,6 +220,39 @@ class CB2_2Background(World):
         self.assertTrue(any('no pending join' in r for r in reasons), reasons)
 
 
+class FurtherStop(World):
+    """A background agent resumed after its call returned can stop once more than it was called. With
+    nothing pending and a call to the agent already on the ledger, the stop is a witness line and no
+    error line; a stop for an agent the ledger has never named is still an error line."""
+
+    def background(self):
+        rows = self.events('background-events.jsonl')
+        self.place_transcript('background-agent.jsonl', rows)
+        return rows
+
+    def test_a_further_stop_after_the_return_is_a_witness_line_only(self):
+        rows = self.background()
+        self.feed(rows + [rows[-1]])
+        self.assertEqual(self.errors(), [])
+        self.assertEqual([k for k, _ in self.kinds()], ['dispatch', 'witness', 'witness', 'return', 'witness'])
+
+    def test_a_stop_for_an_agent_the_ledger_never_named_is_an_error_line(self):
+        rows = self.background()
+        stop = json.loads(json.dumps(rows[-1]).replace(BACKGROUND_AGENT, 'a0b10000000000001'))
+        self.feed(rows + [stop])
+        reasons = [e['reason'] for e in self.errors()]
+        self.assertEqual(len(reasons), 1, reasons)
+        self.assertTrue(reasons[0].startswith('no pending join for background agent a0b10000000000001:'), reasons)
+
+    def test_a_ledger_that_cannot_be_read_keeps_the_error_line_with_the_read_error(self):
+        rows = self.background()
+        self.feed(rows)
+        with mock.patch.object(self.capture, 'agent_called', lambda *a: (False, 'PermissionError: planted')):
+            self.feed([rows[-1]])
+        reasons = [e['reason'] for e in self.errors()]
+        self.assertEqual(len(reasons), 1, reasons)
+        self.assertIn('could not be read to find an earlier call to it: PermissionError: planted', reasons[0])
+
 class BackgroundTranscriptSettles(World):
     """Live control 1 found a background transcript with no usage row yet when SubagentStop fired.
 

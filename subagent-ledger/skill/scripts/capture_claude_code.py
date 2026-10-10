@@ -393,6 +393,30 @@ def agent_known(folder, session, agent):
     return False
 
 
+def agent_called(folder, session, agent):
+    """(whether a dispatch or return record in the session's ledger names this agent id, the read error).
+
+    Witness lines are not counted: a witness names an agent whether or not its call was recorded. The read
+    error is None when the ledger was read, or holds no file yet."""
+    path = Path(folder) / ('%s.jsonl' % session)
+    if not path.exists():
+        return False, None
+    try:
+        text = path.read_text(encoding='utf-8', errors='replace')
+    except OSError as exc:
+        return False, '%s: %s' % (type(exc).__name__, exc)
+    for line in text.splitlines():
+        if agent not in line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get('agent_id') == agent and row.get('record') in ('dispatch', 'return'):
+            return True, None
+    return False, None
+
+
 def pre_resume(payload, folder, held):
     if held.call_id.startswith('unrecorded ('):
         held.error(folder, 'payload', 'no call_id (tool_use_id absent from PreToolUse)', record='dispatch')
@@ -470,9 +494,19 @@ def subagent_stop(payload, folder, held):
         resumes = read_resumes(folder, held.session, agent)
         background = agent in background_ids(payload)
         if join is None and not resumes and background:
-            # A background call whose PostToolUse join was never written: no guessed record.
-            held.error(folder, 'payload', 'no pending join for background agent %s: its PostToolUse '
-                       'was not seen, so the return cannot be joined to a call' % agent, record='return')
+            # Nothing pending for this agent. If the ledger already holds a call to it, the agent was
+            # resumed and has stopped once more than it was called: the witness line above records the
+            # stop, and no call is missing. Otherwise its PostToolUse join was never written: no guessed
+            # record, but an error line, since a call may truly be missing.
+            called, unread = agent_called(folder, held.session, agent)
+            if called:
+                return
+            if unread:
+                held.error(folder, 'payload', 'no pending join for background agent %s, and the ledger could '
+                           'not be read to find an earlier call to it: %s' % (agent, unread), record='return')
+            else:
+                held.error(folder, 'payload', 'no pending join for background agent %s: its PostToolUse '
+                           'was not seen, so the return cannot be joined to a call' % agent, record='return')
             return
         if join is None and not background:
             # A foreground call: keep what the PostToolUse that follows needs; never the answer text.

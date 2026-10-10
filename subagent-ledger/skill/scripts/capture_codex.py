@@ -312,8 +312,17 @@ def subagent_stop(payload, folder, held):
     with shared.pending_lock(folder, held.session):
         join = shared.read_join(folder, held.session, agent)
     if not join or not join.get('call_id'):
-        held.error(folder, 'payload', 'no pending join for agent %s: its PostToolUse on spawn_agent was '
-                   'not seen, so the return cannot be joined to a call' % agent, record='return')
+        # Nothing pending for this agent. If the ledger already holds a call to it, this is a further stop
+        # after its call returned, and the witness line above records it. Otherwise a call may be missing.
+        called, unread = shared.agent_called(folder, held.session, agent)
+        if called:
+            return
+        if unread:
+            held.error(folder, 'payload', 'no pending join for agent %s, and the ledger could not be read to '
+                       'find an earlier call to it: %s' % (agent, unread), record='return')
+        else:
+            held.error(folder, 'payload', 'no pending join for agent %s: its PostToolUse on spawn_agent was '
+                       'not seen, so the return cannot be joined to a call' % agent, record='return')
         return
     call_id = join['call_id']
     answer = payload.get('last_assistant_message')

@@ -188,6 +188,26 @@ class CB3_1Dispatch(World):
         self.assertIn('no pending join', reasons[0])
 
 
+class FurtherStop(World):
+    """A stop after the agent's call has returned writes a witness line and no error line; a stop for an
+    agent the ledger has never named still writes the error line."""
+
+    def test_a_further_stop_after_the_return_is_a_witness_line_only(self):
+        rows = self.dr3()
+        self.feed(rows + [rows[-1]])
+        self.assertEqual(self.errors(), [])
+        stops = [line for line in self.records() if line.get('event') == 'SubagentStop']
+        self.assertEqual(len(stops), 2)
+        self.assertEqual([line['record'] for line in self.records()].count('return'), 1)
+
+    def test_a_stop_for_an_agent_the_ledger_never_named_is_an_error_line(self):
+        rows = self.dr3()
+        stop = json.loads(json.dumps(rows[-1]).replace(DR3_AGENT, '01a10000-0000-7000-8000-000000000b10'))
+        self.feed(rows + [stop])
+        reasons = [line['reason'] for line in self.errors()]
+        self.assertEqual(len(reasons), 1, reasons)
+        self.assertIn('no pending join for agent 01a10000-0000-7000-8000-000000000b10', reasons[0])
+
 class CB3_1AllFields(World):
 
     fields = 'all'

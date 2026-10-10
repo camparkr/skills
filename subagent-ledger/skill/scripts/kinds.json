@@ -11,7 +11,7 @@
     },
     {
       "name": "build",
-      "test": "Does the call change what a program does, following a design already settled?"
+      "test": "Does the call change what a program, or the instructions an agent loads, does, following a design already settled?"
     },
     {
       "name": "inquiry",

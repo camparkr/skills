@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:subagent-ledger:record-schema:1",
   "title": "subagent-ledger record",
-  "description": "One line of a subagent ledger: a dispatch or a return record of one call, a witness line, or a capture error line. x-opentelemetry is an annotation giving the OpenTelemetry generative-AI attribute each field corresponds to; it does not validate.",
+  "description": "One line of a subagent ledger: a dispatch or a return record of one call, a witness line, a label line, or a capture error line. x-opentelemetry is an annotation giving the OpenTelemetry generative-AI attribute each field corresponds to; it does not validate.",
   "oneOf": [
     {
       "$ref": "#/$defs/dispatch"
@@ -12,6 +12,9 @@
     },
     {
       "$ref": "#/$defs/witness"
+    },
+    {
+      "$ref": "#/$defs/label"
     },
     {
       "$ref": "#/$defs/error"
@@ -1686,6 +1689,88 @@
       },
       "additionalProperties": false
     },
+    "likelihoods": {
+      "type": "object",
+      "description": "Every failure mode's likelihood, by mode name.",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0
+      }
+    },
+    "cutoff": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "label": {
+      "type": "object",
+      "description": "A label line: the failure modes one call's return shows, written beside the call by the roster labeller and never on its records. It takes no field setting (profile v36, 'Call record fields').",
+      "required": [
+        "schema",
+        "record",
+        "call_id",
+        "session",
+        "labelled_at",
+        "failure_modes",
+        "likelihoods",
+        "cutoff",
+        "roster_revision",
+        "labeller_model",
+        "labeller_call_id",
+        "withheld"
+      ],
+      "properties": {
+        "schema": {
+          "const": "subagent-ledger/1"
+        },
+        "record": {
+          "const": "label"
+        },
+        "call_id": {
+          "$ref": "#/$defs/id",
+          "description": "The labelled call's call_id."
+        },
+        "session": {
+          "$ref": "#/$defs/session"
+        },
+        "labelled_at": {
+          "$ref": "#/$defs/time",
+          "description": "When the label line was written."
+        },
+        "failure_modes": {
+          "$ref": "#/$defs/failureModes",
+          "description": "The modes at or above the cut-off, [] for none; unrecorded until a cut-off is set."
+        },
+        "likelihoods": {
+          "$ref": "#/$defs/likelihoods"
+        },
+        "cutoff": {
+          "$ref": "#/$defs/cutoff",
+          "description": "The likelihood a mode must reach to be marked."
+        },
+        "roster_revision": {
+          "$ref": "#/$defs/text",
+          "description": "The git blob id of the roster chapter as read."
+        },
+        "labeller_model": {
+          "$ref": "#/$defs/text"
+        },
+        "labeller_call_id": {
+          "$ref": "#/$defs/id",
+          "description": "The call_id of the labeller's own Jev request."
+        },
+        "withheld": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "additionalProperties": false
+    },
     "error": {
       "type": "object",
       "required": [
@@ -1722,6 +1807,7 @@
             "dispatch",
             "return",
             "witness",
+            "label",
             "unknown"
           ]
         },

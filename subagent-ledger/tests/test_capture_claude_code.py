@@ -441,6 +441,24 @@ class QueuedMessage(World):
         self.reworded({'success': True})
 
 
+class AttachmentDeliveredMessage(QueuedMessage):
+    """The same cases, with the message delivered as Claude Code also writes it: an attachment row of type
+    queued_command, the text at attachment.prompt (subagent-tools.json, `delivery`)."""
+
+    LATER = [{'type': 'attachment', 'isSidechain': True,
+              'attachment': {'type': 'queued_command', 'prompt': QueuedMessage.MESSAGE, 'isMeta': True,
+                             'origin': {'kind': 'coordinator'}},
+              'rendered': [{'content': '[not read]'}], 'renderedRole': 'system'}] + QueuedMessage.LATER[1:]
+
+    def test_an_attachment_of_a_type_not_listed_writes_no_return(self):
+        self.LATER = [dict(self.LATER[0], attachment=dict(self.LATER[0]['attachment'], type='a_form_not_listed'))] \
+            + self.LATER[1:]
+        rows, _ = self.session()
+        self.feed(rows[:6])
+        self.feed(rows[6:])
+        self.assertNotIn('toolu_queued_message_0001', self.returns(), 'a form not listed is not read as delivery')
+
+
 class BackgroundTranscriptSettles(World):
     """Live control 1 found a background transcript with no usage row yet when SubagentStop fired.
 

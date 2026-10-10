@@ -19,7 +19,8 @@ What each event does:
     Every message, whether it was queued for a running agent or resumed a stopped one, is answered by
     the turn it is delivered in, and no response wording is read to tell the two apart: its return is
     written at the first SubagentStop after the message appears in the agent's transcript as
-    delivered (a user row holding its text), with that turn's answer, counters, model and isolation.
+    delivered (a row of a form subagent-tools.json lists under `delivery`, holding its text: a user row,
+    or an attachment row of type queued_command), with that turn's answer, counters, model and isolation.
     Where the transcript cannot be read, it is written at the first stop of a turn that started
     (SubagentStart) after the message was sent.
   * SubagentStart: a witness line, and a pending file keyed by the agent id. Each message still
@@ -54,9 +55,9 @@ fires, so the harness kept none, and the model and counters read that it kept no
 SubagentStop reports appears in a request after the one that preceded this stop's turn. That last
 covers a stop read after the agent was resumed, when the resumed run is already in the same file.
 The turn is found by what started it: a background dispatch's turn opens the transcript, and a
-message's turn starts at the user row holding that message. The model, the counters and the
-isolation evidence are then that turn's, ending at the request that holds the answer. The wait is
-recorded as `tokens.read_after_seconds`.
+message's turn starts at the first row of a listed delivery form holding that message. The model, the
+counters and the isolation evidence are then that turn's, ending at the request that holds the answer.
+The wait is recorded as `tokens.read_after_seconds`.
 
 The brief's frontmatter gives `persona-name`, `act_kind`, `user_answer` and `task`, each at the key of
 the same name unless `config.json`'s `frontmatter` map names another; a map replaces a default key by
@@ -621,11 +622,11 @@ def turn_starter(join, resumes, foreground=False):
 def delivered_ending(ending, data):
     """The ending a message's return is written with at this stop, or None where it waits for a later stop.
 
-    Where the transcript can be read, the message has been delivered by this stop when a user row holding it
-    comes before the end of the request that holds this stop's answer; its return then takes this stop's
-    answer, and the counters of the turn it was delivered in, from the turn's first row to that request. The
-    turn begins after the last request before the user row that stopped for a reason other than tool_use, or
-    at the transcript's start. Where the transcript cannot be read, it is written at the first stop of a turn
+    Where the transcript can be read, the message has been delivered by this stop when a row of a listed
+    delivery form holding it comes before the end of the request that holds this stop's answer; its return
+    then takes this stop's answer, and the counters of the turn it was delivered in, from the turn's first
+    row to that request. The turn begins after the last request before that row that stopped for a reason
+    other than tool_use, or at the transcript's start. Where the transcript cannot be read, it is written at the first stop of a turn
     that started after the message was sent."""
     message = data.get('message')
     rows = None
@@ -769,27 +770,54 @@ def wait_for_end(path, answer, handbacks, turn=None):
 
 def turn_start(rows, turn):
     """The row that starts the turn, counted from 0, or None where it is not found. A dispatch's turn opens
-    the transcript. A resume's turn starts at the first user row whose own text holds its message."""
+    the transcript. A message's turn starts at the first row of a delivery form subagent-tools.json lists
+    whose text holds the message."""
     if turn is None:
         return None
     kind, message = turn
     if kind == 'dispatch':
         return 0
     wanted = message.strip()
+    forms = delivery_forms(HARNESS)
     for position, row in enumerate(rows):
-        if row.get('type') != 'user':
-            continue
-        content = (row.get('message') or {}).get('content')
-        if isinstance(content, str):
-            said = content
-        elif isinstance(content, list):
-            said = '\n'.join(part.get('text', '') for part in content
-                             if isinstance(part, dict) and part.get('type') == 'text'
-                             and isinstance(part.get('text'), str))
-        else:
-            continue
-        if wanted in said:
+        said = delivered_text(row, forms)
+        if said is not None and wanted in said:
             return position
+    return None
+
+
+def delivery_forms(harness):
+    """[(the values a row must hold, by dotted key; the dotted key of its text)] for the row forms in which the
+    harness's transcript shows a message delivered to a subagent, from subagent-tools.json (`delivery`)."""
+    out = []
+    for item in harness_entry(harness).get('delivery') or []:
+        if isinstance(item, dict) and isinstance(item.get('match'), dict) and isinstance(item.get('text_at'), str):
+            out.append((item['match'], item['text_at']))
+    return out
+
+
+def value_at(row, dotted):
+    """The value at a dotted key of a transcript row, or None."""
+    value = row
+    for key in dotted.split('.'):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def delivered_text(row, forms):
+    """The text a row holds as a delivered message, where it is of one of `forms`, else None. The text is a
+    string, or a list of parts whose `text` parts are joined."""
+    for match, text_at in forms:
+        if all(value_at(row, key) == wanted for key, wanted in match.items()):
+            content = value_at(row, text_at)
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return '\n'.join(part.get('text', '') for part in content
+                                 if isinstance(part, dict) and part.get('type') == 'text'
+                                 and isinstance(part.get('text'), str))
     return None
 
 

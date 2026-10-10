@@ -160,8 +160,8 @@ class RelativePath(TriageCommand):
     def test_what_is_left_as_written(self):
         resolve = load_capture().triage_command_resolved
         config = self.ledger / 'config.json'
-        for command in ('python3 /abs/triage.py', 'python3 -m triage', 'python3 "$HOME/triage.py"',
-                        'python3 ~/triage.py', 'uv run triage --fast', '/usr/bin/python3 /abs/triage.py'):
+        for command in ('python3 /abs/check.py', 'python3 -m triage', 'python3 "$HOME/check.py"',
+                        'python3 ~/check.py', 'uv run triage --fast', '/usr/bin/python3 /abs/check.py'):
             self.assertEqual(resolve(command, config), command)
         self.assertEqual(resolve('/usr/bin/python3 ../tools/t.py x', config),
                          '/usr/bin/python3 %s x' % (self.tmp / 'tools' / 't.py'))

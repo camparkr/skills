@@ -37,9 +37,7 @@
     "failure_modes",
     "roster_revision",
     "labeller_model",
-    "recommended_harness",
-    "recommended_model",
-    "triage_model"
+    "triage_kind"
   ],
   "withheld": 0,
   "model_requested": "haiku",

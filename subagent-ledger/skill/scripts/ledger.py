@@ -77,15 +77,17 @@ SELECTABLE = (
     'model_requested', 'model', 'tokens', 'cost', 'outcome_reason', 'route', 'harness', 'machine',
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
     'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
-    'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'recommended_harness',
-    'recommended_model', 'triage_model',
+    'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
 )
+# Fields no longer selectable. A record written before they were retired keeps them as written, the
+# schema still accepts them there, and the reader prints them where a record carries them. A `fields`
+# list naming one turns nothing on.
+RETIRED = ('recommended_harness', 'recommended_model', 'triage_model')
 DEFAULT_FIELDS = ('model_requested', 'model', 'tokens', 'cost', 'outcome_reason')
 # Which record a selectable field belongs to. A field that is on and belongs to the other record
 # reads `unrecorded (<reason>)` saying where it is.
 DISPATCH_ONLY = {'model_requested', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
-                 'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'recommended_harness',
-                 'recommended_model', 'triage_model'}
+                 'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'triage_kind'}
 RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'isolation',
                'spend_line', 'failure_modes', 'roster_revision', 'labeller_model'}
 # Written beside a selectable field, and only when that field is on.
@@ -95,10 +97,8 @@ ON_LABEL_LINE = 'unrecorded (labelled on the label line)'
 # Why a field that is on has no value, where the capture gave none.
 NOT_GIVEN = {
     'model_requested': 'unrecorded (none asked)',
-    'effort_assigned': 'unrecorded (no triage ran)',
-    'recommended_harness': 'unrecorded (no triage ran)',
-    'recommended_model': 'unrecorded (no triage ran)',
-    'triage_model': 'unrecorded (no triage ran)',
+    'effort_assigned': 'unrecorded (the harness lets the caller set no effort for this call)',
+    'triage_kind': 'unrecorded (no triage ran)',
     'failure_modes': ON_LABEL_LINE,
     'roster_revision': ON_LABEL_LINE,
     'labeller_model': ON_LABEL_LINE,
@@ -337,11 +337,11 @@ def _fields_on(folder):
     if setting == 'all':
         return set(SELECTABLE)
     if isinstance(setting, list) and all(isinstance(name, str) for name in setting):
-        unknown = [name for name in setting if name not in SELECTABLE]
+        unknown = [name for name in setting if name not in SELECTABLE and name not in RETIRED]
         if unknown:
             raise ValueError('%s names fields the record does not have: %s'
                              % (CONFIG_FILE, ', '.join(unknown)))
-        return set(setting)
+        return set(name for name in setting if name in SELECTABLE)
     raise ValueError('%s: fields must be "default", "frame", "all" or a list of field names'
                      % CONFIG_FILE)
 

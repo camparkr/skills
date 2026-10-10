@@ -53,6 +53,24 @@ is already one of the kinds is kept. A value that is neither is `unrecorded (<va
 kind)`, with an error line at stage `setting`, and the record is still written. A brief naming no
 kind, or a command-line call, is unrecorded, saying so.
 
+Where `config.json` names a `triage_command`, it runs at each subagent dispatch (Agent, Task and
+SendMessage here; spawn_agent in Codex; task in OpenCode) and at each call.py call, never at a
+command-line call or a script's own model request. It gets the brief on standard input and, in its
+environment, SUBAGENT_LEDGER_CALL_ID (the dispatch's call id), SUBAGENT_LEDGER_SESSION,
+SUBAGENT_LEDGER_DIR and SUBAGENT_LEDGER_SCRIPTS; it prints one JSON object, {"kind": "<a kind or
+none>", "reason": "<text>"}. Its reading is `triage_kind`: the kind, `unrecorded (the triage read
+none)`, `unrecorded (no triage ran)` where no command is named, or `unrecorded (the triage failed:
+<why>)` for a non-zero exit, output that is not one JSON object, or a name not in kinds.json.
+`act_kind` is then the brief's kind where the brief names one, otherwise the triage's when it read
+one, otherwise unrecorded with the reason. The triage's run time is `triage_seconds` in
+harness_payload. It is given no time limit, and it never stops or changes the call: whatever it
+does, the dispatch record is written.
+
+`effort_assigned` is the effort the dispatching agent set for this call, read from the tool's input
+at the key subagent-tools.json names (`effort_keys`); `unrecorded (the agent set no effort for this
+call)` where it set none, and `unrecorded (the harness lets the caller set no effort for this call)`
+where the tool has no such key. The session's own effort level is never read for it.
+
 For a call of the kind `user-decision`, `user_answer` notes whether the user answered first: the
 caller's transcript (`transcript_path`) is read for an answered AskUserQuestion call between the
 caller's previous dispatch in the ledger (or the start of the transcript) and this PreToolUse. The
@@ -73,6 +91,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -100,6 +119,22 @@ DEFAULT_FRONTMATTER = {'act_kind': 'act_kind', 'user_answer': 'user_answer', 'pe
                        'task': 'task'}
 NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
 NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
+# The triage: a command named by config.json's `triage_command`, run at each subagent or call-script
+# dispatch with the brief on standard input. It prints {"kind": "<a kind or none>", "reason": "<text>"}.
+TRIAGE_SETTING = 'triage_command'
+CALL_ID_VARIABLE = 'SUBAGENT_LEDGER_CALL_ID'
+SESSION_VARIABLE = 'SUBAGENT_LEDGER_SESSION'
+SCRIPTS_VARIABLE = 'SUBAGENT_LEDGER_SCRIPTS'
+NO_TRIAGE = 'unrecorded (no triage ran)'
+TRIAGE_READ_NONE = 'unrecorded (the triage read none)'
+TRIAGE_FAILED = 'unrecorded (the triage failed: %s)'
+NO_KIND_TRIAGE_NONE = 'unrecorded (the brief names no kind; the triage read none)'
+NO_KIND_TRIAGE_FAILED = 'unrecorded (the brief names no kind; the triage failed)'
+TRIAGE_REASON_LIMIT = 300
+# effort_assigned: the effort the dispatching agent set for this call, read from the dispatch tool's
+# input at the key subagent-tools.json names for that tool (`effort_keys`).
+NO_EFFORT_SETTING = 'unrecorded (the harness lets the caller set no effort for this call)'
+NO_EFFORT_SET = 'unrecorded (the agent set no effort for this call)'
 NO_TRANSCRIPT_KEPT = 'unrecorded (the harness kept no transcript for this subagent)'
 USER_DECISION = 'user-decision'
 NOT_A_DECISION = 'none (not a user decision)'
@@ -257,9 +292,11 @@ def pre_agent(payload, folder, held):
         'model_requested': given.get('model') if isinstance(given.get('model'), str) and given.get('model') else None,
         'auth_route': auth_route(),
         'brief_source': source,
-        'harness_payload': payload,
+        'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
-    fields.update(optional_fields(folder, brief if source else prompt, held))
+    found, seconds = dispatch_kind(folder, brief if source else prompt, held)
+    fields.update(found)
+    fields['harness_payload'] = with_triage_time(payload, seconds)
     fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
                                            payload.get('transcript_path'), fields['act_kind'],
                                            brief if source else prompt)
@@ -439,9 +476,11 @@ def pre_resume(payload, folder, held):
         'model_requested': None,
         'auth_route': auth_route(),
         'brief_source': None,
-        'harness_payload': payload,
+        'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
-    fields.update(optional_fields(folder, message, held))
+    found, seconds = dispatch_kind(folder, message, held)
+    fields.update(found)
+    fields['harness_payload'] = with_triage_time(payload, seconds)
     fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
                                            payload.get('transcript_path'), fields['act_kind'], message)
     with pending_lock(folder, held.session):
@@ -1163,6 +1202,129 @@ def optional_fields(folder, brief, held=None, cli=False):
             out['grouping'] = found if isinstance(found, str) and found else (
                 'unrecorded (%s is not in the grouping table)' % persona)
     return out
+
+
+def kind_list():
+    """The kinds' names from kinds.json, or None when it cannot be read."""
+    try:
+        return [entry['name'] for entry in json.loads(KINDS_FILE.read_text(encoding='utf-8'))['kinds']]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def is_kind(value):
+    """True for a kind's name; False for `unrecorded (...)`, `none (...)` or anything not a string."""
+    return isinstance(value, str) and bool(value) and not value.startswith(('unrecorded (', 'none ('))
+
+
+def _one_line(text):
+    text = ' '.join(str(text).split())
+    return text if len(text) <= TRIAGE_REASON_LIMIT else text[:TRIAGE_REASON_LIMIT - 3] + '...'
+
+
+def run_triage(folder, text, held):
+    """(triage_kind, seconds the triage ran or None): the command config.json names, run on the brief.
+
+    The command runs through the shell, so it may name a path with variables, with the brief on
+    standard input and the call id, the session, the ledger folder and this scripts folder in its
+    environment. No time limit is set. Its answer is read by triage_reading(). It never raises: a
+    failure is the reading `unrecorded (the triage failed: <why>)`, and the call goes on unchanged.
+    """
+    try:
+        config, _path = read_config(folder)
+    except (OSError, ValueError) as exc:
+        return TRIAGE_FAILED % _one_line('%s could not be read: %s' % (ledger.CONFIG_FILE, type(exc).__name__)), None
+    command = config.get(TRIAGE_SETTING)
+    if command is None or command == '':
+        return NO_TRIAGE, None
+    if not isinstance(command, str):
+        return TRIAGE_FAILED % ('%s is not a command line' % TRIAGE_SETTING), None
+    env = dict(os.environ)
+    env.update({CALL_ID_VARIABLE: str(held.call_id), SESSION_VARIABLE: str(held.session),
+                ledger.FOLDER_VARIABLE: str(folder), SCRIPTS_VARIABLE: str(HERE)})
+    started = time.monotonic()
+    try:
+        done = subprocess.run(command, shell=True, input=text if isinstance(text, str) else '',
+                              capture_output=True, text=True, env=env)
+    except (OSError, ValueError) as exc:
+        return (TRIAGE_FAILED % _one_line('it could not be started: %s' % exc),
+                round(time.monotonic() - started, 3))
+    return triage_reading(done.returncode, done.stdout, done.stderr), round(time.monotonic() - started, 3)
+
+
+def triage_reading(code, out, err):
+    """triage_kind from the triage's exit code and output: a kind, or `unrecorded (<why>)`."""
+    try:
+        answer = json.loads(out)
+    except (TypeError, ValueError):
+        answer = None
+    reason = answer.get('reason') if isinstance(answer, dict) else None
+    if code != 0:
+        why = reason if isinstance(reason, str) and reason.strip() else (
+            (err or '').strip().splitlines()[-1] if (err or '').strip() else 'it gave no reason')
+        return TRIAGE_FAILED % _one_line('it exited %d: %s' % (code, why))
+    if not isinstance(answer, dict):
+        return TRIAGE_FAILED % 'its output is not one JSON object'
+    kind = answer.get('kind')
+    if kind == 'none':
+        return TRIAGE_READ_NONE
+    names = kind_list()
+    if names is None:
+        return TRIAGE_FAILED % 'kinds.json could not be read'
+    if isinstance(kind, str) and kind in names:
+        return kind
+    if isinstance(kind, str) and kind:
+        return TRIAGE_FAILED % _one_line('%s is not a kind' % kind)
+    return TRIAGE_FAILED % 'its output names no kind'
+
+
+def act_kind_of(brief_kind, triage_kind):
+    """The kind the record uses: the brief's where it names one, else the triage's, else why neither."""
+    if is_kind(brief_kind):
+        return brief_kind
+    if is_kind(triage_kind):
+        return triage_kind
+    if brief_kind == NO_KIND:
+        if triage_kind == TRIAGE_READ_NONE:
+            return NO_KIND_TRIAGE_NONE
+        if isinstance(triage_kind, str) and triage_kind.startswith(TRIAGE_FAILED.split('%s')[0]):
+            return NO_KIND_TRIAGE_FAILED
+    return brief_kind
+
+
+def dispatch_kind(folder, text, held):
+    """The brief's fields for a subagent or call-script dispatch, with the triage's reading.
+
+    Returns (persona-name, act_kind, triage_kind, task and grouping; the seconds the triage ran or None).
+    """
+    fields = optional_fields(folder, text, held)
+    triage_kind, seconds = run_triage(folder, text, held)
+    fields['triage_kind'] = triage_kind
+    fields['act_kind'] = act_kind_of(fields['act_kind'], triage_kind)
+    return fields, seconds
+
+
+def with_triage_time(payload, seconds):
+    """harness_payload with the triage's run time beside it, as `triage_seconds`, when a triage ran."""
+    if seconds is None or not isinstance(payload, dict):
+        return payload
+    return dict(payload, triage_seconds=seconds)
+
+
+def effort_assigned_of(harness, tool, payload):
+    """The effort the dispatching agent set for this call, or why there is none. Never the session's own."""
+    try:
+        keys = harness_entry(harness).get('effort_keys')
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return 'unrecorded (subagent-tools.json could not be read: %s)' % type(exc).__name__
+    key = keys.get(tool) if isinstance(keys, dict) else None
+    if not isinstance(key, str) or not key:
+        return NO_EFFORT_SETTING
+    given = payload.get('tool_input') if isinstance(payload, dict) else None
+    value = given.get(key) if isinstance(given, dict) else None
+    if isinstance(value, str) and value:
+        return value
+    return NO_EFFORT_SET
 
 
 def frontmatter_keys(config):

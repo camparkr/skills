@@ -29,8 +29,11 @@ The answer is printed on standard output. The exit code is 0 when the call was s
 empty, 1 when it failed, and 2 for a usage error, which writes no record.
 
 The dispatch record's `act_kind` is read from the brief's frontmatter and translated as the hook
-captures do (capture_claude_code.py's kind_of()); `user_answer` for a user-decision call is
-unrecorded, since a call script is given no transcript of its caller.
+captures do (capture_claude_code.py's kind_of()). Where the ledger folder's `config.json` names a
+`triage_command`, it runs on the brief before the call, as at a hook capture's dispatch: its reading
+is `triage_kind`, and `act_kind` takes it where the brief names no kind. `user_answer` for a
+user-decision call is unrecorded, since a call script is given no transcript of its caller.
+`effort_assigned` reads that this script takes no effort setting for the call.
 
 The calling session is `--session`, or the one self-identification variable set
 (`CLAUDE_CODE_SESSION_ID` for Claude Code, `CODEX_THREAD_ID` for Codex), whose harness the records
@@ -93,10 +96,18 @@ class Held:
 
 
 def kind_fields(folder, brief, held):
-    """act_kind and user_answer for the dispatch record, from the brief's frontmatter."""
-    kind = (shared.optional_fields(folder, brief, held)['act_kind'] if isinstance(brief, str)
-            else shared.NO_KIND)
-    return {'act_kind': kind, 'user_answer': NO_TRANSCRIPT if kind == shared.USER_DECISION else shared.NOT_A_DECISION}
+    """act_kind, triage_kind and user_answer for the dispatch record, and the seconds the triage ran.
+
+    The brief's frontmatter gives its kind, and the ledger folder's triage_command, where named, reads
+    one as the hook captures do (capture_claude_code.py's dispatch_kind()); the brief's governs.
+    """
+    if isinstance(brief, str):
+        found, seconds = shared.dispatch_kind(folder, brief, held)
+        kind, triage_kind = found['act_kind'], found['triage_kind']
+    else:
+        kind, triage_kind, seconds = shared.NO_KIND, shared.NO_TRIAGE, None
+    return {'act_kind': kind, 'triage_kind': triage_kind,
+            'user_answer': NO_TRANSCRIPT if kind == shared.USER_DECISION else shared.NOT_A_DECISION}, seconds
 
 
 def main(argv=None):
@@ -125,10 +136,12 @@ def main(argv=None):
     else:
         brief_error = None
     command = command_for(args.harness, '<the brief>', args.model)
-    kinds = kind_fields(folder, brief, Held(session, call_id, caller_harness))
+    kinds, seconds = kind_fields(folder, brief, Held(session, call_id, caller_harness))
     ledger.dispatch(ledger=folder, model_requested=args.model, brief=brief,
                     auth_route=auth_route(spec, home, home_reason), brief_source=args.brief,
-                    harness_payload={'called_harness': args.harness, 'command': command}, **dict(base, **kinds))
+                    effort_assigned=shared.NO_EFFORT_SETTING,
+                    harness_payload=shared.with_triage_time({'called_harness': args.harness, 'command': command},
+                                                            seconds), **dict(base, **kinds))
     if brief is None:
         return finish(folder, base, 'failed', {'class': 'other', 'text': brief_error},
                       payload={'called_harness': args.harness}, answer=None)

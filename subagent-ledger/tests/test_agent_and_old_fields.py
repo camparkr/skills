@@ -153,7 +153,7 @@ class CF2OldRecord(test_calls.World):
     def test_c_f_2_a_field_carried_unrecorded_still_prints_as_carried(self):
         copy = self.old_ledger()
         _, data, _ = self.run_reader(ledger=copy)
-        self.assertEqual(data['calls'][0]['effort_assigned'], 'unrecorded (no triage ran)')
+        self.assertEqual(data['calls'][0]['effort_assigned'], 'unrecorded (the agent set no effort for this call)')
 
     def test_c_f_2_control_switched_off_the_field_prints_null(self):
         copy = self.old_ledger()

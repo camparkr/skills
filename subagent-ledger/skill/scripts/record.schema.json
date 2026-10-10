@@ -114,6 +114,12 @@
         "failure_modes",
         "roster_revision",
         "labeller_model",
+        "triage_kind"
+      ]
+    },
+    "retiredName": {
+      "description": "A field no longer selectable. A record written before it was retired may name it in fields_on or fields_not_chosen and carry it as written.",
+      "enum": [
         "recommended_harness",
         "recommended_model",
         "triage_model"
@@ -122,7 +128,14 @@
     "fieldList": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/selectableName"
+        "anyOf": [
+          {
+            "$ref": "#/$defs/selectableName"
+          },
+          {
+            "$ref": "#/$defs/retiredName"
+          }
+        ]
       },
       "uniqueItems": true
     },
@@ -483,7 +496,7 @@
         },
         "effort_assigned": {
           "$ref": "#/$defs/text",
-          "description": "The effort level a triage assigned."
+          "description": "The effort the dispatching agent set for the call, where the harness lets it set one."
         },
         "auth_route": {
           "$ref": "#/$defs/text",
@@ -545,17 +558,21 @@
           "$ref": "#/$defs/text",
           "description": "The labeller's model."
         },
+        "triage_kind": {
+          "$ref": "#/$defs/actKind",
+          "description": "The kind a triage read from the brief, kept beside act_kind."
+        },
         "recommended_harness": {
           "$ref": "#/$defs/text",
-          "description": "A triage's recommended harness."
+          "description": "Retired: a triage's recommended harness. Kept as written on records written before it was retired."
         },
         "recommended_model": {
           "$ref": "#/$defs/text",
-          "description": "A triage's recommended model."
+          "description": "Retired: a triage's recommended model. Kept as written on records written before it was retired."
         },
         "triage_model": {
           "$ref": "#/$defs/text",
-          "description": "The triage's model."
+          "description": "Retired: the triage's model. Kept as written on records written before it was retired."
         },
         "model_check": {
           "$ref": "#/$defs/anyValue",
@@ -1620,20 +1637,20 @@
         {
           "if": {
             "required": [
-              "recommended_harness"
+              "triage_kind"
             ]
           },
           "then": {
             "properties": {
               "fields_on": {
                 "contains": {
-                  "const": "recommended_harness"
+                  "const": "triage_kind"
                 }
               },
               "fields_not_chosen": {
                 "not": {
                   "contains": {
-                    "const": "recommended_harness"
+                    "const": "triage_kind"
                   }
                 }
               }
@@ -1643,91 +1660,13 @@
             "properties": {
               "fields_not_chosen": {
                 "contains": {
-                  "const": "recommended_harness"
+                  "const": "triage_kind"
                 }
               },
               "fields_on": {
                 "not": {
                   "contains": {
-                    "const": "recommended_harness"
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "recommended_model"
-            ]
-          },
-          "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "recommended_model"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
-                  "contains": {
-                    "const": "recommended_model"
-                  }
-                }
-              }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "recommended_model"
-                }
-              },
-              "fields_on": {
-                "not": {
-                  "contains": {
-                    "const": "recommended_model"
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "triage_model"
-            ]
-          },
-          "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "triage_model"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
-                  "contains": {
-                    "const": "triage_model"
-                  }
-                }
-              }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "triage_model"
-                }
-              },
-              "fields_on": {
-                "not": {
-                  "contains": {
-                    "const": "triage_model"
+                    "const": "triage_kind"
                   }
                 }
               }

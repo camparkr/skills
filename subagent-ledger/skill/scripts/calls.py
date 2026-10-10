@@ -15,8 +15,9 @@ carries it. Where both records carry a field and one fills it while the other re
 in `fields_not_chosen` prints `not chosen`; a field on and unfilled prints as the record holds it,
 `unrecorded (<reason>)`. A field neither record carries nor names, because the record was written
 before the field existed, prints `unrecorded (not on this record: written before the field existed)`,
-never null. Nothing is filled in. A return with no dispatch record still has its row, its
-dispatch side reading `unrecorded (no dispatch record)`.
+never null. Nothing is filled in. A field no longer selectable is printed only where a record
+carries it, as written. A return with no dispatch record still has its row, its dispatch side reading
+`unrecorded (no dispatch record)`.
 
 Each row also carries `labels`, joined from the session's label lines by `call_id`: `labelled_because`,
 `failure_modes`, `likelihoods`, `cutoff`, `roster_revision`, `question_revision`, `labeller_model`,
@@ -271,13 +272,19 @@ def row_of(sent, back):
             row[name] = field_value(back if back is not None else sent, name)
         else:
             row[name] = shared_value(sent, back, name)
+    retired = getattr(ledger, 'RETIRED', ())
+    for name in retired:
+        for record in (sent, back):
+            if record is not None and name in record:
+                row[name] = record[name]
+                break
     on = set()
     for record in (sent, back):
         if record is not None:
             on.update(record.get('fields_on') or [])
-    row['fields_on'] = [name for name in ledger.SELECTABLE if name in on]
+    row['fields_on'] = [name for name in list(ledger.SELECTABLE) + list(retired) if name in on]
     ordered = dict((name, row[name]) for name in ROW_FIRST)
-    for name in list(FRAME) + list(ledger.SELECTABLE) + ['fields_on']:
+    for name in list(FRAME) + list(ledger.SELECTABLE) + list(retired) + ['fields_on']:
         if name in row and name not in ordered:
             ordered[name] = row[name]
     return ordered

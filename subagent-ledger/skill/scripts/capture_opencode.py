@@ -9,7 +9,9 @@ prints nothing on standard output and exits 0 on every path, so it never blocks 
 It imposes no time limit.
 
   * before, on `task`: the dispatch record. `input.callID` is the call id, `input.sessionID` the
-    calling session, `output.args.prompt` the brief; `args.subagent_type` is kept.
+    calling session, `output.args.prompt` the brief; `args.subagent_type` is kept. The ledger folder's
+    `triage_command`, where named, runs here, and `act_kind`, `triage_kind` and `effort_assigned` are
+    read as in capture_claude_code.py; `task` takes no effort setting for the call.
   * after, on `task`: the return record. `output.metadata.sessionId` is the subagent's id, its
     `model.providerID` and `modelID` the model, and `output.output` the answer. OpenCode has no
     declaration of where its counters live, so they read unrecorded. The isolation evidence is read
@@ -298,10 +300,13 @@ def before(payload, folder, held):
         'model_requested': asked if isinstance(asked, str) and asked else None,
         'auth_route': NO_PROVIDER,
         'brief_source': source,
-        'harness_payload': {'input': payload.get('input'), 'args': args,
-                            'directory': payload.get('directory')},
+        'effort_assigned': shared.effort_assigned_of(HARNESS, (payload.get('input') or {}).get('tool'),
+                                                     {'tool_input': args}),
     })
-    fields.update(shared.optional_fields(folder, brief if source else prompt, held))
+    found, seconds = shared.dispatch_kind(folder, brief if source else prompt, held)
+    fields.update(found)
+    fields['harness_payload'] = shared.with_triage_time(
+        {'input': payload.get('input'), 'args': args, 'directory': payload.get('directory')}, seconds)
     fields['user_answer'] = shared.user_answer_of(folder, HARNESS, held.session, fields.get('caller'), None,
                                                   fields['act_kind'], brief if source else prompt)
     with shared.pending_lock(folder, held.session):

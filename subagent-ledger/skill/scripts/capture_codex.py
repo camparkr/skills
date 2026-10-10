@@ -13,7 +13,9 @@ What each event does (Codex 0.142.5, as observed):
 
   * PreToolUse on spawn_agent: the dispatch record. The brief is `tool_input.message`. The payload's
     own `model` is the parent session's, so it is never taken as the model asked for: that is
-    `tool_input.model` where the tool is given one, and otherwise none was asked.
+    `tool_input.model` where the tool is given one, and otherwise none was asked. The ledger folder's
+    `triage_command`, where named, runs here, and `act_kind`, `triage_kind` and `effort_assigned` are
+    read as in capture_claude_code.py; spawn_agent takes no effort setting for the call.
   * PostToolUse on spawn_agent: fires when the spawn returns, before the subagent has run. It stores
     the join of `tool_use_id` to the `agent_id` in `tool_response` and writes nothing else. A spawn
     whose response names no agent is a failed call, and its return is written here.
@@ -196,9 +198,11 @@ def pre_spawn(payload, folder, held):
         'model_requested': asked if isinstance(asked, str) and asked else None,
         'auth_route': auth_route(),
         'brief_source': source,
-        'harness_payload': payload,
+        'effort_assigned': shared.effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
-    fields.update(shared.optional_fields(folder, brief if source else message, held))
+    found, seconds = shared.dispatch_kind(folder, brief if source else message, held)
+    fields.update(found)
+    fields['harness_payload'] = shared.with_triage_time(payload, seconds)
     fields['user_answer'] = shared.user_answer_of(folder, HARNESS, held.session, fields.get('caller'),
                                                   payload.get('transcript_path'), fields['act_kind'],
                                                   brief if source else message)

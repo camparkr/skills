@@ -62,8 +62,7 @@ SELECTABLE = (
     'model_requested', 'model', 'tokens', 'cost', 'outcome_reason', 'route', 'harness', 'machine',
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
     'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
-    'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'recommended_harness',
-    'recommended_model', 'triage_model',
+    'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
 )
 
 
@@ -586,7 +585,7 @@ class CB6_5All(World):
         self.feed(self.l1()[:4], pause=0.01)
         _, data, _ = self.run_reader()
         row = data['calls'][0]
-        self.assertEqual(row['effort_assigned'], 'unrecorded (no triage ran)')
+        self.assertEqual(row['effort_assigned'], 'unrecorded (the agent set no effort for this call)')
         self.assertEqual(row['fields_on'], list(SELECTABLE))
         for name in SELECTABLE:
             self.assertNotEqual(row[name], 'not chosen', name)

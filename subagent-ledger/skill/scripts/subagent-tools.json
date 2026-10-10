@@ -1,10 +1,11 @@
 {
-  "description": "Per harness: the tools by which it dispatches or resumes a subagent, the tools by which a subagent hands its answer back, the shell tools whose commands the captures match against cli-patterns.json, and the transcript reader the call reader's count check uses. The count check counts, in each transcript it is given, the distinct tool-call ids whose tool is one of `tools`, and compares them with the ledger's records; it never counts shell calls. A background return's wait ends when the subagent's final request is a call to one of its `handback` tools, whose answer is the call's input at `answer_key`. A harness whose transcript has no reader here is reported unrecorded, not counted.",
+  "description": "Per harness: the tools by which it dispatches or resumes a subagent, the tools by which a subagent hands its answer back, the shell tools whose commands the captures match against cli-patterns.json, and the transcript reader the call reader's count check uses, and, in `effort_keys`, the input key at which a dispatch tool takes an effort level the dispatching agent sets for that one call (a tool not named there takes none). The count check counts, in each transcript it is given, the distinct tool-call ids whose tool is one of `tools`, and compares them with the ledger's records; it never counts shell calls. A background return's wait ends when the subagent's final request is a call to one of its `handback` tools, whose answer is the call's input at `answer_key`. A harness whose transcript has no reader here is reported unrecorded, not counted.",
   "harnesses": {
     "claude-code": {
       "tools": ["Agent", "Task", "SendMessage"],
       "handback": [{"tool": "SubagentHandback", "answer_key": "message"}],
       "shell_tools": ["Bash"],
+      "effort_keys": {"Agent": "effort", "Task": "effort"},
       "transcript": "claude-code"
     },
     "codex": {

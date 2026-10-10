@@ -1,5 +1,4 @@
-"""Controls C-F-1 and C-F-2, the public half: a call through call.py has an agent, and the reader names a field an
-older record lacks.
+"""Controls C-F-1 and C-F-2, public half: call.py's records carry an agent, and the reader names an old record's gaps.
 
 C-F-1. A call made through call.py runs a whole agent session, so its records carry that run's session id as
 `agent_id`: the dispatch reads `unrecorded (not yet returned)`, and the return carries the id the run's own record

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Codex's capture: each hook event on `spawn_agent` and on its shell tool runs it, and it writes the call
-records through ledger.py.
+"""Codex's capture: hook events on `spawn_agent` and its shell tool run it, and it writes the call records.
+
+It writes them through ledger.py.
 
     python3 capture_codex.py <event> [--ledger <folder>]
 

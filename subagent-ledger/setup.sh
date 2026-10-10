@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# setup.sh links the subagent-ledger skill into Claude Code and Codex, and its OpenCode plugin into OpenCode,
-# then prints the hook entries each harness needs, with this machine's paths filled in. It never writes a
-# settings file: you add the printed entries yourself.
+# setup.sh links the subagent-ledger skill and its OpenCode plugin into each harness, and prints the hook entries.
+# The skill goes into Claude Code and Codex, the plugin into OpenCode. The hook entries each harness needs are
+# printed with this machine's paths filled in; no settings file is ever written: you add the entries yourself.
 # Safe to run twice. Usage: setup.sh [--dry-run] [--uninstall] [--harness claude|codex|opencode]
 
 set -u

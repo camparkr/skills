@@ -62,7 +62,9 @@ kind, or a command-line call, is unrecorded, saying so.
 
 Where `config.json` names a `triage_command`, it runs at each subagent dispatch (Agent, Task and
 SendMessage here; spawn_agent in Codex; task in OpenCode) and at each call.py call, never at a
-command-line call or a script's own model request. It gets the brief on standard input and, in its
+command-line call or a script's own model request. A relative path at the start of its script
+argument is resolved against the ledger folder, as `grouping_table` and `kind_names` are; an
+absolute path is used as given. It gets the brief on standard input and, in its
 environment, SUBAGENT_LEDGER_CALL_ID (the dispatch's call id), SUBAGENT_LEDGER_SESSION,
 SUBAGENT_LEDGER_DIR and SUBAGENT_LEDGER_SCRIPTS; it prints one JSON object, {"kind": "<a kind or
 none>", "reason": "<text>"}. Its reading is `triage_kind`: the kind, `unrecorded (the triage read
@@ -1344,6 +1346,7 @@ def run_triage(folder, text, held):
         return NO_TRIAGE, None
     if not isinstance(command, str):
         return TRIAGE_FAILED % ('%s is not a command line' % TRIAGE_SETTING), None
+    command = triage_command_resolved(command, _path)
     env = dict(os.environ)
     env.update({CALL_ID_VARIABLE: str(held.call_id), SESSION_VARIABLE: str(held.session),
                 ledger.FOLDER_VARIABLE: str(folder), SCRIPTS_VARIABLE: str(HERE)})
@@ -1355,6 +1358,37 @@ def run_triage(folder, text, held):
         return (TRIAGE_FAILED % _one_line('it could not be started: %s' % exc),
                 round(time.monotonic() - started, 3))
     return triage_reading(done.returncode, done.stdout, done.stderr), round(time.monotonic() - started, 3)
+
+
+PLAIN_WORD = re.compile(r'^[A-Za-z0-9_.+@%:,=/-]+$')
+
+
+def triage_command_resolved(command, config_path):
+    """The command with a relative path at the start of its script argument resolved against the ledger
+    folder, as grouping_table and kind_names are; anything else is left as written.
+
+    The script argument is the command's first word where that word is a relative path holding a '/', and
+    its second word otherwise (the first being the program that runs it, such as python3). It is resolved
+    only where it is a plain relative path: no quotes, variables, '~' or leading '-', and either a '/' in it
+    or a file of that name in the ledger folder. An absolute path is used as given."""
+    words = list(re.finditer(r'\S+', command))
+    if not words:
+        return command
+    first = words[0].group(0)
+    if PLAIN_WORD.match(first) and '/' in first and not first.startswith('/'):
+        found = words[0]
+    else:
+        found = words[1] if len(words) > 1 else None
+    if found is None:
+        return command
+    word = found.group(0)
+    if not PLAIN_WORD.match(word) or word.startswith('/') or word.startswith('-'):
+        return command
+    base = Path(config_path).parent
+    if '/' not in word and not (base / word).is_file():
+        return command
+    resolved = os.path.normpath(str(base / word))
+    return command[:found.start()] + shlex.quote(resolved) + command[found.end():]
 
 
 def triage_reading(code, out, err):

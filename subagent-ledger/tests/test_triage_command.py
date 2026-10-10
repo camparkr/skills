@@ -120,6 +120,61 @@ class WithoutTriage(TriageCommand):
         self.assertNotIn('triage_seconds', sent['harness_payload'])
 
 
+class RelativePath(TriageCommand):
+    """A relative path at the start of the command's script argument is resolved against the ledger folder, so
+    the triage is found whatever folder the session runs in."""
+
+    def relative(self, command):
+        config = json.loads((self.ledger / 'config.json').read_text(encoding='utf-8'))
+        config['triage_command'] = command
+        (self.ledger / 'config.json').write_text(json.dumps(config), encoding='utf-8')
+
+    def setUp(self):
+        super().setUp()
+        tools = self.tmp / 'tools'
+        tools.mkdir()
+        shutil.copy(str(self.tmp / 'stand_in.py'), str(tools / 'stand_in.py'))
+
+    def test_a_script_named_relative_to_the_ledger_folder(self):
+        self.relative('"%s" ../tools/stand_in.py "%s"' % (sys.executable, self.seen))
+        sent = self.dispatch('Look it up. MARK[inquiry]', 'toolu_triage_0010')
+        self.assertEqual(sent['triage_kind'], 'inquiry')
+
+    def test_a_script_run_as_the_command_itself(self):
+        script = self.tmp / 'tools' / 'run.sh'
+        script.write_text('#!/bin/sh\nexec "%s" "%s" "$@"\n' % (sys.executable, self.tmp / 'tools' / 'stand_in.py'),
+                          encoding='utf-8')
+        script.chmod(0o755)
+        self.relative('../tools/run.sh "%s"' % self.seen)
+        sent = self.dispatch('Look it up. MARK[inquiry]', 'toolu_triage_0011')
+        self.assertEqual(sent['triage_kind'], 'inquiry')
+
+    def test_a_working_folder_elsewhere_does_not_matter(self):
+        self.relative('"%s" ../tools/stand_in.py "%s"' % (sys.executable, self.seen))
+        shutil.rmtree(str(self.tmp / 'work'))
+        (self.tmp / 'deeper' / 'work').mkdir(parents=True)
+        self.work = self.tmp / 'deeper' / 'work'
+        sent = self.dispatch('Look it up. MARK[inquiry]', 'toolu_triage_0012')
+        self.assertEqual(sent['triage_kind'], 'inquiry', 'the working folder does not matter')
+
+    def test_what_is_left_as_written(self):
+        resolve = load_capture().triage_command_resolved
+        config = self.ledger / 'config.json'
+        for command in ('python3 /abs/triage.py', 'python3 -m triage', 'python3 "$HOME/triage.py"',
+                        'python3 ~/triage.py', 'jev-triage --fast', '/usr/bin/python3 /abs/triage.py'):
+            self.assertEqual(resolve(command, config), command)
+        self.assertEqual(resolve('/usr/bin/python3 ../tools/t.py x', config),
+                         '/usr/bin/python3 %s x' % (self.tmp / 'tools' / 't.py'))
+
+
+def load_capture():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('capture_for_triage_path', str(SCRIPTS / 'capture_claude_code.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class EffortAssigned(TriageCommand):
 
     with_triage = False

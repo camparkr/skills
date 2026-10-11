@@ -59,7 +59,9 @@ What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
     for a command that fails: its exit code is read from the tool response, which is an object
     holding `exit_code` (0.142.5's rows), or text, or a list of text items. In text it is either the
     line 'Process exited with code <n>' (0.142.5) or, after the line 'Output:', a JSON object holding
-    `exit_code` (0.162.x, after 'Script completed' and 'Wall time'). A non-zero code is a failed call;
+    `exit_code` (0.162.x, after 'Script completed' and 'Wall time'). Where the response is the output
+    alone (the Codex app, Q16's third run), the code is read once from the parent rollout's
+    `item_completed` row for the call, if it already holds one. A non-zero code is a failed call;
     a response with no exit code readable is `failed`, class `unreadable`, never `served`.
   * Any other PreToolUse or PostToolUse writes an error line naming its tool: a hook runs only for the
     tools its matcher admits, so a tool event that reaches the capture and is not recorded is a fault
@@ -399,6 +401,8 @@ def post_shell(payload, folder, held):
             parsed = None
         raw = parsed if isinstance(parsed, (dict, list)) else raw
     output, code = shell_output(raw)
+    if code is None:
+        code = rollout_exit_code(payload.get('transcript_path'), payload.get('tool_use_id'))
     kept = dict(payload)
     text = response_text(raw)
     if text is not None:
@@ -409,6 +413,27 @@ def post_shell(payload, folder, held):
                                  'exit_code': code if code is not None else 'unrecorded (none readable)'}
     shared.cli_return(folder, held, common(payload, route='cli'), command_of(payload), output, code, kept,
                       no_code=NO_EXIT_CODE)
+
+
+def rollout_exit_code(path, call_id):
+    """The exit code the parent rollout already holds for a shell call, or None. Read once, never waited for.
+
+    The Codex app (Q16's third live run) sent a Bash call's tool_response as the command's output alone, and wrote
+    the exit code, before PostToolUse ran, in the parent rollout: an `item_completed` event whose item has the
+    call's id and an integer `exit_code`."""
+    if not isinstance(path, str) or not path or not isinstance(call_id, str) or not call_id:
+        return None
+    try:
+        rows = transcripts.rows_of(path)
+    except OSError:
+        return None
+    for row in reversed(rows):
+        payload = row.get('payload') if isinstance(row.get('payload'), dict) else {}
+        item = payload.get('item') if isinstance(payload.get('item'), dict) else {}
+        if (row.get('type') == 'event_msg' and payload.get('type') == 'item_completed'
+                and item.get('id') == call_id and _code(item.get('exit_code')) is not None):
+            return item['exit_code']
+    return None
 
 
 def store_join(folder, session, agent, data):

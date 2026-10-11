@@ -587,7 +587,17 @@ def subagent_stop(payload, folder, held):
                 kept_for_return = True
         if join is None and not resumes:
             return
-        ending = background_ending(folder, held, agent, stop, turn_starter(join, resumes, kept_for_return))
+        starter = turn_starter(join, resumes, kept_for_return)
+    # The wait for the transcript runs outside the lock, so the session's other hooks are not held behind it;
+    # the lock is taken again only to write, and what is pending is read again then.
+    ending = background_ending(folder, held, agent, stop, starter)
+    with pending_lock(folder, held.session):
+        if join is not None:
+            now = read_join(folder, held.session, agent)
+            if now is None or now.get('call_id') != join.get('call_id'):
+                join = None  # another hook wrote this call's return while the stop waited
+        resumes = [(name, read_pending(folder, held.session, name)) for name, _ in resumes]
+        resumes = [(name, data) for name, data in resumes if isinstance(data, dict)]
         if join is not None:
             if not join.get('call_id'):
                 held.error(folder, 'payload', 'no pending join for background agent %s' % agent, record='return')
@@ -684,7 +694,7 @@ def final_request_end(rows):
 def background_ending(folder, held, agent, stop, turn=None):
     """How the subagent's run ended, read from its transcript once it shows the end: the answer, how it
     was read, the transcript's path, and the rows of this stop's turn where the end was read within a turn.
-    Called under the pending lock."""
+    Called outside the pending lock, so the session's other hooks run while it waits."""
     payload = stop.get('payload') or {}
     answer = stop.get('last_assistant_message')
     answer = answer if isinstance(answer, str) else ''

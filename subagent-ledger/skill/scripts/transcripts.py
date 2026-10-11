@@ -221,28 +221,34 @@ def codex_usage(usages):
     return usages[-1]
 
 
-def codex_complete(path, answer=None):
-    """True once the rollout holds the run's end, as far as Codex writes it before SubagentStop returns.
+def codex_complete(path, answer=None, turn=None):
+    """True once the rollout holds the turn's end, as far as Codex writes it before SubagentStop returns.
 
     Codex writes `task_complete` only after its SubagentStop hook has returned, so a hook that waited
     for it would wait for ever. What it has written by then is the answer, as an `agent_message`, and
-    the counter row after it. So the last turn is complete when it
+    the counter row after it. So the turn is complete when it
     holds `answer` in an `agent_message` followed by a `token_count`, or when it has ended
     (`task_complete` or `turn_aborted`). With no answer to look for, a `token_count` after the last
     `agent_message` will do.
+
+    The turn is the one whose `task_started` row carries `turn`, the stop's `turn_id`, up to the next
+    `task_started`; where no row carries it, or none is given, the rollout's last turn.
     """
     try:
         rows = rows_of(path)
     except OSError:
         return False
-    started = -1
-    for position, row in enumerate(rows):
-        if row.get('type') == 'event_msg' and _payload(row).get('type') == 'task_started':
-            started = position
+    starts = [position for position, row in enumerate(rows)
+              if row.get('type') == 'event_msg' and _payload(row).get('type') == 'task_started']
+    started, ends = (starts[-1] if starts else -1), len(rows)
+    own = [position for position in starts if turn and _payload(rows[position]).get('turn_id') == turn]
+    if own:
+        started = own[0]
+        ends = next((position for position in starts if position > started), len(rows))
     wanted = (answer or '').strip()
     said = -1
     for position, row in enumerate(rows):
-        if position <= started or row.get('type') != 'event_msg':
+        if position <= started or position >= ends or row.get('type') != 'event_msg':
             continue
         payload = _payload(row)
         kind = payload.get('type')

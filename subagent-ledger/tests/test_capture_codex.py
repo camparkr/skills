@@ -397,5 +397,90 @@ class CB3_9BadInput(World):
         self.assertEqual(self.records(), [])
 
 
+# ---------------------------------------------------------------------------
+# Codex 0.162.1's tool names: Agent and Bash, beside spawn_agent and exec_command
+# ---------------------------------------------------------------------------
+
+class NewToolNames(World):
+    """The same recorded payloads with the tools named as Codex 0.162.1 names them in hook events."""
+
+    fields = 'all'
+
+    def renamed(self):
+        rows = self.dr3()
+        for row in rows:
+            if row['event'] in ('PreToolUse', 'PostToolUse'):
+                row['payload']['tool_name'] = 'Agent'
+        return rows
+
+    def test_an_agent_dispatch_is_recorded_and_joined(self):
+        self.feed(self.renamed())
+        self.assertEqual(self.errors(), [])
+        kinds = [line['record'] for line in self.records()]
+        self.assertEqual(kinds, ['dispatch', 'witness', 'witness', 'return'])
+        self.assertEqual(self.records()[-1]['call_id'], DR3_CALL)
+        self.assertEqual(self.records()[-1]['agent_id'], DR3_AGENT)
+
+    def test_the_stop_payloads_model_stays_in_harness_payload(self):
+        rows = self.renamed()
+        rows[-1]['payload']['model'] = 'a-model-the-rollout-does-not-name'
+        self.feed(rows)
+        back = self.records()[-1]
+        self.assertEqual(back['model'], 'gpt-5.5')
+        self.assertEqual(back['harness_payload']['model'], 'a-model-the-rollout-does-not-name')
+
+    def test_a_bash_command_is_read_at_tool_input_command(self):
+        payload = {'session_id': 'shell-session', 'turn_id': 't', 'cwd': str(self.work), 'model': PARENT_MODEL,
+                   'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_use_id': 'call_bash_model',
+                   'tool_input': {'command': 'claude -p --model haiku "Reply with the word ok"'}}
+        self.capture.handle('PreToolUse', json.dumps(payload), None)
+        done = dict(payload, hook_event_name='PostToolUse',
+                    tool_response='Chunk ID: x\nWall time: 1 seconds\nProcess exited with code 0\nOutput:\nok\n')
+        self.capture.handle('PostToolUse', json.dumps(done), None)
+        found = [(line['record'], line['route']) for line in self.records() if line.get('call_id') == 'call_bash_model']
+        self.assertEqual(found, [('dispatch', 'cli'), ('return', 'cli')])
+        self.assertEqual(self.records()[-1]['outcome'], 'served')
+
+    def test_both_names_are_listed_for_codex(self):
+        entry = json.loads((SCRIPTS / 'subagent-tools.json').read_text(encoding='utf-8'))['harnesses']['codex']
+        self.assertEqual(sorted(entry['tools']), ['Agent', 'spawn_agent'])
+        self.assertEqual(sorted(entry['shell_tools']), ['Bash', 'exec_command'])
+
+
+class StopTurnById(World):
+    """The stop's turn is the one whose task_started row carries the stop's turn_id."""
+
+    def later_turn(self, path):
+        with Path(path).open('a', encoding='utf-8') as out:
+            out.write(json.dumps({'type': 'event_msg', 'payload': {'type': 'task_started', 'turn_id': 'later'}}) + '\n')
+
+    def test_a_later_turn_begun_does_not_hide_the_stops_own(self):
+        rows = self.dr3()
+        path = rows[-1]['payload']['agent_transcript_path']
+        self.later_turn(path)
+        turn = rows[-1]['payload']['turn_id']
+        self.assertTrue(self.transcripts.codex_complete(path, 'kestrel-4417', turn))
+
+    def test_without_the_turn_id_the_last_turn_is_read(self):
+        rows = self.dr3()
+        path = rows[-1]['payload']['agent_transcript_path']
+        self.later_turn(path)
+        self.assertFalse(self.transcripts.codex_complete(path, 'kestrel-4417'))
+        self.assertFalse(self.transcripts.codex_complete(path, 'kestrel-4417', 'a turn no row carries'))
+
+    def test_the_turn_ends_at_the_next_task_started(self):
+        rows = self.dr3()
+        path = rows[-1]['payload']['agent_transcript_path']
+        text = Path(path).read_text(encoding='utf-8').splitlines()
+        first = rows[-1]['payload']['turn_id']
+        cut = [json.loads(line) for line in text[:2]]
+        cut.append({'type': 'event_msg', 'payload': {'type': 'task_started', 'turn_id': 'second'}})
+        cut.extend(json.loads(line) for line in text[2:])
+        Path(path).write_text(''.join(json.dumps(row) + '\n' for row in cut), encoding='utf-8')
+        self.assertFalse(self.transcripts.codex_complete(path, 'kestrel-4417', first),
+                         'the answer stands in the next turn, not the stop\'s own')
+        self.assertTrue(self.transcripts.codex_complete(path, 'kestrel-4417', 'second'))
+
+
 if __name__ == '__main__':
     unittest.main()

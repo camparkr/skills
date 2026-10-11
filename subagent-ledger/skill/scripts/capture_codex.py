@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex's capture: hook events on `spawn_agent` and its shell tool run it, and it writes the call records.
+"""Codex's capture: hook events on its subagent tool and its shell tool run it, and it writes the call records.
 
 It writes them through ledger.py.
 
@@ -9,26 +9,34 @@ with the hook's payload on standard input. It prints nothing on standard output 
 path, including a payload that is empty or is not JSON, so it never blocks or changes a call. It
 imposes no time limit.
 
-What each event does (Codex 0.142.5, as observed):
+Tool names. Codex 0.142.5 named the subagent tool `spawn_agent` and the shell tool `exec_command` in its
+hook events; Codex 0.162.1 names them `Agent` and `Bash` (its hooks documentation, 'Tool coverage'). The
+capture takes the names subagent-tools.json lists for Codex, `tools` and `shell_tools`, which hold both.
 
-  * PreToolUse on spawn_agent: the dispatch record. The brief is `tool_input.message`. The payload's
+What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
+
+  * PreToolUse on the subagent tool: the dispatch record. The brief is `tool_input.message`. The payload's
     own `model` is the parent session's, so it is never taken as the model asked for: that is
     `tool_input.model` where the tool is given one, and otherwise none was asked. The ledger folder's
     `triage_command`, where named, runs here, and `act_kind`, `triage_kind` and `effort_assigned` are
     read as in capture_claude_code.py; spawn_agent takes no effort setting for the call.
-  * PostToolUse on spawn_agent: fires when the spawn returns, before the subagent has run. It stores
+  * PostToolUse on the subagent tool: fires when the spawn returns, before the subagent has run. It stores
     the join of `tool_use_id` to the `agent_id` in `tool_response` and writes nothing else. A spawn
     whose response names no agent is a failed call, and its return is written here.
   * SubagentStart: a witness line.
   * SubagentStop: a witness line, then the return record, joined to its call through the stored
-    join. The subagent's rollout, at `agent_transcript_path`, is read once it holds the answer
-    SubagentStop reports and the counter row written after it, or the turn's end. Codex writes
+    join. The subagent's rollout, at `agent_transcript_path`, is read once the stop's turn holds the
+    answer SubagentStop reports and the counter row written after it, or the turn's end. The stop's
+    turn is the one whose `task_started` row carries the payload's `turn_id`; where no row does, the
+    rollout's last turn. Codex writes
     `task_complete` only after this hook returns, so the capture never waits for that row. There is
     no limit on the wait beyond the harness's own time-out on hooks. The model, the
     four counters, the effort and the isolation evidence come from the rollout; the answer from
-    `last_assistant_message`.
-  * PreToolUse on the shell tool subagent-tools.json names (`exec_command`): a dispatch record, route
-    cli, when the command (`tool_input.cmd`, or `command`) matches cli-patterns.json, as the Claude
+    `last_assistant_message`. The payload's own `model` stays in `harness_payload` and never stands
+    for the model the rollout names.
+  * PreToolUse on the shell tool subagent-tools.json names (`exec_command`, or `Bash` on 0.162.1): a
+    dispatch record, route cli, when the command (`tool_input.cmd` on 0.142.5, `tool_input.command` on
+    0.162.1) matches cli-patterns.json, as the Claude
     Code capture's shell route does. A command that makes no model call writes nothing.
   * PostToolUse on the shell tool: the matched command's return record. Codex sends no separate event
     for a command that fails: its exit code is read from the tool response, an object's `exit_code`
@@ -61,7 +69,6 @@ import ledger  # noqa: E402
 import transcripts  # noqa: E402
 
 HARNESS = 'codex'
-SUBAGENT_TOOLS = ('spawn_agent',)
 DISPATCH_AGENT = 'unrecorded (not yet returned)'
 SUBAGENT_COST = 'unrecorded (the harness reports no cost for a subagent)'
 NOT_A_SCRIPT = 'unrecorded (not a call script)'
@@ -142,9 +149,9 @@ def handle(event, text, folder=None):
 
 def _route(event, payload, folder, held):
     tool = payload.get('tool_name')
-    if event == 'PreToolUse' and tool in SUBAGENT_TOOLS:
+    if event == 'PreToolUse' and tool in subagent_tools():
         return pre_spawn(payload, folder, held)
-    if event == 'PostToolUse' and tool in SUBAGENT_TOOLS:
+    if event == 'PostToolUse' and tool in subagent_tools():
         return post_spawn(payload, folder, held)
     if event == 'PreToolUse' and tool in shared.shell_tools(HARNESS):
         return pre_shell(payload, folder, held)
@@ -155,6 +162,12 @@ def _route(event, payload, folder, held):
     if event == 'SubagentStop':
         return subagent_stop(payload, folder, held)
     return None
+
+
+def subagent_tools():
+    """The names of Codex's subagent tool, from subagent-tools.json."""
+    names = shared.harness_entry(HARNESS).get('tools')
+    return tuple(name for name in names if isinstance(name, str)) if isinstance(names, list) else ()
 
 
 # ---------------------------------------------------------------------------
@@ -325,8 +338,8 @@ def subagent_stop(payload, folder, held):
             held.error(folder, 'payload', 'no pending join for agent %s, and the ledger could not be read to '
                        'find an earlier call to it: %s' % (agent, unread), record='return')
         else:
-            held.error(folder, 'payload', 'no pending join for agent %s: its PostToolUse on spawn_agent was '
-                       'not seen, so the return cannot be joined to a call' % agent, record='return')
+            held.error(folder, 'payload', 'no pending join for agent %s: its PostToolUse on the subagent tool '
+                       'was not seen, so the return cannot be joined to a call' % agent, record='return')
         return
     call_id = join['call_id']
     answer = payload.get('last_assistant_message')
@@ -337,7 +350,8 @@ def subagent_stop(payload, folder, held):
     if not isinstance(path, str) or not path:
         held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = None
-    wait_for_rollout(path, answer)
+    turn = payload.get('turn_id') if isinstance(payload.get('turn_id'), str) else None
+    wait_for_rollout(path, answer, turn)
     waited = round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)
     fields = common(payload)
     fields.update({'call_id': call_id, 'agent_id': agent, 'cost': SUBAGENT_COST,
@@ -355,14 +369,14 @@ def subagent_stop(payload, folder, held):
         shared.clear_pending(folder, held.session, [call_id, 'join-' + agent])
 
 
-def wait_for_rollout(path, answer):
-    """Re-read the rollout until it holds the answer and the counter row after it.
+def wait_for_rollout(path, answer, turn=None):
+    """Re-read the rollout until the stop's turn holds the answer and the counter row after it.
 
     No limit of the capture's own: the harness's time-out on hooks is the only bound.
     """
     if not path:
         return
-    while not transcripts.codex_complete(path, answer):
+    while not transcripts.codex_complete(path, answer, turn):
         time.sleep(REREAD_SECONDS)
 
 

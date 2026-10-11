@@ -156,17 +156,21 @@ EOF
 	fi
 	if [ "$CODEX_ON" -eq 1 ]; then
 		echo
-		echo "Codex: add these to the \"hooks\" object of hooks.json in ${CODEX_DIR}. Codex runs a hook only once"
-		echo "you have trusted it:"
+		echo "Codex: add these to the \"hooks\" object of hooks.json in ${CODEX_DIR}. The matcher names each tool"
+		echo "both ways Codex has named it: Agent and Bash, and the older spawn_agent and exec_command."
 		echo
 		cat <<EOF
 {
-  "PreToolUse":    [{"matcher": "spawn_agent|exec_command", "hooks": [$(codex_hook PreToolUse)]}],
-  "PostToolUse":   [{"matcher": "spawn_agent|exec_command", "hooks": [$(codex_hook PostToolUse)]}],
+  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command", "hooks": [$(codex_hook PreToolUse)]}],
+  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command", "hooks": [$(codex_hook PostToolUse)]}],
   "SubagentStart": [{"hooks": [$(codex_hook SubagentStart)]}],
   "SubagentStop":  [{"hooks": [$(codex_hook SubagentStop)]}]
 }
 EOF
+		echo
+		echo "Codex runs a hook only once you have trusted it: trust the hooks in the app's Settings → Hooks, or"
+		echo "with /hooks in an interactive CLI session, then start a fresh session; hooks that change need review"
+		echo "again."
 	fi
 	if [ "$OPENCODE_ON" -eq 1 ]; then
 		echo

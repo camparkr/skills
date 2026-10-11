@@ -13,9 +13,9 @@
       "transcript": "claude-code"
     },
     "codex": {
-      "tools": ["spawn_agent"],
+      "tools": ["Agent", "spawn_agent"],
       "handback": [],
-      "shell_tools": ["exec_command"],
+      "shell_tools": ["Bash", "exec_command"],
       "delivery": [],
       "transcript": "codex"
     },

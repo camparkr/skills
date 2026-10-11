@@ -116,7 +116,7 @@ The skill has these limits today:
 - **OpenCode** reports no token counters, sign-in route or effort to a plugin, so its records read `unrecorded` for
   them.
 - **A command-line call to another harness's program**, such as `codex exec` run from Claude Code, names no sign-in
-  route, because the capture does not read that program's sign-in.
+  route. The capture does not read that program's sign-in.
 - **Cursor** names no session in its own record, so a Cursor call's agent ID reads `unrecorded`.
 - **A message to a subagent** is recorded only when the subagent's transcript shows its delivery in a form the skill
   lists. In any other form, no return is written, and the reader lists the message as a call without a return. If

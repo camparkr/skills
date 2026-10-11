@@ -53,8 +53,8 @@ disappear.
 - **Evidence the person answered first.** The record reads that from the session itself and keeps it apart from the
   agent's own account. Tools that store approvals keep them as their own state. None we surveyed reads the transcript
   for the answer.
-- **A kind of work for every call, with a test for each kind.** The record carries the kind. Routing by kind of work is
-  common; a test for every kind is not.
+- **A kind of work for every call, with a test for each kind.** The record carries the kind wherever the harness
+  passes the brief in readable form. Routing by kind of work is common; a test for every kind is not.
 
 ## Kinds of work
 
@@ -111,7 +111,12 @@ lines. It does not include a labeller.
 
 The skill has these limits today:
 
-- **OpenCode** reports no token counters to a plugin, so its records read `unrecorded` for them.
+- **Codex** encrypts every brief it passes to a subagent, so a Codex record carries no kind, task, persona or user
+  answer from the brief.
+- **OpenCode** reports no token counters, sign-in route or effort to a plugin, so its records read `unrecorded` for
+  them.
+- **A command-line call to another harness's program**, such as `codex exec` run from Claude Code, names no sign-in
+  route, because the capture does not read that program's sign-in.
 - **Cursor** names no session in its own record, so a Cursor call's agent ID reads `unrecorded`.
 - **A message to a subagent** is recorded only when the subagent's transcript shows its delivery in a form the skill
   lists. In any other form, no return is written, and the reader lists the message as a call without a return. If

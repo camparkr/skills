@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Ledger'
-description: 'TODO(prose)'
+description: 'The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files and appends the line under a lock.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Ledger
 
-TODO(prose)
+The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files and appends the line under a lock.

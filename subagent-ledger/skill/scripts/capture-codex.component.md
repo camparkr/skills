@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Codex capture'
-description: 'TODO(prose)'
+description: 'Codex''s hook command. It writes both records for each subagent call, each message to a subagent and each model call made through the shell tool. It reads the model and counters from the subagent''s rollout file, Codex''s transcript.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Codex capture
 
-TODO(prose)
+Codex's hook command. It writes both records for each subagent call, each message to a subagent and each model call made through the shell tool. It reads the model and counters from the subagent's rollout file, Codex's transcript.

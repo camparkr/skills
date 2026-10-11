@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'OpenCode plugin'
-description: 'TODO(prose)'
+description: 'The OpenCode plugin. It hands each `task` and `bash` call''s events to the capture, and never throws or prints.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -19,4 +19,4 @@ x-component:
 
 # OpenCode plugin
 
-TODO(prose)
+The OpenCode plugin. It hands each `task` and `bash` call's events to the capture, and never throws or prints.

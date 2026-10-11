@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Transcripts'
-description: 'TODO(prose)'
+description: 'Reads a transcript for the model that ran, its four token counters and what the run touched outside its folder.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Transcripts
 
-TODO(prose)
+Reads a transcript for the model that ran, its four token counters and what the run touched outside its folder.

@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Call'
-description: 'TODO(prose)'
+description: 'Makes one call to Gemini CLI or Cursor in a fresh folder, prints the answer and writes both records.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Call
 
-TODO(prose)
+Makes one call to Gemini CLI or Cursor in a fresh folder, prints the answer and writes both records.

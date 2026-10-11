@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Claude Code capture'
-description: 'TODO(prose)'
+description: 'Claude Code''s hook command. It writes both records for each subagent call, each message to a running subagent and each model call made through the command line. It reads the model and counters from the call''s own transcript.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Claude Code capture
 
-TODO(prose)
+Claude Code's hook command. It writes both records for each subagent call, each message to a running subagent and each model call made through the command line. It reads the model and counters from the call's own transcript.

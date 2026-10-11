@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Setup'
-description: 'TODO(prose)'
+description: 'Links the skill into each harness and prints the hook entries for you to add. It never writes a harness''s settings. It stops on a system where the ledger cannot lock its file.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Setup
 
-TODO(prose)
+Links the skill into each harness and prints the hook entries for you to add. It never writes a harness's settings. It stops on a system where the ledger cannot lock its file.

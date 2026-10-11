@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'OpenCode capture'
-description: 'TODO(prose)'
+description: 'OpenCode''s capture, run by the plugin. It writes both records for each `task` call and each model call made through `bash`. When a task errors, it writes a failed return from the event stream.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # OpenCode capture
 
-TODO(prose)
+OpenCode's capture, run by the plugin. It writes both records for each `task` call and each model call made through `bash`. When a task errors, it writes a failed return from the event stream.

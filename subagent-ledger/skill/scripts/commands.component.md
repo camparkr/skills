@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Commands'
-description: 'TODO(prose)'
+description: 'Splits a shell command into the parts the shell runs, so a model call inside a longer command is found.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Commands
 
-TODO(prose)
+Splits a shell command into the parts the shell runs, so a model call inside a longer command is found.

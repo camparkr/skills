@@ -11,7 +11,7 @@
     },
     {
       "name": "build",
-      "test": "Does the call change what a program, or the instructions an agent loads, does, following a design already settled?"
+      "test": "Does the call change what a program or an agent's instructions do, following a design already settled?"
     },
     {
       "name": "inquiry",
@@ -19,7 +19,7 @@
     },
     {
       "name": "archiving",
-      "test": "Does the call put a stored record out of use, bring it back or delete it, while it stays where it's stored?"
+      "test": "Does the call put a stored record out of use, bring it back or delete it, while it stays where it is stored?"
     },
     {
       "name": "transfer",

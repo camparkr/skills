@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tempfile
 import unittest
 from pathlib import Path
@@ -544,6 +545,61 @@ class CRB2_1WaitOnContent(World):
         with mock.patch.object(self.capture, 'transcript_complete', lambda *a, **k: True):
             back = self.replay(0.3)
         self.assertEqual(self.counters(back[0]), L1_FIRST)
+
+
+class WaitOutsideTheLock(World):
+    """While a background stop waits for the rest of its transcript, another hook in the same session completes:
+    the wait does not hold the session's pending lock. The L1 fixtures; the second dispatch's id is made up."""
+
+    SECOND = 'toolu_waitoutsidethelock00000001'
+
+    def second_hook(self, payload, cut_off=5):
+        """The second hook run as its hook command, in a process of its own. None if the cut-off stopped it."""
+        try:
+            return subprocess.run([sys.executable, str(CAPTURE_PY), 'PreToolUse'], input=json.dumps(payload),
+                                  capture_output=True, text=True, timeout=cut_off, cwd=str(self.work))
+        except subprocess.TimeoutExpired:
+            return None
+
+    def start(self):
+        import threading
+        rows = self.events('l1-background-events.jsonl')
+        path = Path(rows[3]['payload']['agent_transcript_path'])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.fill((FIXTURES / 'l1-background-agent-first.jsonl').read_text(encoding='utf-8')),
+                        encoding='utf-8')
+        self.feed(rows[:3])
+        stop = threading.Thread(target=self.feed, args=(rows[3:],))
+        stop.start()
+        second = json.loads(json.dumps(rows[0]['payload']))
+        second['tool_use_id'] = self.SECOND
+        return rows, path, stop, second
+
+    def finish(self, path, stop):
+        with path.open('a', encoding='utf-8') as handle:
+            handle.write(self.fill((FIXTURES / 'l1-background-agent-rest.jsonl').read_text(encoding='utf-8')))
+        stop.join(60)
+
+    def test_a_second_hook_completes_while_a_background_stop_waits(self):
+        rows, path, stop, second = self.start()
+        try:
+            time.sleep(1)
+            self.assertTrue(stop.is_alive(), 'the stop should still be waiting for the rest of the transcript')
+            done = self.second_hook(second)
+            self.assertTrue(stop.is_alive(), 'the stop finished first, so the case proves nothing')
+        finally:
+            self.finish(path, stop)
+        self.assertIsNotNone(done, 'the second hook was held behind the waiting stop')
+        self.assertIn(self.SECOND, [line.get('call_id') for line in self.records() if line['record'] == 'dispatch'])
+        self.assertEqual(len([line for line in self.records() if line['record'] == 'return']), 1)
+        self.assertEqual(self.errors(), [])
+
+    def test_control_a_hook_held_behind_the_lock_does_not_complete(self):
+        rows = self.events('l1-background-events.jsonl')
+        second = json.loads(json.dumps(rows[0]['payload']))
+        second['tool_use_id'] = self.SECOND
+        with self.capture.pending_lock(self.ledger, second['session_id']):
+            self.assertIsNone(self.second_hook(second, cut_off=2), 'a hook ran although the lock was held')
 
 
 # ---------------------------------------------------------------------------

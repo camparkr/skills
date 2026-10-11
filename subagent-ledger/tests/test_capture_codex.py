@@ -608,6 +608,63 @@ class LaterShapes(World):
         self.assertEqual(self.records(), [])
 
 
+class ShellExitCodeFromRollout(World):
+    """A Bash response of the output text alone, as the Codex app sent one in Q16's third live run, with the exit
+    code only in the parent rollout's `item_completed` CommandExecution row for the call. Every value made up."""
+
+    fields = 'all'
+    CALL = 'exec-01a10000-0000-7000-8000-000000000x2m'
+
+    def payloads(self, command, exit_code=1):
+        rollout = self.tmp / 'parent-rollout.jsonl'
+        rows = [{'type': 'session_meta', 'payload': {'id': 'shell-session', 'cwd': str(self.work)}}]
+        if exit_code is not None:
+            rows.append({'type': 'event_msg', 'payload': {'type': 'item_completed', 'turn_id': 't', 'item': {
+                'type': 'CommandExecution', 'id': self.CALL, 'command': ['/bin/zsh', '-lc', command],
+                'stdout': 'Error: stand-in\n', 'stderr': '', 'aggregated_output': 'Error: stand-in\n',
+                'exit_code': exit_code, 'formatted_output': 'Error: stand-in\n'}}})
+        rollout.write_text(''.join(json.dumps(row) + '\n' for row in rows), encoding='utf-8')
+        base = {'session_id': 'shell-session', 'turn_id': 't', 'transcript_path': str(rollout), 'cwd': str(self.work),
+                'model': PARENT_MODEL, 'tool_name': 'Bash', 'tool_use_id': self.CALL,
+                'tool_input': {'command': command}}
+        return [dict(base, hook_event_name='PreToolUse'),
+                dict(base, hook_event_name='PostToolUse', tool_response='Error: stand-in\n\nDetails: stand-in\n')]
+
+    def run_call(self, command, exit_code=1):
+        for payload in self.payloads(command, exit_code):
+            self.capture.handle(payload['hook_event_name'], json.dumps(payload), None)
+        return [line for line in self.records() if line.get('call_id') == self.CALL]
+
+    def test_a_matched_calls_exit_code_is_read_from_the_rollout_row(self):
+        found = self.run_call('opencode run "Reply with the word ok"')
+        self.assertEqual([line['record'] for line in found], ['dispatch', 'return'])
+        self.assertEqual(found[-1]['outcome'], 'failed')
+        self.assertNotEqual(found[-1]['outcome_reason']['class'], 'unreadable')
+        self.assertEqual(found[-1]['harness_payload']['tool_response']['exit_code'], 1)
+
+    def test_a_zero_code_there_is_served(self):
+        self.assertEqual(self.run_call('opencode run "Reply with the word ok"', 0)[-1]['outcome'], 'served')
+
+    def test_with_no_row_the_call_stays_unreadable(self):
+        found = self.run_call('opencode run "Reply with the word ok"', None)
+        self.assertEqual(found[-1]['outcome_reason'], {'class': 'unreadable', 'text': 'the response carries no exit code'})
+
+    def test_an_unmatched_shell_call_never_reads_the_rollout(self):
+        read = []
+        real = self.transcripts.rows_of
+        with mock.patch.object(self.transcripts, 'rows_of', lambda path: read.append(path) or real(path)):
+            self.assertEqual(self.run_call('ls -la'), [])
+        self.assertEqual(read, [])
+        with mock.patch.object(self.transcripts, 'rows_of', lambda path: read.append(path) or real(path)):
+            self.run_call('opencode run "Reply with the word ok"')
+        self.assertEqual(len(read), 1, 'a matched call reads the rollout once')
+
+    def test_control_without_the_rollout_read_a_matched_call_is_unreadable(self):
+        with mock.patch.object(self.capture, 'rollout_exit_code', lambda *a: None):
+            found = self.run_call('opencode run "Reply with the word ok"')
+        self.assertEqual(found[-1]['outcome_reason']['class'], 'unreadable')
+
+
 class Q16Rollout(World):
     """The stop read against a rollout in the shapes the Codex app (0.162.x) had written when SubagentStop fired."""
 

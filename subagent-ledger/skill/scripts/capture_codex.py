@@ -61,7 +61,8 @@ What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
     line 'Process exited with code <n>' (0.142.5) or, after the line 'Output:', a JSON object holding
     `exit_code` (0.162.x, after 'Script completed' and 'Wall time'). Where the response is the output
     alone (the Codex app, Q16's third run), the code is read once from the parent rollout's
-    `item_completed` row for the call, if it already holds one. A non-zero code is a failed call;
+    `item_completed` row for the call, if it already holds one; only for a command matched as a model
+    call, so no other shell call reads the rollout. A non-zero code is a failed call;
     a response with no exit code readable is `failed`, class `unreadable`, never `served`.
   * Any other PreToolUse or PostToolUse writes an error line naming its tool: a hook runs only for the
     tools its matcher admits, so a tool event that reaches the capture and is not recorded is a fault
@@ -401,7 +402,9 @@ def post_shell(payload, folder, held):
             parsed = None
         raw = parsed if isinstance(parsed, (dict, list)) else raw
     output, code = shell_output(raw)
-    if code is None:
+    if code is None and shared.read_pending(folder, held.session, 'cli-' + held.call_id) is not None:
+        # Only for a command matched as a model call: any other shell call writes nothing, so its rollout is
+        # never read.
         code = rollout_exit_code(payload.get('transcript_path'), payload.get('tool_use_id'))
     kept = dict(payload)
     text = response_text(raw)

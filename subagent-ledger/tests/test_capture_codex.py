@@ -15,8 +15,8 @@ ${OUTSIDE}) that each test fills with a folder of its own:
   * p1-events.jsonl: a second live dispatch's payloads, and p1-agent-rollout-at-stop.jsonl and
     p1-agent-rollout-rest.jsonl: its subagent rollout as it stood when SubagentStop fired, and the row
     written after (task_complete, 32 milliseconds later);
-  * q16-agent-rollout-at-stop.jsonl: reconstructed. A subagent rollout in the row shapes the Codex app
-    (0.162.x) had written when SubagentStop fired in Q16's second live run, every value made up: the
+  * app-agent-rollout-at-stop.jsonl: reconstructed. A subagent rollout in the row shapes the Codex app
+    (0.162.x) had written when SubagentStop fired in a live Codex run, every value made up: the
     answer as an `item_completed` AgentMessage and a `final_answer` message, then the counter row, and no
     `task_complete`.
 
@@ -609,7 +609,7 @@ class LaterShapes(World):
 
 
 class ShellExitCodeFromRollout(World):
-    """A Bash response of the output text alone, as the Codex app sent one in Q16's third live run, with the exit
+    """A Bash response of the output text alone, as the Codex app sent one in a live run, with the exit
     code only in the parent rollout's `item_completed` CommandExecution row for the call. Every value made up."""
 
     fields = 'all'
@@ -702,7 +702,7 @@ class NoTriageOnCiphertext(World):
         self.assertNotEqual(sent['triage_kind'], 'unrecorded (the harness passed the brief encrypted)')
 
 
-class Q16Rollout(World):
+class AppRollout(World):
     """The stop read against a rollout in the shapes the Codex app (0.162.x) had written when SubagentStop fired."""
 
     fields = 'all'
@@ -714,7 +714,7 @@ class Q16Rollout(World):
         stop['turn_id'] = self.TURN
         stop['last_assistant_message'] = 'kestrel-q2l'
         Path(stop['agent_transcript_path']).write_text(
-            self.fill((FIXTURES / 'q16-agent-rollout-at-stop.jsonl').read_text(encoding='utf-8')), encoding='utf-8')
+            self.fill((FIXTURES / 'app-agent-rollout-at-stop.jsonl').read_text(encoding='utf-8')), encoding='utf-8')
         return rows
 
     def test_the_answer_forms_of_0162_complete_the_turn(self):

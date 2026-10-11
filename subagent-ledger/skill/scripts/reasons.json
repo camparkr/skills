@@ -9,6 +9,7 @@
     "truncated",
     "unreadable",
     "caller_time_limit",
+    "stopped_by_caller",
     "empty_answer",
     "other"
   ],

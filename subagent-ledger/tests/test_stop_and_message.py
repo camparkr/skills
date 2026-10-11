@@ -129,7 +129,8 @@ class Stopped(base.World):
         rows = self.session()
         self.feed(rows[:3])
         self.feed([self.task_stop(rows, 'PreToolUse'), self.task_stop(rows, 'PostToolUse')])
-        self.assert_stopped_return()
+        record = self.assert_stopped_return()
+        self.assertEqual(record['session'], rows[0]['payload']['session_id'])
         self.assertEqual(list(self.capture.pending_dir(self.ledger, rows[0]['payload']['session_id']).glob('*.json')),
                          [], 'no pending file is left')
 

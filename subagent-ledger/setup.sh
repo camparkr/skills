@@ -146,8 +146,8 @@ if [ "$UNINSTALL" -eq 0 ]; then
 		echo
 		cat <<EOF
 {
-  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [$(claude_hook PreToolUse)]}],
-  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [$(claude_hook PostToolUse)]}],
+  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [$(claude_hook PreToolUse)]}],
+  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [$(claude_hook PostToolUse)]}],
   "PostToolUseFailure": [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [$(claude_hook PostToolUseFailure)]}],
   "SubagentStart":      [{"hooks": [$(claude_hook SubagentStart)]}],
   "SubagentStop":       [{"hooks": [$(claude_hook SubagentStop)]}]

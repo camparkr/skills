@@ -22,7 +22,16 @@ What each event does:
     delivered (a row of a form subagent-tools.json lists under `delivery`, holding its text: a user row,
     or an attachment row of type queued_command), with that turn's answer, counters, model and isolation.
     Where the transcript cannot be read, it is written at the first stop of a turn that started
-    (SubagentStart) after the message was sent.
+    (SubagentStart) after the message was sent. A message whose `to` is no agent id the ledger holds,
+    and whose response carries no `resumedAgentId`, is addressed to another session: no stop here will
+    answer it, so its return is written at its PostToolUse, `served` where the response's `success` is
+    true and `failed` otherwise, its answer the response's message.
+  * PreToolUse on TaskStop (subagent-tools.json `stop`) naming an agent with a pending call: a pending
+    file, `stopped-<agent>`. The agent's stop, waiting for its transcript to end, ends on it, and each
+    call still pending for the agent gets its return: `failed`, class `stopped_by_caller`, its answer
+    `unrecorded (the caller stopped the subagent)`, its counters from the transcript as it stands.
+    PostToolUse on TaskStop writes the same return where none was written. A stop naming no pending
+    agent, such as a background shell task, writes nothing.
   * SubagentStart: a witness line, and a pending file keyed by the agent id. Each message still
     waiting for this agent's stop is marked as sent before a turn that started.
   * PostToolUse on Agent or Task, a foreground call: the return record. The tool response is the one
@@ -37,7 +46,9 @@ What each event does:
     further stop, after the agent's calls have their returns, writes its witness line and no pending
     file. Writing a return removes the pending files for its call and its agent.
   * PreToolUse on Bash (the shell tool subagent-tools.json names): a dispatch record, route cli, when
-    the command matches cli-patterns.json.
+    the command makes a model call by cli-patterns.json, read by commands.reading() through wrappers,
+    compound commands, here-documents and the script files it runs, read now. One record per tool call;
+    `harness_payload.matched` lists the sites found.
   * PostToolUse on Bash: the return record for a matched command, which exited 0. Claude Code sends
     a command that exits non-zero to PostToolUseFailure instead, which writes a failed return. Where
     the command printed a `claude -p --output-format json` envelope naming its session, the inner
@@ -175,6 +186,16 @@ ABSENT_FROM_BRIEF = {
 # limit on that wait: the harness's own time-out on hooks is the only bound. This is how often it
 # re-reads.
 REREAD_SECONDS = 0.1
+# A subagent its caller stops (TaskStop) mid-tool ends its transcript in that tool call: the wait above ends on a
+# `stopped-<agent>` pending file, written at PreToolUse on the stop tool. A test switches this off.
+READ_STOPS = True
+STOPPED_ANSWER = 'unrecorded (the caller stopped the subagent)'
+STOPPED_REASON = {'class': 'stopped_by_caller', 'text': 'the caller stopped the subagent while it ran'}
+# A SendMessage whose `to` is no agent id the ledger holds, and whose response names no resumedAgentId, goes to
+# another session: its return is written at its PostToolUse. A test switches this off.
+MESSAGES_OUTSIDE = True
+OUTSIDE_AGENT = 'unrecorded (addressed outside this session: %s)'
+OUTSIDE_READING = 'unrecorded (a message to another session: this session holds no record of its run)'
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
 
@@ -257,6 +278,10 @@ def _route(event, payload, folder, held):
         return pre_resume(payload, folder, held)
     if event == 'PostToolUse' and tool == RESUME_TOOL:
         return post_resume(payload, folder, held)
+    if READ_STOPS and event == 'PreToolUse' and tool in stop_tools(HARNESS):
+        return pre_stop(payload, folder, held)
+    if READ_STOPS and event == 'PostToolUse' and tool in stop_tools(HARNESS):
+        return post_stop(payload, folder, held)
     if event == 'SubagentStart':
         return subagent_start(payload, folder, held)
     if event == 'SubagentStop':
@@ -279,6 +304,15 @@ def shell_tools(harness):
     """The names of the harness's shell tools, from subagent-tools.json."""
     names = harness_entry(harness).get('shell_tools')
     return tuple(name for name in names if isinstance(name, str)) if isinstance(names, list) else ()
+
+
+def stop_tools(harness):
+    """{tool name: the input key holding the agent id} for the tools by which a caller stops a subagent."""
+    out = {}
+    for item in harness_entry(harness).get('stop') or []:
+        if isinstance(item, dict) and isinstance(item.get('tool'), str) and isinstance(item.get('agent_key'), str):
+            out[item['tool']] = item['agent_key']
+    return out
 
 
 def handback_tools(harness):
@@ -517,14 +551,147 @@ def pre_resume(payload, folder, held):
 
 
 def post_resume(payload, folder, held):
-    """Keep the tool response for the return written at the agent's next stop; write nothing yet."""
+    """Keep the tool response for the return written at the agent's next stop; write nothing yet. A message to
+    another session, told by structure alone, has its return written now (outside_return)."""
     response = payload.get('tool_response')
     with pending_lock(folder, held.session):
         kept = read_pending(folder, held.session, 'resume-' + held.call_id)
         if kept is None:
+            if MESSAGES_OUTSIDE:
+                outside_return(payload, folder, held)
             return
         kept['tool_response'] = response
         write_pending(folder, held.session, 'resume-' + held.call_id, kept)
+
+
+def outside_return(payload, folder, held):
+    """The return of a SendMessage to another session, at its PostToolUse. Called under the pending lock.
+
+    A message is to a subagent where its `to` is an agent id the ledger holds, or its response carries
+    `resumedAgentId`; otherwise it is to another session, and no stop of this session will answer it. Its outcome
+    is the response's `success`: `served` where true, `failed` otherwise; its answer is the response's message.
+    No response wording is read to decide this."""
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    to = given.get('to')
+    response = payload.get('tool_response')
+    if isinstance(response, str):
+        try:
+            response = json.loads(response)
+        except ValueError:
+            pass
+    if isinstance(response, dict) and response.get('resumedAgentId'):
+        return
+    if isinstance(to, str) and to and agent_known(folder, held.session, to):
+        return
+    if held.call_id.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'no call_id (tool_use_id absent from PostToolUse)', record='return')
+        return
+    if isinstance(response, dict):
+        served = response.get('success') is True
+        answer = message_text(response.get('message'))
+    else:
+        served = False
+        answer = message_text(response)
+    sent = read_pending(folder, held.session, held.call_id)
+    fields = common(payload, folder, route='subagent')
+    fields.update({
+        'call_id': held.call_id,
+        'agent_id': OUTSIDE_AGENT % (to if isinstance(to, str) and to else 'no one named'),
+        'outcome': 'served' if served else 'failed',
+        'outcome_reason': 'none (served)' if served else ledger.reason_for(
+            HARNESS, answer, 'the message was not delivered'),
+        'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT,
+        'model': OUTSIDE_READING, 'tokens': OUTSIDE_READING, 'isolation': OUTSIDE_READING,
+        'effort': OUTSIDE_READING,
+        'harness_payload': without_texts(payload, message_text(given.get('message')), ON_DISPATCH_BRIEF),
+    })
+    if sent and sent.get('dispatched_at'):
+        fields['dispatched_at'] = sent['dispatched_at']
+    ledger.ret(ledger=folder, answer=answer, **fields)
+    clear_pending(folder, held.session, [held.call_id])
+
+
+# ---------------------------------------------------------------------------
+# TaskStop: a caller stops a running subagent
+# ---------------------------------------------------------------------------
+
+def stopped_agent(payload):
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    key = stop_tools(HARNESS).get(payload.get('tool_name'))
+    agent = given.get(key) if key else None
+    return agent if isinstance(agent, str) and agent else None
+
+
+def pending_call_for(folder, session, agent):
+    """Whether a call to this agent is still waiting for its return: a background dispatch joined to it, or a
+    message sent to it."""
+    return read_join(folder, session, agent) is not None or bool(read_resumes(folder, session, agent))
+
+
+def pre_stop(payload, folder, held):
+    """A stop naming an agent with a pending call writes a `stopped-<agent>` pending file, which ends the wait of
+    that agent's stop. A stop naming no pending agent (a background shell task, or an agent already returned)
+    writes nothing."""
+    agent = stopped_agent(payload)
+    if agent is None:
+        return
+    with pending_lock(folder, held.session):
+        if pending_call_for(folder, held.session, agent):
+            write_pending(folder, held.session, 'stopped-' + agent,
+                          {'agent_id': agent, 'stopped_at': ledger.now(), 'call_id': held.call_id})
+
+
+def post_stop(payload, folder, held):
+    """Where the stopped agent's call still has no return, write it now: the harness may send no SubagentStop."""
+    agent = stopped_agent(payload)
+    if agent is None:
+        return
+    with pending_lock(folder, held.session):
+        if read_pending(folder, held.session, 'stopped-' + agent) is None:
+            return
+        write_stopped(folder, held, agent, None, payload)
+
+
+def write_stopped(folder, held, agent, stop, stop_tool_payload=None):
+    """The return of each call still pending for a stopped agent: `failed`, class stopped_by_caller, its counters
+    from the transcript as it stands. `stop` is what SubagentStop gave, where the return is written there;
+    otherwise `stop_tool_payload` is the stop tool's PostToolUse payload. Called under the pending lock."""
+    path = (stop or {}).get('agent_transcript_path') or transcripts.lane_path(held.session, agent)
+    payload = (stop or {}).get('payload') or {}
+    base = payload or stop_tool_payload or {'cwd': None, 'agent_id': None}
+    calls = []
+    join = read_join(folder, held.session, agent)
+    if join is not None and join.get('call_id'):
+        calls.append((join, [join['call_id'], 'join-' + agent]))
+    for name, data in read_resumes(folder, held.session, agent):
+        calls.append((data, [data['call_id'], name]))
+    for data, cleared in calls:
+        response = data.get('tool_response') if isinstance(data.get('tool_response'), dict) else {}
+        sent = read_pending(folder, held.session, data['call_id'])
+        fields = common(base, folder, route='subagent')
+        fields['caller'] = data.get('caller') or fields['caller']
+        fields.update({
+            'call_id': data['call_id'], 'agent_id': agent, 'outcome': 'failed',
+            'outcome_reason': dict(STOPPED_REASON), 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT,
+            'effort': (stop or {}).get('effort') or 'unrecorded (no SubagentStop was joined to this call)',
+            'answer_path': STOPPED_ANSWER,
+        })
+        if sent and sent.get('dispatched_at'):
+            fields['dispatched_at'] = sent['dispatched_at']
+        elif data.get('dispatched_at'):
+            fields['dispatched_at'] = data['dispatched_at']
+        if path and os.path.exists(str(path)):
+            fields.update(from_transcript(path, response.get('resolvedModel'), None))
+        else:
+            fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT})
+        kept = dict(payload) if payload else dict(stop_tool_payload or {})
+        kept['stopped_by'] = read_pending(folder, held.session, 'stopped-' + agent)
+        kept['post_tool_use_response'] = data.get('tool_response')
+        kept.pop('last_assistant_message', None)
+        fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
+        ledger.ret(ledger=folder, **fields)
+        clear_pending(folder, held.session, cleared)
+    clear_pending(folder, held.session, ['stopped-' + agent, 'agent-' + agent, 'stop-' + agent])
 
 
 def read_resumes(folder, session, agent):
@@ -592,6 +759,11 @@ def subagent_stop(payload, folder, held):
     # The wait for the transcript runs outside the lock, so the session's other hooks are not held behind it;
     # the lock is taken again only to write, and what is pending is read again then.
     ending = background_ending(folder, held, agent, stop, starter)
+    if ending['how'] == 'stopped':
+        with pending_lock(folder, held.session):
+            if read_pending(folder, held.session, 'stopped-' + agent) is not None:
+                write_stopped(folder, held, agent, stop)
+        return
     with pending_lock(folder, held.session):
         if join is not None:
             now = read_join(folder, held.session, agent)
@@ -704,7 +876,8 @@ def background_ending(folder, held, agent, stop, turn=None):
         if payload:
             held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = transcripts.lane_path(held.session, agent)
-    answer, how, span = wait_for_end(path, answer, handback_tools(HARNESS), turn)
+    answer, how, span = wait_for_end(path, answer, handback_tools(HARNESS), turn,
+                                     ended=lambda: stop_ended(folder, held.session, agent))
     if how != 'handback' and 'last_assistant_message' not in payload and payload:
         held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
     return {'answer': answer, 'how': how, 'path': path, 'span': span,
@@ -751,7 +924,18 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
     clear_pending(folder, held.session, cleared)
 
 
-def wait_for_end(path, answer, handbacks, turn=None):
+def stop_ended(folder, session, agent):
+    """Whether the wait of this agent's stop should end without reading the transcript's end: its caller stopped it
+    (a `stopped-<agent>` pending file), or no call to it is pending any longer, since another hook wrote its
+    return."""
+    if not READ_STOPS:
+        return False
+    if read_pending(folder, session, 'stopped-' + agent) is not None:
+        return True
+    return not pending_call_for(folder, session, agent)
+
+
+def wait_for_end(path, answer, handbacks, turn=None, ended=None):
     """(the answer, how the run's end was read, the rows of the turn or None), once the transcript shows the
     subagent has ended.
 
@@ -763,7 +947,8 @@ def wait_for_end(path, answer, handbacks, turn=None):
     already in the file. Then the third value is (first row, last row) of the turn, ending with the
     request that holds the answer, so the counters are that turn's and not the later run's. `turn` says
     what started the turn (see turn_starter); with none, that last check is not made. With no path to
-    read it returns at once (`no path`).
+    read it returns at once (`no path`). Where `ended` is given and returns true between reads, the wait ends
+    (`stopped`): the caller stopped the subagent, or another hook wrote its return.
     """
     if not path:
         return answer, 'no path', None
@@ -776,6 +961,8 @@ def wait_for_end(path, answer, handbacks, turn=None):
         span = answer_in_turn(path, answer, turn)
         if span is not None:
             return answer, 'turn', span
+        if ended is not None and ended():
+            return answer, 'stopped', None
         time.sleep(REREAD_SECONDS)
 
 
@@ -986,31 +1173,6 @@ def load_patterns():
     return json.loads(PATTERNS_FILE.read_text(encoding='utf-8'))
 
 
-def match_command(command, patterns=None):
-    """The pattern entry and the part of the command that make a model call, or (None, None)."""
-    if not isinstance(command, str) or not command.strip():
-        return None, None
-    patterns = patterns or load_patterns()
-    # The split is commands.py's: at shell operators outside quotes, with here-document bodies set
-    # aside, so a quoted `|` or a here-document line is never a command.
-    for part in commands.parts(command):
-        words = part.words
-        if not words:
-            continue
-        program = part.program
-        args = words[1:]
-        for entry in patterns['patterns']:
-            if program != entry['program']:
-                continue
-            if any(word in patterns['not_a_call'] for word in args):
-                continue
-            marked = any(word in entry['flags'] for word in args) or (
-                args and args[0] in entry['subcommands'])
-            if marked:
-                return entry, words
-    return None, None
-
-
 def requested_model(words, entry):
     for at, word in enumerate(words):
         for flag in entry.get('model_flags', []):
@@ -1024,41 +1186,64 @@ def requested_model(words, entry):
 def pre_shell(payload, folder, held):
     given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
     cli_dispatch(folder, held, given.get('command'), common(payload, folder, route='cli'), payload,
-                 HARNESS, auth_route, 'PreToolUse')
+                 HARNESS, auth_route, 'PreToolUse', cwd=payload.get('cwd'))
 
 
-def cli_dispatch(folder, held, command, fields, payload, harness, own_auth, event):
+def cli_dispatch(folder, held, command, fields, payload, harness, own_auth, event, cwd=None):
     """The dispatch record of a command-line model call made through a harness's shell tool.
 
-    Nothing is written when the command makes no model call by cli-patterns.json. `fields` holds the
-    session, harness, caller and project of the calling harness; `own_auth` gives the sign-in route
-    when the command runs that same harness, whose sign-in the capture can read.
+    Nothing is written when the command makes no model call by cli-patterns.json, read by commands.reading():
+    through wrappers, compound commands, here-documents and the script files the command runs, which are read
+    now, resolved against `cwd`. One record is written for the tool call, however many sites it holds;
+    `harness_payload.matched` lists them, and `harness_payload.notes` says why a script was not read. `fields`
+    holds the session, harness, caller and project of the calling harness; `own_auth` gives the sign-in route
+    when every site runs that same harness, whose sign-in the capture can read.
     """
-    entry, words = match_command(command)
-    if entry is None:
+    if not isinstance(command, str) or not command.strip():
+        return
+    found = commands.reading(command, load_patterns(), cwd)
+    if not found.sites:
         return
     if held.call_id.startswith('unrecorded ('):
         held.error(folder, 'payload', 'no call_id (the call id is absent from %s)' % event, record='dispatch')
         return
     at = ledger.now()
+    programs = sorted(set(entry['program'] for entry, _ in found.calls))
+    hosts = sorted(set(site['host'] for site in found.sites if 'host' in site))
+    harnesses = set(entry['harness'] for entry, _ in found.calls)
+    single = len(found.calls) == 1 and not hosts
+    if harnesses == {harness} and not hosts:
+        auth = own_auth()
+    else:
+        named = ', '.join(programs + hosts)
+        auth = 'unrecorded (the command runs %s, whose sign-in this capture does not read)' % named
+    kept = dict(payload) if isinstance(payload, dict) else {'payload': payload}
+    kept['matched'] = found.sites
+    if found.notes:
+        kept['notes'] = found.notes
     fields = dict(fields, route='cli')
     fields.update({
         'call_id': held.call_id,
         'agent_id': CLI_AGENT,
         'dispatched_at': at,
-        'model_requested': requested_model(words, entry),
-        'auth_route': own_auth() if entry['harness'] == harness else
-        'unrecorded (the command runs %s, whose sign-in this capture does not read)' % entry['program'],
+        'model_requested': requested_model(found.calls[0][1], found.calls[0][0]) if single else None,
+        'auth_route': auth,
         'brief_source': 'unrecorded (the brief is the command itself)',
-        'harness_payload': payload,
+        'harness_payload': kept,
     })
     fields.update(optional_fields(folder, None, held, cli=True))
     fields['user_answer'] = NOT_A_DECISION
+    first = found.calls[0][0] if found.calls else None
     with pending_lock(folder, held.session):
         write_pending(folder, held.session, 'cli-' + held.call_id,
-                      {'call_id': held.call_id, 'dispatched_at': at, 'program': entry['program'],
-                       'harness': entry['harness']})
+                      {'call_id': held.call_id, 'dispatched_at': at,
+                       'program': first['program'] if first else hosts[0],
+                       'harness': first['harness'] if first else harness,
+                       'wrapped': not (single and found.sites[0]['how'] == 'direct')})
     ledger.dispatch(ledger=folder, brief=command, **fields)
+
+
+WRAPPED_MODEL = 'unrecorded (a wrapped command\'s output names no single model)'
 
 
 def cli_return(folder, held, fields, command, output, exit_code, kept, no_code=None):
@@ -1091,7 +1276,7 @@ def cli_return(folder, held, fields, command, output, exit_code, kept, no_code=N
             outcome, reason, model, cost = envelope_fields(envelope)
         else:
             answer = output
-            model = 'unrecorded (the command\'s output names no model)'
+            model = WRAPPED_MODEL if sent.get('wrapped') else 'unrecorded (the command\'s output names no model)'
             cost = 'unrecorded (the command\'s output reports no cost)'
             if failed:
                 outcome, reason = 'failed', None
@@ -1141,7 +1326,8 @@ def post_shell(event, payload, folder, held):
                 kept['error'] = (text.split('\n', 1)[0] + '\n') if '\n' in text else text
                 kept['envelope'] = envelope
             else:
-                fields.update({'model': 'unrecorded (the command\'s output names no model)',
+                fields.update({'model': WRAPPED_MODEL if sent.get('wrapped') else
+                               'unrecorded (the command\'s output names no model)',
                                'cost': 'unrecorded (the command\'s output reports no cost)'})
             fields.update({'outcome': outcome, 'outcome_reason': reason})
         else:
@@ -1160,7 +1346,7 @@ def post_shell(event, payload, folder, held):
                     outcome, reason = 'served', 'none (served)'
                 else:
                     outcome, reason = 'empty', dict(EMPTY_REASON)
-                model = 'unrecorded (the command\'s output names no model)'
+                model = WRAPPED_MODEL if sent.get('wrapped') else 'unrecorded (the command\'s output names no model)'
                 cost = 'unrecorded (the command\'s output reports no cost)'
             fields.update({'outcome': outcome, 'outcome_reason': reason, 'model': model, 'cost': cost})
             if envelope is not None:

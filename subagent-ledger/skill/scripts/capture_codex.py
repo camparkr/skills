@@ -11,7 +11,7 @@ imposes no time limit.
 
 Tool names. Codex 0.142.5 named the subagent tool `spawn_agent` and the shell tool `exec_command` in its
 hook events; Codex 0.162.1 names them `Agent` and `Bash` (its hooks documentation, 'Tool coverage'). The
-Codex app (0.162.x, Q16's second live run) names its collaboration tools with their namespace before the
+Codex app (0.162.x, as a live run showed) names its collaboration tools with their namespace before the
 name and no separator: `collaborationspawn_agent`, `collaborationsend_message`, `collaborationfollowup_task`,
 `collaborationwait_agent`, `collaborationlist_agents`, `collaborationinterrupt_agent`. The capture takes the
 names subagent-tools.json lists for Codex: `tools`, less `message_tools`, dispatch a subagent;
@@ -44,7 +44,7 @@ What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
   * SubagentStop: a witness line, then the return record of the spawn joined to the agent, and of each
     message delivered in the stop's turn. It never waits: no hook may wait on anything the harness
     does after the hook returns, and Codex writes `task_complete`, and on 0.162.x keeps the subagent
-    running, until this hook returns (Q16's second live run hung on such a wait). The answer is
+    running, until this hook returns (a live Codex run hung on such a wait). The answer is
     `last_assistant_message`. The subagent's rollout, at `agent_transcript_path`, is read once: the
     model, the effort and the isolation evidence from whatever it holds, and the counters of the
     stop's turn only where the rollout already holds the turn's answer and the counter row after it
@@ -60,7 +60,7 @@ What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
     holding `exit_code` (0.142.5's rows), or text, or a list of text items. In text it is either the
     line 'Process exited with code <n>' (0.142.5) or, after the line 'Output:', a JSON object holding
     `exit_code` (0.162.x, after 'Script completed' and 'Wall time'). Where the response is the output
-    alone (the Codex app, Q16's third run), the code is read once from the parent rollout's
+    alone (the Codex app, in a live run), the code is read once from the parent rollout's
     `item_completed` row for the call, if it already holds one; only for a command matched as a model
     call, so no other shell call reads the rollout. A non-zero code is a failed call;
     a response with no exit code readable is `failed`, class `unreadable`, never `served`.
@@ -377,8 +377,10 @@ def shell_output(response):
 
 
 def pre_shell(payload, folder, held):
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    workdir = given.get('workdir') if isinstance(given.get('workdir'), str) and given.get('workdir') else None
     shared.cli_dispatch(folder, held, command_of(payload), common(payload, route='cli'), payload, HARNESS,
-                        auth_route, 'PreToolUse')
+                        auth_route, 'PreToolUse', cwd=workdir or payload.get('cwd'))
 
 
 def post_shell(payload, folder, held):
@@ -409,7 +411,7 @@ def post_shell(payload, folder, held):
 def rollout_exit_code(path, call_id):
     """The exit code the parent rollout already holds for a shell call, or None. Read once, never waited for.
 
-    The Codex app (Q16's third live run) sent a Bash call's tool_response as the command's output alone, and wrote
+    The Codex app, in a live run, sent a Bash call's tool_response as the command's output alone, and wrote
     the exit code, before PostToolUse ran, in the parent rollout: an `item_completed` event whose item has the
     call's id and an integer `exit_code`."""
     if not isinstance(path, str) or not path or not isinstance(call_id, str) or not call_id:

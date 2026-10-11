@@ -356,7 +356,7 @@ def before_shell(payload, folder, held):
     command = args_of(payload).get('command')
     shared.cli_dispatch(folder, held, command if isinstance(command, str) else None, common(payload, held),
                         {'input': payload.get('input'), 'args': args_of(payload), 'directory': payload.get('directory')},
-                        HARNESS, lambda: NO_SIGN_IN, 'tool.execute.before')
+                        HARNESS, lambda: NO_SIGN_IN, 'tool.execute.before', cwd=payload.get('directory'))
 
 
 def after_shell(payload, folder, held):

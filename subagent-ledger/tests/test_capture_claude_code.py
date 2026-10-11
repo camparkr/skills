@@ -828,7 +828,8 @@ class CB2_7Shell(World):
         self.assertEqual(back['outcome_reason']['class'], 'not_signed_in')
 
     def test_c_b2_7_control_matching_switched_off_misses_the_call(self):
-        with mock.patch.object(self.capture, 'match_command', lambda *a, **k: (None, None)):
+        # The capture matches through commands.reading(); switched off, it reads no site.
+        with mock.patch.object(self.capture.commands, 'reading', lambda *a, **k: self.capture.commands.Reading()):
             self.feed(self.events('bash-cli-events.jsonl'))
         self.assertEqual(self.records(), [], 'without the pattern match the call leaves no record')
 

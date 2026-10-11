@@ -1,5 +1,5 @@
 {
-  "description": "Command shapes that make a model call through a command-line tool. A shell command is split into its parts at ;, &&, || and |; in each part, leading VAR=value assignments and an 'env' are passed over, and the next word is the program. A part is a call when its program's name is one listed here, it carries one of the entry's call markers (a flag anywhere, or a subcommand as the first argument), and it carries none of the words under not_a_call. The match is on the program run, so a command that runs a script which itself calls a model is not matched here: such a script writes its own records.",
+  "description": "Command shapes that make a model call through a command-line tool, and what commands.py reads to find them. A shell command is split into its parts at ;, &&, ||, |, &, parentheses and new lines outside quotes; in each part, leading VAR=value assignments, an 'env' and the wrappers listed under 'wrappers' (each with its options, the options under 'options_with_value' taking the next word, and its own 'arguments') are passed over, and the next word is the program, named by its last path component. A part is a call when its program's name is one listed under 'patterns', it carries one of the entry's call markers (a flag anywhere, or a subcommand as the first argument), and it carries none of the words under not_a_call. commands.py also reads a loop's condition and a quoted substitution, a here-document fed to a shell or to Python, and a script file a part runs, to a depth of two; Python text is a call where it passes a listed program to subprocess or os.system, or names a host under 'model_hosts'. A script that names SUBAGENT_LEDGER_SCRIPTS or SUBAGENT_LEDGER_DIR writes its own records, and is not matched. Each model host was read from the program's or script's own code, as 'read_from' says.",
   "patterns": [
     {"program": "claude", "flags": ["-p", "--print"], "subcommands": [], "harness": "claude-code", "model_flags": ["--model"]},
     {"program": "codex", "flags": [], "subcommands": ["exec", "e"], "harness": "codex", "model_flags": ["--model", "-m"]},
@@ -7,5 +7,26 @@
     {"program": "opencode", "flags": [], "subcommands": ["run"], "harness": "opencode", "model_flags": ["--model", "-m"]},
     {"program": "cursor-agent", "flags": ["-p", "--print"], "subcommands": [], "harness": "cursor", "model_flags": ["--model", "-m"]}
   ],
-  "not_a_call": ["--version", "-v", "-V", "--help", "-h", "help", "login", "logout"]
+  "not_a_call": ["--version", "-v", "-V", "--help", "-h", "help", "login", "logout"],
+  "wrappers": [
+    {"name": "timeout", "options_with_value": ["-s", "--signal", "-k", "--kill-after"], "arguments": 1},
+    {"name": "time", "options_with_value": ["-f", "--format", "-o", "--output"], "arguments": 0},
+    {"name": "nice", "options_with_value": ["-n", "--adjustment"], "arguments": 0},
+    {"name": "nohup", "options_with_value": [], "arguments": 0},
+    {"name": "command", "options_with_value": [], "arguments": 0},
+    {"name": "exec", "options_with_value": ["-a"], "arguments": 0},
+    {"name": "xargs", "options_with_value": ["-n", "--max-args", "-I", "-P", "--max-procs", "-L", "--max-lines", "-d", "--delimiter", "-s", "--max-chars", "-E", "-a", "--arg-file"], "arguments": 0},
+    {"name": "env", "options_with_value": ["-u", "--unset", "-C", "--chdir", "-S", "--split-string"], "arguments": 0}
+  ],
+  "model_hosts": [
+    {"host": "api.anthropic.com", "program": "claude", "read_from": "the claude 2.1.295 executable's text (29 occurrences); opencode's executable also names it"},
+    {"host": "api.openai.com", "program": "codex", "read_from": "the codex 0.162.1 executable's text, as api.openai.com/v1"},
+    {"host": "chatgpt.com/backend-api", "program": "codex", "read_from": "the codex 0.162.1 executable's text, as chatgpt.com/backend-api/codex, the route a ChatGPT sign-in uses"},
+    {"host": "generativelanguage.googleapis.com", "program": "gemini", "read_from": "the gemini-cli 0.46.0 bundle's code"},
+    {"host": "cloudcode-pa.googleapis.com", "program": "gemini", "read_from": "the gemini-cli 0.46.0 bundle's code, the route a Google sign-in uses"},
+    {"host": "aiplatform.googleapis.com", "program": "gemini", "read_from": "the gemini-cli 0.46.0 bundle's code, the Vertex AI route"},
+    {"host": "opencode.ai/zen", "program": "opencode", "read_from": "the opencode executable's text, as opencode.ai/zen/v1"},
+    {"host": "api2.cursor.sh", "program": "cursor-agent", "read_from": "the cursor-agent 2026.10.01 bundle's code"},
+    {"host": "api.perplexity.ai", "program": "a Perplexity call script", "read_from": "a Perplexity call script's endpoint, api.perplexity.ai/v1/agent"}
+  ]
 }

@@ -60,6 +60,7 @@ class Matching(base.World):
 
     def setUp(self):
         base.World.setUp(self)
+        (self.ledger / 'config.json').write_text(json.dumps({'fields': 'all'}), encoding='utf-8')
         self.work = self.tmp / 'work'
         self.work.mkdir()
 

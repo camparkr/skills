@@ -1050,13 +1050,15 @@ def cli_dispatch(folder, held, command, fields, payload, harness, own_auth, even
     ledger.dispatch(ledger=folder, brief=command, **fields)
 
 
-def cli_return(folder, held, fields, command, output, exit_code, kept):
+def cli_return(folder, held, fields, command, output, exit_code, kept, no_code=None):
     """The return record of a matched command-line call, from what the shell tool gave back.
 
     `output` is the command's printed output and `exit_code` its exit code, or None where the harness
     reports none. Where the output is a JSON result envelope, the model, outcome and cost come from
     it; otherwise a non-zero exit is `failed`, its class read from reasons.json, and the model and
-    cost read that the output names none. Nothing is written for a command that was not matched.
+    cost read that the output names none. `no_code`, where given, is the reason for a call whose
+    exit code could not be read: such a call is `failed` with it, never `served`. Nothing is written
+    for a command that was not matched.
     """
     with pending_lock(folder, held.session):
         sent = read_pending(folder, held.session, 'cli-' + held.call_id)
@@ -1090,6 +1092,8 @@ def cli_return(folder, held, fields, command, output, exit_code, kept):
             outcome = 'failed'
             reason = ledger.reason_for(sent.get('harness') or HARNESS, output,
                                        'the command exited with code %s' % exit_code)
+        if exit_code is None and no_code is not None:
+            outcome, reason = 'failed', dict(no_code)
         fields.update({'outcome': outcome, 'outcome_reason': reason, 'model': model, 'cost': cost})
         fields['harness_payload'] = without_texts(kept, command, ON_DISPATCH_BRIEF)
         ledger.ret(ledger=folder, answer=answer, **fields)

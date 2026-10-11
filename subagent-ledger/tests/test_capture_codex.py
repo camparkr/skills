@@ -16,6 +16,8 @@ ${OUTSIDE}) that each test fills with a folder of its own:
     p1-agent-rollout-rest.jsonl: its subagent rollout as it stood when SubagentStop fired, and the row
     written after (task_complete, 32 milliseconds later).
 
+The shapes a later Codex sends (LaterShapes) are built from these fixtures with their values made up.
+
 No test writes to a real ledger: SUBAGENT_LEDGER_DIR and CODEX_HOME name temporary folders.
 
 Run from the skill's folder:  python3 -m unittest discover -s tests
@@ -480,6 +482,123 @@ class StopTurnById(World):
         self.assertFalse(self.transcripts.codex_complete(path, 'kestrel-4417', first),
                          'the answer stands in the next turn, not the stop\'s own')
         self.assertTrue(self.transcripts.codex_complete(path, 'kestrel-4417', 'second'))
+
+
+
+class LaterShapes(World):
+    """Payloads in the shapes a later Codex (0.162.x) sends, every value made up: the shell result as text with
+    a JSON object after 'Output:', a spawn whose response holds only task_name, a subagent whose spawn sent no
+    event, an encrypted brief, and a tool event the capture does not record."""
+
+    fields = 'all'
+    HEADER = 'Script completed\nWall time 0.4 seconds\nOutput:\n'
+
+    def shell(self, call_id, response):
+        payload = {'session_id': 'shell-session', 'turn_id': 't', 'cwd': str(self.work), 'model': PARENT_MODEL,
+                   'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_use_id': call_id,
+                   'tool_input': {'command': 'opencode run "Reply with the word ok"'}}
+        self.capture.handle('PreToolUse', json.dumps(payload), None)
+        done = dict(payload, hook_event_name='PostToolUse', tool_response=response)
+        self.capture.handle('PostToolUse', json.dumps(done), None)
+        found = [line for line in self.records() if line.get('call_id') == call_id]
+        self.assertEqual([line['record'] for line in found], ['dispatch', 'return'])
+        return found[-1]
+
+    def result(self, code, output):
+        return json.dumps({'chunk_id': 'x', 'wall_time_seconds': 0.4, 'exit_code': code,
+                           'original_token_count': 1, 'output': output})
+
+    def test_a_non_zero_exit_code_in_the_json_is_failed(self):
+        back = self.shell('call_exit1', self.HEADER + self.result(1, 'Error: no such provider'))
+        self.assertEqual(back['outcome'], 'failed')
+        self.assertEqual(back['harness_payload']['tool_response']['exit_code'], 1)
+
+    def test_a_zero_exit_code_in_the_json_is_served(self):
+        back = self.shell('call_exit0', self.HEADER + self.result(0, 'ok'))
+        self.assertEqual(back['outcome'], 'served')
+
+    def test_a_list_of_text_items_is_read_the_same(self):
+        items = [{'type': 'input_text', 'text': self.HEADER}, {'type': 'input_text', 'text': self.result(1, 'x')}]
+        self.assertEqual(self.shell('call_list', items)['outcome'], 'failed')
+        items = [{'type': 'input_text', 'text': self.HEADER}, {'type': 'input_text', 'text': self.result(0, 'ok')}]
+        self.assertEqual(self.shell('call_list_ok', items)['outcome'], 'served')
+
+    def test_no_exit_code_is_failed_unreadable_never_served(self):
+        back = self.shell('call_nocode', self.HEADER + 'ok\n')
+        self.assertEqual(back['outcome'], 'failed')
+        self.assertEqual(back['outcome_reason'], {'class': 'unreadable', 'text': 'the response carries no exit code'})
+
+    def control_rows(self, start_first=False, message=None):
+        rows = self.dr3()
+        for row in rows[:2]:
+            row['payload']['tool_input'] = dict(row['payload']['tool_input'], task_name='a_task', fork_turns='none')
+            if message is not None:
+                row['payload']['tool_input']['message'] = message
+        rows[1]['payload']['tool_response'] = json.dumps({'task_name': 'a_task'})
+        return [rows[0], rows[2], rows[1], rows[3]] if start_first else rows
+
+    def check_joined(self):
+        self.assertEqual(self.errors(), [])
+        found = [line for line in self.records() if line.get('call_id') == DR3_CALL]
+        self.assertEqual([line['record'] for line in found], ['dispatch', 'return'])
+        self.assertEqual(found[-1]['agent_id'], DR3_AGENT)
+        self.assertEqual(found[-1]['harness_payload']['post_tool_use_response'], {'task_name': 'a_task'})
+        return found
+
+    def test_a_spawn_whose_response_names_no_agent_is_joined_at_subagent_start(self):
+        self.feed(self.control_rows())
+        self.check_joined()
+
+    def test_the_join_holds_when_subagent_start_comes_before_the_spawns_response(self):
+        self.feed(self.control_rows(start_first=True))
+        self.check_joined()
+
+    def test_switched_off_without_the_wait_for_a_start_the_spawn_has_no_return_joined(self):
+        with mock.patch.object(self.capture, 'oldest_waiting', lambda *a: None):
+            self.feed(self.control_rows())
+        found = [line for line in self.records() if line.get('call_id') == DR3_CALL]
+        self.assertEqual([line['record'] for line in found], ['dispatch'])
+
+    def test_a_subagent_whose_spawn_sent_no_event_is_dispatched_from_its_start(self):
+        rows = self.dr3()
+        self.feed(rows[2:])
+        self.assertEqual(self.errors(), [])
+        found = [line for line in self.records() if line.get('call_id') == DR3_AGENT]
+        self.assertEqual([line['record'] for line in found], ['dispatch', 'return'])
+        none_sent = 'unrecorded (the harness sent no dispatch event for this subagent)'
+        self.assertEqual(found[0]['brief_path'], none_sent)
+        self.assertEqual(found[0]['brief_source'], none_sent)
+        self.assertEqual(found[-1]['agent_id'], DR3_AGENT)
+
+    def test_a_further_start_of_that_agent_writes_no_second_dispatch(self):
+        rows = self.dr3()
+        self.feed(rows[2:] + rows[2:])
+        self.assertEqual([line['record'] for line in self.records()
+                          if line.get('call_id') == DR3_AGENT].count('dispatch'), 1)
+
+    def test_an_encrypted_brief_is_kept_and_named_encrypted(self):
+        import base64
+        token = base64.urlsafe_b64encode(bytes([0x80]) + (1791683558).to_bytes(8, 'big') +
+                                         bytes(range(1, 113))).decode('ascii')
+        self.assertTrue(self.capture.is_ciphertext(token))
+        self.assertFalse(self.capture.is_ciphertext('Reply with only the word kestrel.'))
+        self.feed(self.control_rows(message=token))
+        sent = self.check_joined()[0]
+        self.assertEqual(sent['brief_source'], 'unrecorded (the harness passed the brief encrypted)')
+        kept = [path for path in self.ledger.rglob('*.md') if path.read_text(encoding='utf-8') == token]
+        self.assertEqual(len(kept), 1)
+
+    def test_a_tool_event_not_recorded_writes_one_error_line(self):
+        payload = {'session_id': 'tool-session', 'turn_id': 't', 'cwd': str(self.work), 'model': PARENT_MODEL,
+                   'hook_event_name': 'PostToolUse', 'tool_name': 'wait_agent', 'tool_use_id': 'call_wait',
+                   'tool_input': {'timeout_ms': 1000}, 'tool_response': '{}'}
+        self.capture.handle('PostToolUse', json.dumps(payload), None)
+        errors = self.errors()
+        self.assertEqual(len(errors), 1, errors)
+        self.assertEqual(errors[0]['stage'], 'payload')
+        self.assertEqual(errors[0]['reason'], 'PostToolUse on wait_agent: not a tool this capture records')
+        self.assertEqual(errors[0]['payload_keys'], sorted(payload))
+        self.assertEqual(self.records(), [])
 
 
 if __name__ == '__main__':

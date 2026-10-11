@@ -15,9 +15,10 @@ generated: { by: process:okf-projectdocs }
 
 ## Documents
 
-* [setup.component.md](setup.component.md) - TODO(prose)
+* [README.md](README.md) - (no description)
+* [setup.component.md](setup.component.md) - Links the skill into each harness and prints the hook entries for you to add. It never writes a harness's settings. It stops on a system where the ledger cannot lock its file.
 
 ## Subdirectories
 
-* [skill/](skill/) - directory: 0 scripts, 0 documents
+* [skill/](skill/) - directory: 0 scripts, 1 documents
 * [tests/](tests/) - directory: 11 scripts, 0 documents

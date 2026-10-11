@@ -38,8 +38,8 @@ For every call to a subagent and every call to another model through its command
 - what the run touched outside its own folder; and
 - the kind of work the call did and, where the call needed the user's decision, whether the user answered first.
 
-A call that slips past the record shows up as an absence with its reason, such as a call with no return. It does not
-disappear.
+The capture also finds a model call inside a loop, a here-document or a script the command runs. A call that slips
+past the record shows up as an absence with its reason, such as a call with no return. It does not disappear.
 
 ## Why use subagent-ledger
 
@@ -161,8 +161,8 @@ these, with `<skill>` standing for the full path to this folder's `skill/`:
 
 ```json
 {
-  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PreToolUse"}]}],
-  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUse"}]}],
+  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PreToolUse"}]}],
+  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUse"}]}],
   "PostToolUseFailure": [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUseFailure"}]}],
   "SubagentStart":      [{"hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" SubagentStart"}]}],
   "SubagentStop":       [{"hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" SubagentStop"}]}]
@@ -170,8 +170,8 @@ these, with `<skill>` standing for the full path to this folder's `skill/`:
 ```
 
 `Bash` in the matcher records calls to other models made through their command line, such as `claude -p` or
-`codex exec`. `SendMessage` records a message sent to a subagent that is already running. Without
-`PostToolUseFailure`, a failed call writes no return.
+`codex exec`. `SendMessage` records a message sent to a subagent that is already running. `TaskStop` records a
+subagent the agent stops before it finishes. Without `PostToolUseFailure`, a failed call writes no return.
 
 **Codex.** Add these under `hooks` in `hooks.json` in your Codex folder:
 

@@ -665,6 +665,43 @@ class ShellExitCodeFromRollout(World):
         self.assertEqual(found[-1]['outcome_reason']['class'], 'unreadable')
 
 
+class NoTriageOnCiphertext(World):
+    """A spawn whose message has the shape of the Codex app's ciphertext (a made-up Fernet token), with a stand-in
+    triage that records each time it is called: it is never called on the ciphertext."""
+
+    fields = 'all'
+
+    def spawn(self, message):
+        standin = self.tmp / 'triage-standin.py'
+        standin.write_text('import sys\nopen(sys.argv[1], "a").write("called\\n")\n'
+                           'sys.stdout.write(\'{"kind": "none"}\')\n', encoding='utf-8')
+        calls = self.tmp / 'triage-calls.txt'
+        (self.ledger / 'config.json').write_text(json.dumps(
+            {'fields': 'all', 'triage_command': '%s "%s" "%s"' % (sys.executable, standin, calls)}), encoding='utf-8')
+        row = self.events('dr3-events.jsonl')[0]
+        row['payload']['tool_input']['message'] = message
+        self.capture.handle('PreToolUse', json.dumps(row['payload']), None)
+        sent = [line for line in self.records() if line['record'] == 'dispatch'][-1]
+        return sent, (calls.read_text(encoding='utf-8').count('called') if calls.is_file() else 0)
+
+    def token(self):
+        import base64
+        return base64.urlsafe_b64encode(bytes([0x80]) + (1791683558).to_bytes(8, 'big') +
+                                        bytes(range(1, 113))).decode('ascii')
+
+    def test_an_encrypted_brief_is_never_given_to_the_triage(self):
+        sent, called = self.spawn(self.token())
+        self.assertEqual(called, 0)
+        self.assertEqual(sent['triage_kind'], 'unrecorded (the harness passed the brief encrypted)')
+        self.assertEqual(sent['act_kind'],
+                         'unrecorded (the brief names no kind; the harness passed the brief encrypted)')
+
+    def test_control_a_plain_brief_is_given_to_the_triage_once(self):
+        sent, called = self.spawn('Reply with only the word kestrel.')
+        self.assertEqual(called, 1)
+        self.assertNotEqual(sent['triage_kind'], 'unrecorded (the harness passed the brief encrypted)')
+
+
 class Q16Rollout(World):
     """The stop read against a rollout in the shapes the Codex app (0.162.x) had written when SubagentStop fired."""
 

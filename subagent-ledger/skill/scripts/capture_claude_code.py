@@ -99,6 +99,7 @@ A failure at any stage writes one error line through ledger.error(), naming the 
 and event read from the raw payload before anything else.
 """
 
+import base64
 import contextlib
 import datetime
 import fcntl
@@ -1553,15 +1554,40 @@ def act_kind_of(brief_kind, triage_kind):
 
 
 def dispatch_kind(folder, text, held):
-    """The brief's fields for a subagent or call-script dispatch, with the triage's reading.
+    """The brief's fields for a subagent or call-script dispatch, with the triage's reading. An encrypted brief
+    is never given to the triage: its triage_kind and act_kind say the harness passed it encrypted.
 
     Returns (persona-name, act_kind, triage_kind, task and grouping; the seconds the triage ran or None).
     """
     fields = optional_fields(folder, text, held)
+    if is_ciphertext(text):
+        # The harness passed the brief encrypted (Codex 0.162.x encrypts every one): the triage would read
+        # noise, so it is not run.
+        fields['triage_kind'] = ENCRYPTED_TRIAGE
+        fields['act_kind'] = ENCRYPTED_KIND
+        return fields, None
     triage_kind, seconds = run_triage(folder, text, held)
     fields['triage_kind'] = triage_kind
     fields['act_kind'] = act_kind_of(fields['act_kind'], triage_kind)
     return fields, seconds
+
+
+ENCRYPTED_TRIAGE = 'unrecorded (the harness passed the brief encrypted)'
+ENCRYPTED_KIND = 'unrecorded (the brief names no kind; the harness passed the brief encrypted)'
+# A Fernet token, the form of the encrypted message Codex 0.162.x passed to its subagent: base64url text whose
+# first decoded byte is 0x80, then a timestamp, an IV, the ciphertext and a 32-byte HMAC.
+FERNET = re.compile(r'gAAAAA[A-Za-z0-9_-]{50,}={0,2}')
+
+
+def is_ciphertext(text):
+    """Whether a brief is a Fernet token, as Codex 0.162.x passed its subagent's message."""
+    if not isinstance(text, str) or not FERNET.fullmatch(text.strip()):
+        return False
+    try:
+        raw = base64.urlsafe_b64decode(text.strip() + '=' * (-len(text.strip()) % 4))
+    except ValueError:
+        return False
+    return len(raw) >= 57 and raw[0] == 0x80
 
 
 def with_triage_time(payload, seconds):

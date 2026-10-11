@@ -76,7 +76,6 @@ A failure at any stage writes one error line through ledger.error(), naming the 
 event read from the raw payload before anything else.
 """
 
-import base64
 import contextlib
 import io
 import json
@@ -107,10 +106,7 @@ OUTPUT_LINE = re.compile(r'(?m)^Output:[ \t]*$')
 NO_EXIT_CODE = {'class': 'unreadable', 'text': 'the response carries no exit code'}
 NOT_RECORDED = 'not a tool this capture records'
 NO_SPAWN_EVENT = 'unrecorded (the harness sent no dispatch event for this subagent)'
-ENCRYPTED = 'unrecorded (the harness passed the brief encrypted)'
-# A Fernet token, the form of the encrypted message Codex 0.162.x passed to its subagent: base64url text whose
-# first decoded byte is 0x80, then a timestamp, an IV, the ciphertext and a 32-byte HMAC.
-FERNET = re.compile(r'gAAAAA[A-Za-z0-9_-]{50,}={0,2}')
+ENCRYPTED = shared.ENCRYPTED_TRIAGE
 MESSAGE = 'msg-'
 _ARRIVAL = {}
 
@@ -308,15 +304,7 @@ def post_message(payload, folder, held):
                              dict(sent, tool_response=response_of(payload) or payload.get('tool_response')))
 
 
-def is_ciphertext(text):
-    """Whether a brief is a Fernet token, as Codex 0.162.x passed its subagent's message."""
-    if not isinstance(text, str) or not FERNET.fullmatch(text.strip()):
-        return False
-    try:
-        raw = base64.urlsafe_b64decode(text.strip() + '=' * (-len(text.strip()) % 4))
-    except ValueError:
-        return False
-    return len(raw) >= 57 and raw[0] == 0x80
+is_ciphertext = shared.is_ciphertext
 
 
 def command_of(payload):

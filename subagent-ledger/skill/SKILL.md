@@ -22,7 +22,8 @@ Do these four things before every call:
    with the harness's question tool, such as `AskUserQuestion` in Claude Code, because a question asked in plain chat
    leaves nothing the record can find. Put what the user said in the brief's front matter as `user_answer:`. The
    ledger does not stop the call, so you must ask. Never send a `user-decision` call before the user answers. Where
-   the harness has no question tool, ask in chat and expect the record to read `not found`.
+   the harness has no question tool, ask in chat and expect the record to read `not found`. If you are a
+   subagent, do not send the call: return the question to your caller.
 3. **Write the brief to a file and give its absolute path as the first path in the prompt.** The capture takes the
    first readable file the prompt names as the brief. If another file comes first, such as the file under review, the
    capture records that file as the brief and reads its front matter instead.
@@ -80,7 +81,8 @@ and each subagent's. `--harness` takes `claude-code` or `codex`. The files are:
 
 - Claude Code: `~/.claude/projects/<project>/<session id>.jsonl` for the parent, and each
   `~/.claude/projects/<project>/<session id>/subagents/agent-<id>.jsonl` for its subagents; and
-- Codex: each `~/.codex/sessions/<year>/<month>/<day>/rollout-*-<id>.jsonl` for the session and its subagents.
+- Codex: each `~/.codex/sessions/<year>/<month>/<day>/rollout-*-<id>*.jsonl` for the session and its subagents. The
+  pattern also takes the files a long session continues into. Each subagent's ID is in the ledger's `agent_id`.
 
 The command:
 
@@ -108,9 +110,10 @@ Keep to these limits:
 
 Check these, in order:
 
-1. The session ID is right. A wrong ID gives exit 3, which does not mean no calls were made.
+1. The session ID is right. A wrong ID gives exit 3, which does not mean no calls were made. Exit 2 means the
+   ledger folder or the skill's scripts could not be found.
 2. You ran `calls.py` from the session's repository, or passed the right `--ledger` (or `SUBAGENT_LEDGER_DIR`).
-3. The hooks are in the harness's settings. If not, point the user to the 'Install' section of the README in the
-   folder that holds this skill's folder.
+3. The hooks are in the harness's settings. If not, point the user to the 'Install' section of the skill's README.
+   Follow this skill's folder link to its source; the README sits beside it.
 4. In Codex, the hooks are trusted. Codex skips an untrusted hook without saying so. The user trusts them in the Codex
    app's Settings → Hooks, or with `/hooks` in the Codex command-line interface (CLI), then starts a fresh session.

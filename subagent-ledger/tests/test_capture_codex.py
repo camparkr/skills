@@ -14,7 +14,11 @@ ${OUTSIDE}) that each test fills with a folder of its own:
     text and encrypted reasoning cut;
   * p1-events.jsonl: a second live dispatch's payloads, and p1-agent-rollout-at-stop.jsonl and
     p1-agent-rollout-rest.jsonl: its subagent rollout as it stood when SubagentStop fired, and the row
-    written after (task_complete, 32 milliseconds later).
+    written after (task_complete, 32 milliseconds later);
+  * q16-agent-rollout-at-stop.jsonl: reconstructed. A subagent rollout in the row shapes the Codex app
+    (0.162.x) had written when SubagentStop fired in Q16's second live run, every value made up: the
+    answer as an `item_completed` AgentMessage and a `final_answer` message, then the counter row, and no
+    `task_complete`.
 
 The shapes a later Codex sends (LaterShapes) are built from these fixtures with their values made up.
 
@@ -334,19 +338,21 @@ class CB3_3Wait(World):
             self.assertEqual(back['tokens'][key], value, key)
         self.assertLess(back['tokens']['read_after_seconds'], 5)
 
-    def test_c_b3_3_counters_that_lag_the_stop_are_read_in_full(self):
+    def test_counters_that_lag_the_stop_are_unrecorded_never_waited_for(self):
+        # No hook waits on anything the harness does after the hook returns: counters the rollout does not
+        # yet hold are unrecorded, and the return is written at once with the payload's answer.
         rows = self.events('p1-events.jsonl')
         whole = self.fill((FIXTURES / 'p1-agent-rollout-at-stop.jsonl').read_text(encoding='utf-8')
                           + (FIXTURES / 'p1-agent-rollout-rest.jsonl').read_text(encoding='utf-8'))
         first, rest = split_before_last_token_count(whole)
         path = self.place(rows, 'p1-agent-rollout-at-stop.jsonl')
         path.write_text(first, encoding='utf-8')
-        self.late(path, rest, 0.4)
+        started = time.monotonic()
         self.feed(rows)
+        self.assertLess(time.monotonic() - started, 5)
         back = self.records()[-1]
-        for key, value in self.full_counters().items():
-            self.assertEqual(back['tokens'][key], value, key)
-        self.assertGreaterEqual(back['tokens']['read_after_seconds'], 0.3)
+        self.assertEqual(back['record'], 'return')
+        self.assertRegex(back['tokens'], UNRECORDED)
 
     def test_c_b3_3_control_reading_at_once_is_short(self):
         rows = self.events('p1-events.jsonl')
@@ -445,7 +451,8 @@ class NewToolNames(World):
 
     def test_both_names_are_listed_for_codex(self):
         entry = json.loads((SCRIPTS / 'subagent-tools.json').read_text(encoding='utf-8'))['harnesses']['codex']
-        self.assertEqual(sorted(entry['tools']), ['Agent', 'spawn_agent'])
+        self.assertEqual(sorted(set(entry['tools']) - set(entry['message_tools'])),
+                         ['Agent', 'collaborationspawn_agent', 'spawn_agent'])
         self.assertEqual(sorted(entry['shell_tools']), ['Bash', 'exec_command'])
 
 
@@ -599,6 +606,45 @@ class LaterShapes(World):
         self.assertEqual(errors[0]['reason'], 'PostToolUse on wait_agent: not a tool this capture records')
         self.assertEqual(errors[0]['payload_keys'], sorted(payload))
         self.assertEqual(self.records(), [])
+
+
+class Q16Rollout(World):
+    """The stop read against a rollout in the shapes the Codex app (0.162.x) had written when SubagentStop fired."""
+
+    fields = 'all'
+    TURN = '01a10000-0000-7000-8000-00000000q2l1'
+
+    def rows(self):
+        rows = self.dr3()
+        stop = rows[-1]['payload']
+        stop['turn_id'] = self.TURN
+        stop['last_assistant_message'] = 'kestrel-q2l'
+        Path(stop['agent_transcript_path']).write_text(
+            self.fill((FIXTURES / 'q16-agent-rollout-at-stop.jsonl').read_text(encoding='utf-8')), encoding='utf-8')
+        return rows
+
+    def test_the_answer_forms_of_0162_complete_the_turn(self):
+        rows = self.rows()
+        path = rows[-1]['payload']['agent_transcript_path']
+        self.assertTrue(self.transcripts.codex_complete(path, 'kestrel-q2l', self.TURN))
+
+    def test_the_return_is_written_at_once_with_the_turns_counters(self):
+        started = time.monotonic()
+        self.feed(self.rows())
+        self.assertLess(time.monotonic() - started, 5)
+        back = self.records()[-1]
+        self.assertEqual(back['record'], 'return')
+        self.assertEqual(back['model'], 'stand-in-rollout-model')
+        self.assertEqual({k: back['tokens'][k] for k in ('input', 'cache_read', 'output')},
+                         {'input': 8000, 'cache_read': 12000, 'output': 6})
+        self.assertEqual(self.errors(), [])
+
+    def test_control_reading_only_agent_message_events_leaves_the_counters_unrecorded(self):
+        old = self.transcripts.codex_answer_text
+        only_events = lambda row: old(row) if (row.get('payload') or {}).get('type') == 'agent_message' else None
+        with mock.patch.object(self.transcripts, 'codex_answer_text', only_events):
+            self.feed(self.rows())
+        self.assertRegex(self.records()[-1]['tokens'], UNRECORDED)
 
 
 if __name__ == '__main__':

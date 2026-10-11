@@ -157,12 +157,14 @@ EOF
 	if [ "$CODEX_ON" -eq 1 ]; then
 		echo
 		echo "Codex: add these to the \"hooks\" object of hooks.json in ${CODEX_DIR}. The matcher names each tool"
-		echo "both ways Codex has named it: Agent and Bash, and the older spawn_agent and exec_command."
+		echo "every way Codex has named it: Agent and Bash, the older spawn_agent and exec_command, and the app's"
+		echo "collaborationspawn_agent, with its two message tools collaborationsend_message and"
+		echo "collaborationfollowup_task."
 		echo
 		cat <<EOF
 {
-  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command", "hooks": [$(codex_hook PreToolUse)]}],
-  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command", "hooks": [$(codex_hook PostToolUse)]}],
+  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task", "hooks": [$(codex_hook PreToolUse)]}],
+  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task", "hooks": [$(codex_hook PostToolUse)]}],
   "SubagentStart": [{"hooks": [$(codex_hook SubagentStart)]}],
   "SubagentStop":  [{"hooks": [$(codex_hook SubagentStop)]}]
 }

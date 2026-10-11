@@ -11,7 +11,12 @@ imposes no time limit.
 
 Tool names. Codex 0.142.5 named the subagent tool `spawn_agent` and the shell tool `exec_command` in its
 hook events; Codex 0.162.1 names them `Agent` and `Bash` (its hooks documentation, 'Tool coverage'). The
-capture takes the names subagent-tools.json lists for Codex, `tools` and `shell_tools`, which hold both.
+Codex app (0.162.x, Q16's second live run) names its collaboration tools with their namespace before the
+name and no separator: `collaborationspawn_agent`, `collaborationsend_message`, `collaborationfollowup_task`,
+`collaborationwait_agent`, `collaborationlist_agents`, `collaborationinterrupt_agent`. The capture takes the
+names subagent-tools.json lists for Codex: `tools`, less `message_tools`, dispatch a subagent;
+`message_tools` send one a message; `witness_tools` are seen but not recorded as calls; `shell_tools` run
+commands.
 
 What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
 
@@ -31,16 +36,21 @@ What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
     waiting and the ledger has never named the agent, the harness sent no event for the spawn: the
     start writes the dispatch itself, its call id the agent's id and its brief fields
     `unrecorded (the harness sent no dispatch event for this subagent)`.
-  * SubagentStop: a witness line, then the return record, joined to its call through the stored
-    join. The subagent's rollout, at `agent_transcript_path`, is read once the stop's turn holds the
-    answer SubagentStop reports and the counter row written after it, or the turn's end. The stop's
-    turn is the one whose `task_started` row carries the payload's `turn_id`; where no row does, the
-    rollout's last turn. Codex writes
-    `task_complete` only after this hook returns, so the capture never waits for that row. There is
-    no limit on the wait beyond the harness's own time-out on hooks. The model, the
-    four counters, the effort and the isolation evidence come from the rollout; the answer from
-    `last_assistant_message`. The payload's own `model` stays in `harness_payload` and never stands
-    for the model the rollout names.
+  * PreToolUse on a message tool (`send_message`, `followup_task`): a dispatch record, as for a spawn,
+    its target and message kept pending. PostToolUse keeps the tool response for the return. The return
+    is written at the first SubagentStop of the target agent whose turn holds the message as delivered.
+  * PreToolUse or PostToolUse on a witness tool (wait, list, interrupt): a witness line, its event
+    '<event> on <tool>' and its call id the tool call's. Not a call.
+  * SubagentStop: a witness line, then the return record of the spawn joined to the agent, and of each
+    message delivered in the stop's turn. It never waits: no hook may wait on anything the harness
+    does after the hook returns, and Codex writes `task_complete`, and on 0.162.x keeps the subagent
+    running, until this hook returns (Q16's second live run hung on such a wait). The answer is
+    `last_assistant_message`. The subagent's rollout, at `agent_transcript_path`, is read once: the
+    model, the effort and the isolation evidence from whatever it holds, and the counters of the
+    stop's turn only where the rollout already holds the turn's answer and the counter row after it
+    (transcripts.codex_complete); otherwise `unrecorded (<why>)`. The stop's turn is the one whose
+    `task_started` row carries the payload's `turn_id`; where no row does, the rollout's last turn. The
+    payload's own `model` stays in `harness_payload` and never stands for the model the rollout names.
   * PreToolUse on the shell tool subagent-tools.json names (`exec_command`, or `Bash` on 0.162.1): a
     dispatch record, route cli, when the command (`tool_input.cmd` on 0.142.5, `tool_input.command` on
     0.162.1) matches cli-patterns.json, as the Claude
@@ -87,8 +97,8 @@ DISPATCH_AGENT = 'unrecorded (not yet returned)'
 SUBAGENT_COST = 'unrecorded (the harness reports no cost for a subagent)'
 NOT_A_SCRIPT = 'unrecorded (not a call script)'
 ON_DISPATCH_BRIEF = shared.ON_DISPATCH_BRIEF
-# How often the rollout is re-read while its last turn has not ended. No limit is set on the wait.
-REREAD_SECONDS = 0.1
+NO_TURN_COUNTERS = ('unrecorded (the rollout did not yet hold the counter row for this stop\'s turn when '
+                    'SubagentStop fired)')
 EXIT_LINE = re.compile(r'Process exited with code (-?\d+)')
 OUTPUT_LINE = re.compile(r'(?m)^Output:[ \t]*$')
 NO_EXIT_CODE = {'class': 'unreadable', 'text': 'the response carries no exit code'}
@@ -98,6 +108,7 @@ ENCRYPTED = 'unrecorded (the harness passed the brief encrypted)'
 # A Fernet token, the form of the encrypted message Codex 0.162.x passed to its subagent: base64url text whose
 # first decoded byte is 0x80, then a timestamp, an IV, the ciphertext and a 32-byte HMAC.
 FERNET = re.compile(r'gAAAAA[A-Za-z0-9_-]{50,}={0,2}')
+MESSAGE = 'msg-'
 _ARRIVAL = {}
 
 
@@ -175,6 +186,14 @@ def _route(event, payload, folder, held):
         return pre_spawn(payload, folder, held)
     if event == 'PostToolUse' and tool in subagent_tools():
         return post_spawn(payload, folder, held)
+    if event == 'PreToolUse' and tool in message_tools():
+        return pre_spawn(payload, folder, held, message=True)
+    if event == 'PostToolUse' and tool in message_tools():
+        return post_message(payload, folder, held)
+    if event in ('PreToolUse', 'PostToolUse') and tool in witness_tools():
+        return ledger.witness(ledger=folder, event='%s on %s' % (event, tool), session=held.session,
+                              agent_id='unrecorded (%s names no agent id)' % tool, call_id=held.call_id,
+                              at=ledger.now())
     if event == 'PreToolUse' and tool in shared.shell_tools(HARNESS):
         return pre_shell(payload, folder, held)
     if event == 'PostToolUse' and tool in shared.shell_tools(HARNESS):
@@ -190,10 +209,24 @@ def _route(event, payload, folder, held):
     return None
 
 
-def subagent_tools():
-    """The names of Codex's subagent tool, from subagent-tools.json."""
-    names = shared.harness_entry(HARNESS).get('tools')
+def _names(key):
+    names = shared.harness_entry(HARNESS).get(key)
     return tuple(name for name in names if isinstance(name, str)) if isinstance(names, list) else ()
+
+
+def subagent_tools():
+    """The names of Codex's subagent dispatch tool, from subagent-tools.json: `tools` less `message_tools`."""
+    return tuple(name for name in _names('tools') if name not in message_tools())
+
+
+def message_tools():
+    """The names of the tools that send a running subagent a message, from subagent-tools.json."""
+    return _names('message_tools')
+
+
+def witness_tools():
+    """The names of the tools seen but not recorded as calls, from subagent-tools.json."""
+    return _names('witness_tools')
 
 
 # ---------------------------------------------------------------------------
@@ -218,16 +251,16 @@ def auth_route():
     return 'CODEX_HOME %s; OPENAI_API_KEY %s' % (home if home else '~/.codex (the default)', key)
 
 
-def pre_spawn(payload, folder, held):
+def pre_spawn(payload, folder, held, message=False):
     if held.call_id.startswith('unrecorded ('):
         held.error(folder, 'payload', 'no call_id (tool_use_id absent from PreToolUse)', record='dispatch')
         return
     given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
-    message = given.get('message') if isinstance(given.get('message'), str) else ''
-    if not message:
+    message_text = given.get('message') if isinstance(given.get('message'), str) else ''
+    if not message_text:
         held.error(folder, 'payload', 'tool_input.message absent from PreToolUse', record='dispatch')
-    encrypted = is_ciphertext(message)
-    brief, source = (message, None) if encrypted else shared.brief_of(message, payload.get('cwd'))
+    encrypted = is_ciphertext(message_text)
+    brief, source = (message_text, None) if encrypted else shared.brief_of(message_text, payload.get('cwd'))
     asked = given.get('model')
     at = ledger.now()
     fields = common(payload)
@@ -240,18 +273,36 @@ def pre_spawn(payload, folder, held):
         'brief_source': ENCRYPTED if encrypted else source,
         'effort_assigned': shared.effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
-    found, seconds = shared.dispatch_kind(folder, brief if source else message, held)
+    found, seconds = shared.dispatch_kind(folder, brief if source else message_text, held)
     fields.update(found)
     fields['harness_payload'] = shared.with_triage_time(payload, seconds)
     fields['user_answer'] = shared.user_answer_of(folder, HARNESS, held.session, fields.get('caller'),
                                                   payload.get('transcript_path'), fields['act_kind'],
-                                                  brief if source else message)
+                                                  brief if source else message_text)
     with shared.pending_lock(folder, held.session):
-        shared.write_pending(folder, held.session, held.call_id,
-                             {'call_id': held.call_id, 'dispatched_at': at, 'awaiting_agent': True,
-                              'order': time.time_ns()})
-    ledger.dispatch(ledger=folder, brief=brief or None, prompt=message if source and message else None,
-                    **fields)
+        if message:
+            target = given.get('target')
+            shared.write_pending(folder, held.session, MESSAGE + held.call_id,
+                                 {'call_id': held.call_id, 'dispatched_at': at, 'order': time.time_ns(),
+                                  'target': target if isinstance(target, str) else None, 'message': message_text})
+        else:
+            shared.write_pending(folder, held.session, held.call_id,
+                                 {'call_id': held.call_id, 'dispatched_at': at, 'awaiting_agent': True,
+                                  'order': time.time_ns()})
+    ledger.dispatch(ledger=folder, brief=brief or None,
+                    prompt=message_text if source and message_text else None, **fields)
+
+
+def post_message(payload, folder, held):
+    """Keep a message tool's response for its return; a message whose PreToolUse was not seen is an error line."""
+    with shared.pending_lock(folder, held.session):
+        sent = shared.read_pending(folder, held.session, MESSAGE + held.call_id)
+        if sent is None:
+            held.error(folder, 'payload', 'PostToolUse on %s: its PreToolUse was not seen, so no message is '
+                       'pending for it' % payload.get('tool_name'), record='return')
+            return
+        shared.write_pending(folder, held.session, MESSAGE + held.call_id,
+                             dict(sent, tool_response=response_of(payload) or payload.get('tool_response')))
 
 
 def is_ciphertext(text):
@@ -415,7 +466,7 @@ def oldest_waiting(folder, session):
     """The pending data of the oldest spawn in the session still waiting for an agent, by dispatch order."""
     waiting = []
     for path in shared.pending_dir(folder, session).glob('*.json'):
-        if path.name.startswith(('join-', 'cli-', 'stop-')):
+        if path.name.startswith(('join-', 'cli-', 'stop-', MESSAGE)):
             continue
         try:
             data = json.loads(path.read_text(encoding='utf-8'))
@@ -481,94 +532,150 @@ def subagent_stop(payload, folder, held):
     if held.agent_id.startswith('unrecorded ('):
         return
     agent = held.agent_id
+    answer = payload.get('last_assistant_message')
+    path = payload.get('agent_transcript_path')
+    path = path if isinstance(path, str) and path else None
+    turn = payload.get('turn_id') if isinstance(payload.get('turn_id'), str) else None
+    rows, unread = None, None
+    if path:
+        try:
+            rows = transcripts.rows_of(path)  # the one read of the rollout: nothing here waits
+        except OSError as exc:
+            unread = 'the rollout could not be read: %s' % (exc.strerror or exc)
     with shared.pending_lock(folder, held.session):
         join = shared.read_join(folder, held.session, agent)
-    if not join or not join.get('call_id'):
+        messages = delivered_messages(folder, held.session, agent, rows, turn)
+    if (not join or not join.get('call_id')) and not messages:
         # Nothing pending for this agent. If the ledger already holds a return naming it, this is a further
         # stop after its call returned, and the witness line above records it. Otherwise a call may be
         # missing. A dispatch alone does not count here: on Codex only a SubagentStart's own dispatch names
         # the agent, and it writes its join with it, so such a dispatch with no join and no return is a call
         # missing its return.
-        called, unread = shared.agent_called(folder, held.session, agent, records=('return',))
+        called, unread_ledger = shared.agent_called(folder, held.session, agent, records=('return',))
         if called:
             return
-        if unread:
+        if unread_ledger:
             held.error(folder, 'payload', 'no pending join for agent %s, and the ledger could not be read to '
-                       'find an earlier call to it: %s' % (agent, unread), record='return')
+                       'find an earlier call to it: %s' % (agent, unread_ledger), record='return')
         else:
             held.error(folder, 'payload', 'no pending join for agent %s: its PostToolUse on the subagent tool '
                        'was not seen, so the return cannot be joined to a call' % agent, record='return')
         return
-    call_id = join['call_id']
-    answer = payload.get('last_assistant_message')
     if not isinstance(answer, str):
         held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
         answer = ''
-    path = payload.get('agent_transcript_path')
-    if not isinstance(path, str) or not path:
+    if not path:
         held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
-        path = None
-    turn = payload.get('turn_id') if isinstance(payload.get('turn_id'), str) else None
-    wait_for_rollout(path, answer, turn)
     waited = round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)
     fields = common(payload)
-    fields.update({'call_id': call_id, 'agent_id': agent, 'cost': SUBAGENT_COST,
-                   'spend_line': NOT_A_SCRIPT})
-    fields.update(from_rollout(path, waited))
-    fields.update(dict(zip(('outcome', 'outcome_reason'), rollout_outcome(path, answer))))
+    fields.update({'agent_id': agent, 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT})
+    fields.update(from_rollout(path, rows, unread, answer, turn, waited))
+    fields.update(dict(zip(('outcome', 'outcome_reason'), rollout_outcome(rows, answer))))
+    calls = []
+    if join and join.get('call_id'):
+        calls.append((join['call_id'], join.get('tool_response'), [join['call_id'], 'join-' + agent]))
+    for name, data in messages:
+        calls.append((data['call_id'], data.get('tool_response'), [name]))
     with shared.pending_lock(folder, held.session):
-        sent = shared.read_pending(folder, held.session, call_id)
-        if sent and sent.get('dispatched_at'):
-            fields['dispatched_at'] = sent['dispatched_at']
-        kept = dict(payload)
-        kept['post_tool_use_response'] = join.get('tool_response')
-        fields['harness_payload'] = kept
-        ledger.ret(ledger=folder, answer=answer, **fields)
-        shared.clear_pending(folder, held.session, [call_id, 'join-' + agent])
+        for call_id, response, cleared in calls:
+            own = dict(fields, call_id=call_id)
+            sent = shared.read_pending(folder, held.session, call_id)
+            sent = sent or shared.read_pending(folder, held.session, MESSAGE + call_id)
+            if sent and sent.get('dispatched_at'):
+                own['dispatched_at'] = sent['dispatched_at']
+            kept = dict(payload)
+            kept['post_tool_use_response'] = response
+            own['harness_payload'] = kept
+            ledger.ret(ledger=folder, answer=answer, **own)
+            shared.clear_pending(folder, held.session, cleared)
 
 
-def wait_for_rollout(path, answer, turn=None):
-    """Re-read the rollout until the stop's turn holds the answer and the counter row after it.
+def agent_names(rows, agent):
+    """The names by which a message may target this agent: its id, and its path, nickname and the path's last
+    part as the rollout's session_meta row gives them."""
+    names = {agent}
+    meta = rows[0].get('payload') if rows and isinstance(rows[0].get('payload'), dict) else {}
+    spawn = ((meta.get('source') or {}).get('subagent') or {}).get('thread_spawn') if isinstance(
+        meta.get('source'), dict) else None
+    for found in (meta.get('agent_path'), meta.get('agent_nickname'),
+                  spawn.get('agent_path') if isinstance(spawn, dict) else None):
+        if isinstance(found, str) and found:
+            names.add(found)
+            names.add(found.rstrip('/').rsplit('/', 1)[-1])
+    return names
 
-    No limit of the capture's own: the harness's time-out on hooks is the only bound.
-    """
-    if not path:
-        return
-    while not transcripts.codex_complete(path, answer, turn):
-        time.sleep(REREAD_SECONDS)
+
+def delivered_text(row):
+    """The text and ciphertext of a message delivered to the subagent in a rollout row, or None."""
+    payload = row.get('payload') if isinstance(row.get('payload'), dict) else {}
+    if row.get('type') == 'response_item' and payload.get('type') == 'agent_message':
+        parts = payload.get('content') if isinstance(payload.get('content'), list) else []
+        said = [part.get(key) for part in parts if isinstance(part, dict)
+                for key in ('text', 'encrypted_content') if isinstance(part.get(key), str)]
+        return '\n'.join(said)
+    if row.get('type') == 'event_msg' and payload.get('type') == 'user_message':
+        return payload.get('message') if isinstance(payload.get('message'), str) else None
+    return None
 
 
-def from_rollout(path, waited):
-    """model, tokens, effort and isolation from the subagent's own rollout."""
+def delivered_messages(folder, session, agent, rows, turn):
+    """[(the pending file's name, its data)] for each message to this agent that the stop's turn holds as delivered,
+    by dispatch order. Called under the pending lock. With no rollout read, none: the message stays pending."""
+    if not rows:
+        return []
+    names = agent_names(rows, agent)
+    started, ends = transcripts.codex_turn(rows, turn)
+    texts = [text for text in (delivered_text(rows[at]) for at in range(started + 1, ends)) if text]
+    found = []
+    for path in shared.pending_dir(folder, session).glob(MESSAGE + '*.json'):
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or not data.get('call_id') or data.get('target') not in names:
+            continue
+        wanted = (data.get('message') or '').strip()
+        if wanted and any(wanted in text for text in texts):
+            found.append((path.stem, data))
+    found.sort(key=lambda item: (str(item[1].get('dispatched_at') or ''), item[1].get('order') or 0))
+    return found
+
+
+def from_rollout(path, rows, unread, answer, turn, waited):
+    """model, tokens, effort and isolation from the rollout's rows as read once; never a wait for more."""
     if not path:
         why = 'unrecorded (agent_transcript_path absent from SubagentStop)'
         return {'model': why, 'tokens': why, 'effort': why, 'isolation': why}
-    reading = transcripts.read(path)
-    if reading['error']:
-        why = 'unrecorded (%s)' % reading['error']
+    if rows is None:
+        why = 'unrecorded (%s)' % unread
         return {'model': why, 'tokens': why, 'effort': why, 'isolation': why}
-    tokens = reading['tokens']
-    if isinstance(tokens, dict):
-        tokens = dict(tokens, read_after_seconds=waited)
+    reading = transcripts.read(path, rows=rows)
+    if not transcripts.is_codex(rows):
+        why = 'unrecorded (%s)' % (reading['error'] or 'the rollout holds no session_meta row')
+        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why}
+    if reading['tokens'] == transcripts.CODEX_CONTINUED:
+        tokens = reading['tokens']
+    elif not transcripts.codex_complete(path, answer, turn, rows=rows):
+        tokens = NO_TURN_COUNTERS
+    else:
+        usage = transcripts.codex_turn_usage(rows, turn)
+        tokens = (dict(transcripts.codex_tokens(usage), read_after_seconds=waited) if usage is not None
+                  else NO_TURN_COUNTERS)
     return {'model': reading['model'] or 'unrecorded (the rollout names no model)',
             'tokens': tokens,
             'effort': reading.get('effort') or 'unrecorded (the rollout records no effort)',
             'isolation': transcripts.isolation(reading)}
 
 
-def rollout_outcome(path, answer):
+def rollout_outcome(rows, answer):
     """served or empty from the answer; failed where the rollout's last turn was aborted."""
     aborted = None
-    if path:
-        try:
-            for row in transcripts.rows_of(path):
-                payload = row.get('payload') if isinstance(row.get('payload'), dict) else {}
-                if row.get('type') == 'event_msg' and payload.get('type') == 'turn_aborted':
-                    aborted = payload
-                elif row.get('type') == 'event_msg' and payload.get('type') == 'task_started':
-                    aborted = None
-        except OSError:
-            pass
+    for row in rows or []:
+        payload = row.get('payload') if isinstance(row.get('payload'), dict) else {}
+        if row.get('type') == 'event_msg' and payload.get('type') == 'turn_aborted':
+            aborted = payload
+        elif row.get('type') == 'event_msg' and payload.get('type') == 'task_started':
+            aborted = None
     if aborted is not None:
         text = aborted.get('reason') if isinstance(aborted.get('reason'), str) else json.dumps(aborted)
         return 'failed', ledger.reason_for(HARNESS, text, fallback='harness_error')

@@ -122,16 +122,17 @@ def _group_key(row, position):
     return 'row-%d' % position
 
 
-def read(path, span=None):
+def read(path, span=None, rows=None):
     """The reading of one transcript, as a dict. A file that cannot be read gives `error`.
 
     With `span`, (first row, last row) counted from 0, only those rows of a Claude Code transcript are read: one
-    turn of a subagent that was resumed later in the same file."""
+    turn of a subagent that was resumed later in the same file. With `rows`, those rows are read in place of the
+    file's, which is not opened."""
     reading = {'path': str(path), 'rows': 0, 'requests': 0, 'model': None, 'models': [],
                'tokens': None, 'last_request': None, 'cwd': None, 'tool_uses': [], 'error': None,
                'harness': 'claude-code'}
     try:
-        rows = rows_of(path)
+        rows = rows_of(path) if rows is None else rows
     except OSError as exc:
         reading['error'] = 'the transcript could not be read: %s' % exc
         return reading
@@ -221,23 +222,12 @@ def codex_usage(usages):
     return usages[-1]
 
 
-def codex_complete(path, answer=None, turn=None):
-    """True once the rollout holds the turn's end, as far as Codex writes it before SubagentStop returns.
-
-    Codex writes `task_complete` only after its SubagentStop hook has returned, so a hook that waited
-    for it would wait for ever. What it has written by then is the answer, as an `agent_message`, and
-    the counter row after it. So the turn is complete when it
-    holds `answer` in an `agent_message` followed by a `token_count`, or when it has ended
-    (`task_complete` or `turn_aborted`). With no answer to look for, a `token_count` after the last
-    `agent_message` will do.
+def codex_turn(rows, turn=None):
+    """(the row that starts the stop's turn, the row after its end), counted from 0, in a rollout's rows.
 
     The turn is the one whose `task_started` row carries `turn`, the stop's `turn_id`, up to the next
-    `task_started`; where no row carries it, or none is given, the rollout's last turn.
-    """
-    try:
-        rows = rows_of(path)
-    except OSError:
-        return False
+    `task_started`; where no row carries it, or none is given, the rollout's last turn. With no `task_started`
+    row the start is -1."""
     starts = [position for position, row in enumerate(rows)
               if row.get('type') == 'event_msg' and _payload(row).get('type') == 'task_started']
     started, ends = (starts[-1] if starts else -1), len(rows)
@@ -245,19 +235,56 @@ def codex_complete(path, answer=None, turn=None):
     if own:
         started = own[0]
         ends = next((position for position in starts if position > started), len(rows))
+    return started, ends
+
+
+def codex_answer_text(row):
+    """The answer text a rollout row holds, or None. Codex 0.142.5 writes the answer as an `agent_message` event;
+    0.162.x as an `item_completed` event whose item is an AgentMessage, and as a `message` response item whose
+    phase is `final_answer`."""
+    payload = _payload(row)
+    kind = payload.get('type')
+    if row.get('type') == 'event_msg' and kind == 'agent_message' and isinstance(payload.get('message'), str):
+        return payload['message']
+    parts = None
+    if row.get('type') == 'event_msg' and kind == 'item_completed':
+        item = payload.get('item') if isinstance(payload.get('item'), dict) else {}
+        if item.get('type') == 'AgentMessage':
+            parts = item.get('content')
+    elif row.get('type') == 'response_item' and kind == 'message' and payload.get('phase') == 'final_answer':
+        parts = payload.get('content')
+    if not isinstance(parts, list):
+        return None
+    texts = [part.get('text') for part in parts if isinstance(part, dict) and isinstance(part.get('text'), str)]
+    return '\n'.join(texts) if texts else None
+
+
+def codex_complete(path, answer=None, turn=None, rows=None):
+    """True when the rollout already holds the stop's turn's answer and the counter row after it, or the turn's end.
+
+    It reads once and never waits. Codex writes `task_complete` only after its SubagentStop hook has returned, so
+    the capture reads what the rollout holds when the hook runs: the turn is complete when it holds `answer` in
+    any answer form codex_answer_text() reads, followed by a `token_count`, or when it has ended (`task_complete`
+    or `turn_aborted`). With no answer to look for, a `token_count` after the last answer will do. The turn is
+    codex_turn()'s. `rows`, where given, are the rollout's rows already read, and `path` is not read again.
+    """
+    if rows is None:
+        try:
+            rows = rows_of(path)
+        except OSError:
+            return False
+    started, ends = codex_turn(rows, turn)
     wanted = (answer or '').strip()
     said = -1
-    for position, row in enumerate(rows):
-        if position <= started or position >= ends or row.get('type') != 'event_msg':
-            continue
-        payload = _payload(row)
-        kind = payload.get('type')
-        if kind in CODEX_ENDS:
+    for position in range(started + 1, ends):
+        row = rows[position]
+        kind = _payload(row).get('type')
+        if row.get('type') == 'event_msg' and kind in CODEX_ENDS:
             return True
-        if kind == 'agent_message' and isinstance(payload.get('message'), str):
-            if not wanted or wanted in payload['message']:
-                said = position
-        if kind == 'token_count' and said >= 0 and position > said:
+        text = codex_answer_text(row)
+        if text is not None and (not wanted or wanted in text):
+            said = position
+        if row.get('type') == 'event_msg' and kind == 'token_count' and said >= 0 and position > said:
             return True
     return False
 
@@ -319,14 +346,34 @@ def read_codex(path, rows, reading):
         reading['error'] = 'no row of the rollout carries a clean counter'
         return reading
     reading['requests'] = len(usages)
-    usage = codex_usage(usages)
+    reading['tokens'] = codex_tokens(codex_usage(usages))
+    return reading
+
+
+def codex_tokens(usage):
+    """The four counters from one Codex usage object, its input less the cached part."""
     cache_read = usage.get('cached_input_tokens', 0)
     cache_write = usage.get('cache_write_input_tokens')
     fresh = usage.get('input_tokens', 0) - cache_read - (cache_write if _count(cache_write) else 0)
-    reading['tokens'] = {'input': fresh,
-                         'cache_write': cache_write if _count(cache_write) else CODEX_NO_CACHE_WRITE,
-                         'cache_read': cache_read, 'output': usage.get('output_tokens', 0)}
-    return reading
+    return {'input': fresh, 'cache_write': cache_write if _count(cache_write) else CODEX_NO_CACHE_WRITE,
+            'cache_read': cache_read, 'output': usage.get('output_tokens', 0)}
+
+
+def codex_turn_usage(rows, turn=None):
+    """The stop's turn's own usage: the cumulative counters at the turn's last counter row, less those at the last
+    counter row before the turn began. None where the turn holds no counter row."""
+    started, ends = codex_turn(rows, turn)
+    at_end = _clean_usages(rows[:ends])
+    before = _clean_usages(rows[:started]) if started > 0 else []
+    if len(at_end) <= len(before):
+        return None
+    last, first = at_end[-1], (before[-1] if before else {})
+    out = {}
+    for key, value in last.items():
+        if _count(value):
+            earlier = first.get(key, 0)
+            out[key] = value - (earlier if _count(earlier) else 0)
+    return out
 
 
 def _inside(path, folder):

@@ -422,8 +422,9 @@ class FN8ServedRequests(KindWorld):
     naming the Agent call it serves in `harness_payload.serves_call_id`, hid the answered question.
 
     The fixtures are the replay: the ledger as the hook saw it (four SubagentStop witness lines and the
-    triage's record, verbatim) and the caller's transcript cut at the dispatch, its question and answer text
-    replaced. The IDs and times are the live ones.
+    triage's record, verbatim but for its model, key name and endpoint, which name a workspace's service) and the
+    caller's transcript cut at the dispatch, its question and answer text replaced. The IDs and times are the
+    live ones.
     """
 
     LIVE_SESSION = 'bc2f0e03-97ba-4464-82a4-90d6a18ffbbc'

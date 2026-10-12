@@ -101,7 +101,9 @@ where the tool has no such key. The session's own effort level is never read for
 
 For a call of the kind `user-decision`, `user_answer` notes whether the user answered first: the
 caller's transcript (`transcript_path`) is read for an answered AskUserQuestion call between the
-caller's previous dispatch in the ledger (or the start of the transcript) and this PreToolUse. The
+caller's previous dispatch in the ledger (or the start of the transcript) and this PreToolUse. A
+script's own request made for another call, whose record names that call in
+`harness_payload.serves_call_id`, is not a dispatch by the caller and does not open the window. The
 brief's own statement, at the key `frontmatter` names for `user_answer`, is kept beside it as
 `agent_record` and never read as the evidence. Any other kind reads `none (not a user decision)`.
 Reading it never stops, delays or changes the call.
@@ -1867,7 +1869,10 @@ def previous_dispatch_at(folder, session, caller):
     """When the caller last dispatched a call in this session's ledger, or None if it has not.
 
     A dispatch record whose `caller` is not filled is counted as the caller's, so the window is never
-    wider than the ledger can show.
+    wider than the ledger can show. A script's own request made for another call is not counted: its
+    record names that call in `harness_payload.serves_call_id` (a workspace triage or labeller writes
+    one), and it is written after the question it would otherwise hide, as the triage runs at the very
+    dispatch this window is read for.
     """
     path = Path(folder) / ('%s.jsonl' % session)
     latest = None
@@ -1880,7 +1885,7 @@ def previous_dispatch_at(folder, session, caller):
             row = json.loads(raw)
         except ValueError:
             continue
-        if not isinstance(row, dict) or row.get('record') != 'dispatch':
+        if not isinstance(row, dict) or row.get('record') != 'dispatch' or serves_another_call(row):
             continue
         who = row.get('caller')
         if isinstance(who, str) and who and not who.startswith('unrecorded (') and who != caller:
@@ -1889,6 +1894,14 @@ def previous_dispatch_at(folder, session, caller):
         if at is not None and (latest is None or at > latest):
             latest = at
     return latest
+
+
+def serves_another_call(row):
+    """Whether a dispatch record is a script's own request made for another call: its harness_payload
+    names that call in `serves_call_id`."""
+    payload = row.get('harness_payload')
+    served = payload.get('serves_call_id') if isinstance(payload, dict) else None
+    return isinstance(served, str) and bool(served)
 
 
 def user_answer_of(folder, harness, session, caller, transcript_path, kind, brief):

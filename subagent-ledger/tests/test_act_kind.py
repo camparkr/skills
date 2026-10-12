@@ -417,6 +417,51 @@ class CR11UserAnswer(KindWorld):
         self.assertEqual(sent['user_answer']['answered_first'], 'yes', 'the check sees the window switched off')
 
 
+class FN8ServedRequests(KindWorld):
+    """Fix note FN-8, from the first live session: the triage's own request, written as a dispatch record
+    naming the Agent call it serves in `harness_payload.serves_call_id`, hid the answered question.
+
+    The fixtures are the replay: the ledger as the hook saw it (four SubagentStop witness lines and the
+    triage's record, verbatim) and the caller's transcript cut at the dispatch, its question and answer text
+    replaced. The IDs and times are the live ones.
+    """
+
+    LIVE_SESSION = 'bc2f0e03-97ba-4464-82a4-90d6a18ffbbc'
+    LIVE_QUESTION = 'toolu_01Ha7kPt5zZiGfnwXVExtind'
+
+    def setUp(self):
+        super().setUp()
+        self.path = self.ledger / ('%s.jsonl' % self.LIVE_SESSION)
+        shutil.copy(FIXTURES / 'claude-code' / 'fn8-ledger-at-hook.jsonl', self.path)
+        self.transcript = FIXTURES / 'claude-code' / 'fn8-transcript-at-hook.jsonl'
+
+    def answer(self):
+        return self.capture.user_answer_of(str(self.ledger), 'claude-code', self.LIVE_SESSION, 'parent',
+                                           str(self.transcript), 'user-decision', '')
+
+    def test_fn_8_the_triages_own_request_does_not_open_the_window(self):
+        answer = self.answer()
+        self.assertEqual(answer['answered_first'], 'yes')
+        self.assertEqual(answer['question_call'], self.LIVE_QUESTION)
+        self.assertEqual((answer['asked_at'], answer['answered_at']),
+                         ('2026-10-12T02:28:41.338Z', '2026-10-12T02:28:46.208Z'))
+
+    def test_fn_8_switched_off_the_triages_request_hides_the_question(self):
+        if not hasattr(self.capture, 'serves_another_call'):
+            raise AssertionError('capture_claude_code.py has no serves_another_call() yet')
+        with mock.patch.object(self.capture, 'serves_another_call', lambda row: False):
+            answer = self.answer()
+        self.assertEqual(answer['answered_first'], 'not found', 'the check sees the live fault come back')
+
+    def test_fn_8_a_real_earlier_dispatch_by_the_caller_still_narrows_the_window(self):
+        writer = load(SCRIPTS / 'ledger.py', 'ledger_fn8_%d' % id(self))
+        sent = writer.dispatch(call_id='toolu_fn8_earlier', session=self.LIVE_SESSION, route='subagent',
+                               caller='parent', dispatched_at='2026-10-12T02:28:50.000Z', brief='an earlier brief',
+                               harness='claude-code')
+        self.assertTrue(sent.ok, sent.error)
+        self.assertEqual(self.answer()['answered_first'], 'not found')
+
+
 # ---------------------------------------------------------------------------
 # The label line's shape, and the reader
 # ---------------------------------------------------------------------------

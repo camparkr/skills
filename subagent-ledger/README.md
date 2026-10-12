@@ -126,6 +126,9 @@ The skill has these limits today:
 - **A Codex subagent that fails to start** may be joined to the next subagent that does, because Codex's spawn names
   no agent. No such case has been seen yet.
 - **A long shell command whose result Codex delivers through a later poll** is not yet read. The reader lists it.
+- **A shell command that names a model program but calls none**, such as a loop, a here-document or a script that
+  only mentions the program, may be recorded as a call. In tests on one workspace's sessions, about 2% of shell records
+  were such commands.
 
 ## Who it is for
 

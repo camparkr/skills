@@ -49,6 +49,14 @@ What each event does:
     the command makes a model call by cli-patterns.json, read by commands.reading() through wrappers,
     compound commands, here-documents and the script files it runs, read now. One record per tool call;
     `harness_payload.matched` lists the sites found.
+  * PreToolUse on WebSearch, WebFetch or an MCP tool (subagent-tools.json `outside_tools`): the dispatch of a
+    search, a fetch or an MCP read, routes search, fetch and mcp, its agent `unrecorded (no agent: <route> call)`.
+    The brief is the query; the URL, a blank line and the prompt; or the MCP tool's input as JSON. A pending file,
+    out-<tool_use_id>, holds the dispatch time for the return. No triage runs. An MCP server config.json's
+    `mcp_not_calls` lists writes nothing.
+  * PostToolUse or PostToolUseFailure on one of them: its return. A search is served where its results hold a
+    title-and-URL item; a fetch by its HTTP code alone (no code: failed, class unreadable); an MCP read where a
+    text part is not empty. The failure event's `error` is the reason text.
   * PostToolUse on Bash: the return record for a matched command, which exited 0. Claude Code sends
     a command that exits non-zero to PostToolUseFailure instead, which writes a failed return. Where
     the command printed a `claude -p --output-format json` envelope naming its session, the inner
@@ -292,6 +300,13 @@ def _route(event, payload, folder, held):
         return pre_shell(payload, folder, held)
     if event in ('PostToolUse', 'PostToolUseFailure') and tool in shell_tools(HARNESS):
         return post_shell(event, payload, folder, held)
+    route = outside_route(HARNESS, tool) if event in OUTSIDE_EVENTS else None
+    if route == 'mcp' and not_a_call(folder, mcp_server_of(HARNESS, tool, payload.get('mcp_server'))[0]):
+        return None  # a server config.json's mcp_not_calls lists: its tools are not calls
+    if route is not None and event == 'PreToolUse':
+        return pre_outside(payload, folder, held, route)
+    if route is not None:
+        return post_outside(event, payload, folder, held, route)
     return None
 
 
@@ -1362,6 +1377,313 @@ def post_shell(event, payload, folder, held):
 def command_of(payload):
     given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
     return given.get('command') if isinstance(given.get('command'), str) else None
+
+
+# ---------------------------------------------------------------------------
+# Searches, fetches and MCP reads: calls with no agent, on the routes search, fetch and mcp
+# ---------------------------------------------------------------------------
+
+OUTSIDE_EVENTS = ('PreToolUse', 'PostToolUse', 'PostToolUseFailure')
+OUTSIDE_PENDING = 'out-'
+NOT_CALLS_SETTING = 'mcp_not_calls'
+NO_AGENT_OUTSIDE = 'unrecorded (no agent: %s call)'
+OUTSIDE_COST = 'unrecorded (the harness reports no cost for this route)'
+# The keys of the tool's input that hold the brief, for the routes whose brief is not the whole input.
+BRIEF_KEYS = {'search': ('query',), 'fetch': ('url', 'prompt')}
+
+
+def outside_route(harness, tool):
+    """`search`, `fetch` or `mcp` for a tool subagent-tools.json names among the harness's `outside_tools`, else None.
+
+    An MCP tool is matched here by its prefix (Claude Code, Codex); OpenCode's plugin matches its own by the servers
+    its configuration names, and hands the server on."""
+    if not isinstance(tool, str) or not tool:
+        return None
+    rules = harness_entry(harness).get('outside_tools')
+    if not isinstance(rules, dict):
+        return None
+    for route in ('search', 'fetch'):
+        names = rules.get(route)
+        if isinstance(names, list) and tool in names:
+            return route
+    rule = rules.get('mcp')
+    prefix = rule.get('prefix') if isinstance(rule, dict) else None
+    if isinstance(prefix, str) and prefix and tool.startswith(prefix) and len(tool) > len(prefix):
+        return 'mcp'
+    return None
+
+
+def mcp_server_of(harness, tool, given=None):
+    """(the MCP server's name, where it was read) for an MCP tool: the payload's own `mcp_server.name` where it
+    carries one, else the tool name's part between the prefix and the next separator; (None, why) where neither
+    names one."""
+    if isinstance(given, dict) and isinstance(given.get('name'), str) and given.get('name'):
+        return given['name'], 'mcp_server.name'
+    rule = (harness_entry(harness).get('outside_tools') or {}).get('mcp')
+    prefix = rule.get('prefix') if isinstance(rule, dict) else None
+    separator = rule.get('separator') if isinstance(rule, dict) else None
+    if isinstance(tool, str) and isinstance(prefix, str) and isinstance(separator, str) and separator \
+            and tool.startswith(prefix):
+        rest = tool[len(prefix):]
+        if separator in rest and rest.split(separator, 1)[0]:
+            return rest.split(separator, 1)[0], 'the tool name'
+    return None, 'the payload carries no mcp_server.name and the tool name %s names no server' % tool
+
+
+def not_calls(folder):
+    """The server names config.json's `mcp_not_calls` lists: tools of these servers are not calls. A name ending
+    in `*` covers every server whose name begins with what precedes it."""
+    try:
+        config, _path = read_config(folder)
+    except (OSError, ValueError):
+        return []
+    names = config.get(NOT_CALLS_SETTING)
+    return [name for name in names if isinstance(name, str) and name] if isinstance(names, list) else []
+
+
+def not_a_call(folder, server, names=None):
+    """Whether an MCP server is one config.json's `mcp_not_calls` lists."""
+    if not isinstance(server, str) or not server:
+        return False
+    for name in not_calls(folder) if names is None else names:
+        if name.endswith('*') and server.startswith(name[:-1]):
+            return True
+        if name == server:
+            return True
+    return False
+
+
+def outside_brief(route, given):
+    """(the brief, or None; the input key whose absence left none, or None). A search's brief is its query; a
+    fetch's its URL, a blank line, then its prompt where the tool takes one; an MCP read's its arguments as JSON."""
+    if route == 'mcp':
+        return (json.dumps(given, ensure_ascii=False), None) if isinstance(given, dict) else (None, 'the input')
+    if route == 'search':
+        query = given.get('query') if isinstance(given, dict) else None
+        return (query, None) if isinstance(query, str) and query else (None, 'query')
+    url = given.get('url') if isinstance(given, dict) else None
+    if not isinstance(url, str) or not url:
+        return None, 'url'
+    prompt = given.get('prompt')
+    return (url + '\n\n' + prompt if isinstance(prompt, str) and prompt else url), None
+
+
+def input_moved(given, route, marker):
+    """The tool's input with the keys that hold the brief replaced by `marker`; for an MCP read, the marker alone."""
+    if route == 'mcp':
+        return marker
+    if not isinstance(given, dict):
+        return given
+    return dict((key, marker if key in BRIEF_KEYS[route] and isinstance(value, str) and value else value)
+                for key, value in given.items())
+
+
+def outside_call_dispatch(folder, held, harness, route, given, kept, input_key, fields, event, server=None):
+    """The dispatch record of a search, fetch or MCP read, and its `out-` pending file.
+
+    `given` is the tool's input; `kept` the payload kept as harness_payload, its input at `input_key`; `fields` the
+    session, harness, caller and project; `server` (name, where read) for an MCP read. Nothing is written for a call
+    with no call id but an error line."""
+    if held.call_id.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'no call_id (the call id is absent from %s)' % event, record='dispatch')
+        return
+    brief, absent = outside_brief(route, given)
+    kept = dict(kept)
+    if brief is not None:
+        kept[input_key] = input_moved(given, route, brief)
+        brief_path = None
+    else:
+        brief_path = 'unrecorded (%s absent from %s)' % (absent, event)
+        held.error(folder, 'payload', '%s absent from %s' % (absent, event), record='dispatch')
+    if server is not None:
+        kept['server'] = server[0] if server[0] else 'unrecorded (%s)' % server[1]
+    at = ledger.now()
+    fields = dict(fields, route=route)
+    fields.update(optional_fields(folder, None, held))
+    fields.update({
+        'call_id': held.call_id,
+        'agent_id': NO_AGENT_OUTSIDE % route,
+        'dispatched_at': at,
+        'model_requested': None,
+        'effort_assigned': NO_EFFORT_SETTING,
+        'auth_route': 'unrecorded (the payload names no sign-in for a %s call)' % route,
+        'brief_source': "unrecorded (the brief is the tool's input)",
+        'act_kind': 'unrecorded (a %s call names no kind; no triage ran)' % route,
+        'triage_kind': NO_TRIAGE,
+        'user_answer': NOT_A_DECISION,
+        'harness_payload': kept,
+    })
+    if brief_path is not None:
+        fields['brief_path'] = brief_path
+    with pending_lock(folder, held.session):
+        write_pending(folder, held.session, OUTSIDE_PENDING + held.call_id,
+                      {'call_id': held.call_id, 'dispatched_at': at, 'route': route})
+    ledger.dispatch(ledger=folder, brief=brief, **fields)
+
+
+def outside_call_return(folder, held, route, tool, given, kept, input_key, fields, reading, server=None):
+    """The return record of a search, fetch or MCP read, from `reading`: (outcome, outcome_reason, answer or None,
+    result_size). The input keys that held the brief read that the dispatch record copies it. Clears the call's
+    `out-` pending file."""
+    if held.call_id.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'no call_id (the call id is absent from the return event)', record='return')
+        return
+    outcome, reason, answer, size = reading
+    kept = without_texts(dict(kept), outside_brief(route, given)[0], ON_DISPATCH_BRIEF)
+    if input_key in kept:
+        kept[input_key] = input_moved(given, route, ON_DISPATCH_BRIEF)
+    kept['result_size'] = size
+    if server is not None:
+        kept['server'] = server[0] if server[0] else 'unrecorded (%s)' % server[1]
+    fields = dict(fields, route=route)
+    fields.update({
+        'call_id': held.call_id,
+        'agent_id': NO_AGENT_OUTSIDE % route,
+        'outcome': outcome,
+        'outcome_reason': reason,
+        'model': 'unrecorded (the %s response names no model)' % tool,
+        'effort': 'unrecorded (a %s call reports no effort)' % route,
+        'tokens': 'unrecorded (a %s call reports no counters)' % route,
+        'cost': OUTSIDE_COST,
+        'isolation': 'unrecorded (the capture reads no record of what a %s call touched)' % route,
+        'spend_line': NOT_A_SCRIPT,
+        'harness_payload': kept,
+    })
+    with pending_lock(folder, held.session):
+        sent = read_pending(folder, held.session, OUTSIDE_PENDING + held.call_id)
+        if sent and sent.get('dispatched_at'):
+            fields['dispatched_at'] = sent['dispatched_at']
+        ledger.ret(ledger=folder, answer=answer if answer else None, **fields)
+        clear_pending(folder, held.session, [OUTSIDE_PENDING + held.call_id])
+
+
+def search_items(results):
+    """The count of title-and-URL entries across the content lists of a search's result objects."""
+    count = 0
+    for item in results:
+        content = item.get('content') if isinstance(item, dict) else None
+        if isinstance(content, list):
+            count += sum(1 for entry in content if isinstance(entry, dict) and 'title' in entry and 'url' in entry)
+    return count
+
+
+def fetch_outcome(response):
+    """(outcome, outcome_reason) of a web fetch, from its HTTP code alone: 200 to 299 served, or empty where `bytes`
+    is 0; any other code failed, its class read from reasons.json against `HTTP <code> <codeText>`; no code failed,
+    class unreadable, never served without evidence."""
+    code = response.get('code') if isinstance(response, dict) else None
+    if not isinstance(code, int) or isinstance(code, bool):
+        return 'failed', {'class': 'unreadable', 'text': 'the fetch response carries no HTTP code'}
+    if 200 <= code <= 299:
+        if response.get('bytes') == 0:
+            return 'empty', dict(EMPTY_REASON)
+        return 'served', 'none (served)'
+    said = response.get('codeText')
+    text = ('HTTP %d %s' % (code, said)) if isinstance(said, str) and said else 'HTTP %d' % code
+    return 'failed', ledger.reason_for(HARNESS, text)
+
+
+def mcp_reading(parts, absent, folder, held, record_key='tool_response'):
+    """(outcome, outcome_reason, answer, result_size) of an MCP read from its list of parts `{type, text}`. A part
+    whose type is not text is not written to the answer; its type and count go into result_size. A value that is
+    not such a list is read as failed, class unreadable, with an error line. `absent` names the key and event."""
+    if isinstance(parts, str):
+        try:
+            parts = json.loads(parts)
+        except ValueError:
+            pass
+    if not isinstance(parts, list):
+        why = '%s absent from %s' % (record_key, absent) if parts is None else (
+            '%s in %s is not a list of parts' % (record_key, absent))
+        held.error(folder, 'payload', why, record='return')
+        return 'failed', {'class': 'unreadable', 'text': why}, None, 'unrecorded (%s)' % why
+    texts = [part['text'] for part in parts if isinstance(part, dict) and part.get('type') == 'text'
+             and isinstance(part.get('text'), str)]
+    other = {}
+    for part in parts:
+        if not (isinstance(part, dict) and part.get('type') == 'text' and isinstance(part.get('text'), str)):
+            kind = part.get('type') if isinstance(part, dict) and isinstance(part.get('type'), str) else 'unnamed'
+            other[kind] = other.get(kind, 0) + 1
+    size = {'parts': len(parts), 'text_characters': sum(len(text) for text in texts)}
+    if other:
+        size['not_text'] = other
+    answer = '\n'.join(texts)
+    if any(text.strip() for text in texts):
+        return 'served', 'none (served)', answer, size
+    return 'empty', dict(EMPTY_REASON), answer, size
+
+
+def pre_outside(payload, folder, held, route):
+    tool = payload.get('tool_name')
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    server = mcp_server_of(HARNESS, tool, payload.get('mcp_server')) if route == 'mcp' else None
+    outside_call_dispatch(folder, held, HARNESS, route, given, dict(payload), 'tool_input',
+                     common(payload, folder, route), 'PreToolUse', server)
+
+
+def post_outside(event, payload, folder, held, route):
+    """The return of a search, fetch or MCP read, from PostToolUse or PostToolUseFailure."""
+    tool = payload.get('tool_name')
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    server = mcp_server_of(HARNESS, tool, payload.get('mcp_server')) if route == 'mcp' else None
+    kept = dict(payload)
+    if event == 'PostToolUseFailure':
+        text = payload.get('error')
+        reason = ledger.reason_for(HARNESS, text) if isinstance(text, str) and text else {
+            'class': 'other', 'text': 'PostToolUseFailure carried no error text'}
+        reading = ('failed', reason, None, 'unrecorded (PostToolUseFailure carries no tool_response)')
+    elif route == 'mcp':
+        reading = mcp_reading(payload.get('tool_response'), event, folder, held)
+        if reading[2]:
+            kept['tool_response'] = reading[2]
+    else:
+        response = payload.get('tool_response') if isinstance(payload.get('tool_response'), dict) else None
+        reading = search_reading(response, event, folder, held) if route == 'search' else \
+            fetch_reading(response, event, folder, held)
+        if response is not None:
+            kept['tool_response'] = dict(response)
+            key = 'results' if route == 'search' else 'result'
+            if reading[2] and key in response:
+                kept['tool_response'][key] = reading[2]
+    outside_call_return(folder, held, route, tool, given, kept, 'tool_input', common(payload, folder, route), reading,
+                   server)
+
+
+def search_reading(response, event, folder, held):
+    """(outcome, outcome_reason, answer, result_size) of a web search: served where its results hold at least one
+    title-and-URL item, empty where they hold none; the answer is the results as JSON."""
+    results = response.get('results') if isinstance(response, dict) else None
+    if not isinstance(results, list):
+        why = 'tool_response.results absent from %s' % event
+        held.error(folder, 'payload', why, record='return')
+        return 'failed', {'class': 'unreadable', 'text': why}, None, 'unrecorded (%s)' % why
+    items = search_items(results)
+    answer = json.dumps(results, ensure_ascii=False)
+    if items:
+        return 'served', 'none (served)', answer, {'items': items}
+    return 'empty', dict(EMPTY_REASON), answer, {'items': 0}
+
+
+def fetch_reading(response, event, folder, held):
+    """(outcome, outcome_reason, answer, result_size) of a web fetch: the outcome from its HTTP code (fetch_outcome),
+    the answer its `result`, the size its `bytes`."""
+    if not isinstance(response, dict):
+        why = 'tool_response absent from %s' % event
+        held.error(folder, 'payload', why, record='return')
+        return 'failed', {'class': 'unreadable', 'text': why}, None, 'unrecorded (%s)' % why
+    if not isinstance(response.get('code'), int) or isinstance(response.get('code'), bool):
+        held.error(folder, 'payload', 'tool_response.code absent from %s' % event, record='return')
+    outcome, reason = fetch_outcome(response)
+    size = response.get('bytes')
+    if isinstance(size, int) and not isinstance(size, bool):
+        size = {'bytes': size}
+    else:
+        size = 'unrecorded (tool_response.bytes absent from %s)' % event
+        held.error(folder, 'payload', 'tool_response.bytes absent from %s' % event, record='return')
+    answer = response.get('result') if isinstance(response.get('result'), str) else None
+    if answer is None:
+        held.error(folder, 'payload', 'tool_response.result absent from %s' % event, record='return')
+    return outcome, reason, answer, size
 
 
 def config_set_by(command):

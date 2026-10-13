@@ -1,5 +1,5 @@
 {
-  "description": "Per harness: the tools by which it dispatches or resumes a subagent, the tools by which a subagent hands its answer back, the shell tools whose commands the captures match against cli-patterns.json, and the transcript reader the call reader's count check uses, and, in `effort_keys`, the input key at which a dispatch tool takes an effort level the dispatching agent sets for that one call (a tool not named there takes none). The count check counts, in each transcript it is given, the distinct tool-call ids whose tool is one of `tools`, and compares them with the ledger's records; it never counts shell calls. A background return's wait ends when the subagent's final request is a call to one of its `handback` tools, whose answer is the call's input at `answer_key`. A harness whose transcript has no reader here is reported unrecorded, not counted. `delivery` lists the row forms in which the harness's transcript shows a message delivered to a subagent: each form names the values a row must hold, by dotted key (`match`), and the dotted key of the row's text (`text_at`), a string or a list of parts whose `text` parts are read. A message's turn starts at the first row of any listed form holding its text; a message delivered in a form not listed is not found, so its return is not written. `message_tools` (Codex) are the tools in `tools` that send a running subagent a message rather than dispatch one; each is recorded as a call, as SendMessage is on Claude Code. `witness_tools` (Codex) are tools on subagents that are not calls (waiting, listing, interrupting): each event on one is a witness line. The Codex app names its collaboration tools with the namespace before the name and no separator, as in `collaborationspawn_agent`; its rollout names them without it, as in `spawn_agent`, so both forms are listed. `stop` (Claude Code) names the tool by which a caller stops a running subagent and the input key holding the subagent's id: a stop naming an agent with a pending call ends that call, and its return reads failed, class stopped_by_caller.",
+  "description": "Per harness: the tools by which it dispatches or resumes a subagent, the tools by which a subagent hands its answer back, the shell tools whose commands the captures match against cli-patterns.json, and the transcript reader the call reader's count check uses, and, in `effort_keys`, the input key at which a dispatch tool takes an effort level the dispatching agent sets for that one call (a tool not named there takes none). The count check counts, in each transcript it is given, the distinct tool-call ids whose tool is one of `tools`, and compares them with the ledger's records; it never counts shell calls. A background return's wait ends when the subagent's final request is a call to one of its `handback` tools, whose answer is the call's input at `answer_key`. A harness whose transcript has no reader here is reported unrecorded, not counted. `delivery` lists the row forms in which the harness's transcript shows a message delivered to a subagent: each form names the values a row must hold, by dotted key (`match`), and the dotted key of the row's text (`text_at`), a string or a list of parts whose `text` parts are read. A message's turn starts at the first row of any listed form holding its text; a message delivered in a form not listed is not found, so its return is not written. `message_tools` (Codex) are the tools in `tools` that send a running subagent a message rather than dispatch one; each is recorded as a call, as SendMessage is on Claude Code. `witness_tools` (Codex) are tools on subagents that are not calls (waiting, listing, interrupting): each event on one is a witness line. The Codex app names its collaboration tools with the namespace before the name and no separator, as in `collaborationspawn_agent`; its rollout names them without it, as in `spawn_agent`, so both forms are listed. `stop` (Claude Code) names the tool by which a caller stops a running subagent and the input key holding the subagent's id: a stop naming an agent with a pending call ends that call, and its return reads failed, class stopped_by_caller. `outside_tools` names the tools by which a call leaves the session other than to a subagent: `search` and `fetch` list the harness's web search and web fetch tools, and `mcp` gives the rule for an MCP tool. Claude Code and Codex name an MCP tool with `prefix` then the server, `separator`, and the tool; OpenCode names one `<server>_<tool>`, where `<server>` is a key of `mcp` in the OpenCode configuration in effect (`configured_servers`), the longest such key winning. The captures record each as a call on the route of its kind, and the count check counts them, less the tools of a server the ledger folder's `mcp_not_calls` setting lists.",
   "harnesses": {
     "claude-code": {
       "tools": ["Agent", "Task", "SendMessage"],
@@ -11,7 +11,8 @@
         {"match": {"type": "attachment", "attachment.type": "queued_command"}, "text_at": "attachment.prompt"}
       ],
       "transcript": "claude-code",
-      "stop": [{"tool": "TaskStop", "agent_key": "task_id"}]
+      "stop": [{"tool": "TaskStop", "agent_key": "task_id"}],
+      "outside_tools": {"search": ["WebSearch"], "fetch": ["WebFetch"], "mcp": {"prefix": "mcp__", "separator": "__"}}
     },
     "codex": {
       "tools": ["Agent", "spawn_agent", "collaborationspawn_agent", "send_message", "followup_task", "collaborationsend_message", "collaborationfollowup_task"],
@@ -20,14 +21,16 @@
       "handback": [],
       "shell_tools": ["Bash", "exec_command"],
       "delivery": [],
-      "transcript": "codex"
+      "transcript": "codex",
+      "outside_tools": {"mcp": {"prefix": "mcp__", "separator": "__"}}
     },
     "opencode": {
       "tools": ["task"],
       "handback": [],
       "shell_tools": ["bash"],
       "delivery": [],
-      "transcript": null
+      "transcript": null,
+      "outside_tools": {"search": ["websearch"], "fetch": ["webfetch"], "mcp": {"configured_servers": true, "separator": "_"}}
     }
   }
 }

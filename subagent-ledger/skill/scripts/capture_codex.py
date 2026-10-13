@@ -64,6 +64,9 @@ What each event does (Codex 0.142.5, as observed, and 0.162.1 where it differs):
     `item_completed` row for the call, if it already holds one; only for a command matched as a model
     call, so no other shell call reads the rollout. A non-zero code is a failed call;
     a response with no exit code readable is `failed`, class `unreadable`, never `served`.
+  * PreToolUse and PostToolUse on an MCP tool (`mcp__<server>__<tool>`, by subagent-tools.json's `outside_tools`):
+    the dispatch and return of an MCP read, route mcp, read as capture_claude_code.py reads Claude Code's. Codex's
+    hooks documentation gives these events; none was observed. Its hosted web search fires no hook.
   * Any other PreToolUse or PostToolUse writes an error line naming its tool: a hook runs only for the
     tools its matcher admits, so a tool event that reaches the capture and is not recorded is a fault
     to see, never noise.
@@ -201,6 +204,8 @@ def _route(event, payload, folder, held):
         return subagent_start(payload, folder, held)
     if event == 'SubagentStop':
         return subagent_stop(payload, folder, held)
+    if event in ('PreToolUse', 'PostToolUse') and shared.outside_route(HARNESS, tool) == 'mcp':
+        return mcp_event(event, payload, folder, held)
     if event in ('PreToolUse', 'PostToolUse'):
         # Never dropped silently: the hook ran because its matcher admitted the tool.
         held.error(folder, 'payload', '%s on %s: %s' % (event, tool if isinstance(tool, str) and tool else
@@ -211,6 +216,28 @@ def _route(event, payload, folder, held):
 def _names(key):
     names = shared.harness_entry(HARNESS).get(key)
     return tuple(name for name in names if isinstance(name, str)) if isinstance(names, list) else ()
+
+
+def mcp_event(event, payload, folder, held):
+    """An MCP tool's PreToolUse (the dispatch) or PostToolUse (the return), read as Claude Code's MCP route reads
+    them: `tool_input` the brief, `tool_response` a list of parts `{type, text}`, sent as JSON text. The server is
+    the payload's `mcp_server.name`, else the tool name's part after `mcp__`. A server config.json's mcp_not_calls
+    lists writes nothing. Codex sends no failure event; a response that is not a list of parts is failed, class
+    unreadable, with an error line."""
+    tool = payload.get('tool_name')
+    server = shared.mcp_server_of(HARNESS, tool, payload.get('mcp_server'))
+    if shared.not_a_call(folder, server[0]):
+        return None
+    given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    if event == 'PreToolUse':
+        return shared.outside_call_dispatch(folder, held, HARNESS, 'mcp', given, dict(payload), 'tool_input',
+                                       common(payload, route='mcp'), event, server)
+    kept = dict(payload)
+    reading = shared.mcp_reading(payload.get('tool_response'), event, folder, held)
+    if reading[2]:
+        kept['tool_response'] = reading[2]
+    return shared.outside_call_return(folder, held, 'mcp', tool, given, kept, 'tool_input', common(payload, route='mcp'),
+                                 reading, server)
 
 
 def subagent_tools():
@@ -484,7 +511,7 @@ def oldest_waiting(folder, session):
     """The pending data of the oldest spawn in the session still waiting for an agent, by dispatch order."""
     waiting = []
     for path in shared.pending_dir(folder, session).glob('*.json'):
-        if path.name.startswith(('join-', 'cli-', 'stop-', MESSAGE)):
+        if path.name.startswith(('join-', 'cli-', 'stop-', shared.OUTSIDE_PENDING, MESSAGE)):
             continue
         try:
             data = json.loads(path.read_text(encoding='utf-8'))

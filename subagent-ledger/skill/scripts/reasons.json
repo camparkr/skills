@@ -20,7 +20,9 @@
       {"class": "usage_limit", "pattern": "usage limit|quota|credit balance"},
       {"class": "missing_key", "pattern": "\\b[A-Z][A-Z0-9_]*(KEY|TOKEN|SECRET)[A-Z0-9_]* is not set|missing (api )?key|could not read secret|no access_token|could not obtain a metadata access token"}
     ],
-    "claude-code": [],
+    "claude-code": [
+      {"class": "harness_error", "pattern": "EGRESS_BLOCKED|blocked by the network egress proxy"}
+    ],
     "claude-research": [],
     "codex": [
       {"class": "not_signed_in", "pattern": "\\b401\\b|unauthorized|codex login"},

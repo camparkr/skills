@@ -252,7 +252,10 @@
           "enum": [
             "subagent",
             "cli",
-            "script"
+            "script",
+            "search",
+            "fetch",
+            "mcp"
           ]
         },
         {

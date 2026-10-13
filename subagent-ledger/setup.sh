@@ -146,9 +146,9 @@ if [ "$UNINSTALL" -eq 0 ]; then
 		echo
 		cat <<EOF
 {
-  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [$(claude_hook PreToolUse)]}],
-  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [$(claude_hook PostToolUse)]}],
-  "PostToolUseFailure": [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [$(claude_hook PostToolUseFailure)]}],
+  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop|WebSearch|WebFetch|mcp__.*", "hooks": [$(claude_hook PreToolUse)]}],
+  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop|WebSearch|WebFetch|mcp__.*", "hooks": [$(claude_hook PostToolUse)]}],
+  "PostToolUseFailure": [{"matcher": "Agent|Task|Bash|SendMessage|WebSearch|WebFetch|mcp__.*", "hooks": [$(claude_hook PostToolUseFailure)]}],
   "SubagentStart":      [{"hooks": [$(claude_hook SubagentStart)]}],
   "SubagentStop":       [{"hooks": [$(claude_hook SubagentStop)]}]
 }
@@ -159,12 +159,12 @@ EOF
 		echo "Codex: add these to the \"hooks\" object of hooks.json in ${CODEX_DIR}. The matcher names each tool"
 		echo "every way Codex has named it: Agent and Bash, the older spawn_agent and exec_command, and the app's"
 		echo "collaborationspawn_agent, with its two message tools collaborationsend_message and"
-		echo "collaborationfollowup_task."
+		echo "collaborationfollowup_task. mcp__.* admits every MCP tool."
 		echo
 		cat <<EOF
 {
-  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task", "hooks": [$(codex_hook PreToolUse)]}],
-  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task", "hooks": [$(codex_hook PostToolUse)]}],
+  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task|mcp__.*", "hooks": [$(codex_hook PreToolUse)]}],
+  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task|mcp__.*", "hooks": [$(codex_hook PostToolUse)]}],
   "SubagentStart": [{"hooks": [$(codex_hook SubagentStart)]}],
   "SubagentStop":  [{"hooks": [$(codex_hook SubagentStop)]}]
 }

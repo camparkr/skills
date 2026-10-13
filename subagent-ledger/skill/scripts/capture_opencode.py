@@ -35,6 +35,10 @@ gets no second one. Every other event is passed over.
     A command that makes no model call writes nothing.
   * after, on `bash`: the matched command's return record. OpenCode sends `after` for a command that
     fails too, with its exit code in `output.metadata.exit`; a non-zero code is a failed call.
+  * before and after on `websearch`, `webfetch` (subagent-tools.json `outside_tools`) and on an MCP tool, which the
+    plugin hands on with `mcp_server`, the server its configuration names: the dispatch and return of a search, a
+    fetch or an MCP read, routes search, fetch and mcp. A web call that fails sends no `after`; its tool part in
+    state "error" on the general event hook writes its return, `failed`, tied by call id.
 
 Any other tool is passed over.
 
@@ -138,7 +142,13 @@ def handle(event, text, folder=None):
     try:
         folder = ledger.ledger_folder(folder)
         given = payload.get('input') if isinstance(payload.get('input'), dict) else {}
-        if is_subagent_tool(given.get('tool')):
+        route = outside_route_of(given.get('tool'), payload)
+        if route is not None:
+            if event == 'before':
+                return before_outside(payload, folder, held, route)
+            if event == 'after':
+                return after_outside(payload, folder, held, route)
+        elif is_subagent_tool(given.get('tool')):
             if event == 'before':
                 return before(payload, folder, held)
             if event == 'after':
@@ -171,12 +181,13 @@ class EventHeld(Held):
 
 
 def task_part(payload):
-    """The event's type, and its task part where it is a task's tool part, else None."""
+    """The event's type, and its tool part where it is a task's, or a search's, fetch's or MCP read's, else None."""
     event = payload.get('event') if isinstance(payload.get('event'), dict) else {}
     event_type = event.get('type') if isinstance(event.get('type'), str) else 'unrecorded (no event type)'
     properties = event.get('properties') if isinstance(event.get('properties'), dict) else {}
     part = properties.get('part') if isinstance(properties.get('part'), dict) else None
-    if part is None or part.get('type') != 'tool' or not is_subagent_tool(part.get('tool')):
+    if part is None or part.get('type') != 'tool' or not (
+            is_subagent_tool(part.get('tool')) or outside_route_of(part.get('tool'), payload) is not None):
         return event_type, None
     return event_type, part
 
@@ -191,6 +202,9 @@ def handle_event(payload, folder=None):
     held = EventHeld(event_type, part)
     try:
         folder = ledger.ledger_folder(folder)
+        route = outside_route_of(part.get('tool'), payload)
+        if route is not None:
+            return on_outside_event(event_type, part, payload, folder, held, route)
         on_event(event_type, part, payload, folder, held)
     except Exception as exc:  # the capture's own fault: recorded, never raised to the plugin
         held.error(folder, 'payload', 'the capture failed: %s: %s' % (type(exc).__name__, exc), record='return')
@@ -266,6 +280,98 @@ def on_event(event_type, part, payload, folder, held):
             fields['dispatched_at'] = sent['dispatched_at']
         ledger.ret(ledger=folder, **fields)
         shared.clear_pending(folder, held.session, [tied])
+
+
+# ---------------------------------------------------------------------------
+# Searches, fetches and MCP reads
+# ---------------------------------------------------------------------------
+
+def outside_route_of(tool, payload):
+    """`search` or `fetch` for a tool subagent-tools.json lists among OpenCode's outside_tools; `mcp` where the plugin
+    handed the event on with the MCP server its configuration names (`mcp_server`); else None."""
+    if isinstance(payload, dict) and isinstance(payload.get('mcp_server'), str) and payload.get('mcp_server'):
+        return 'mcp'
+    route = shared.outside_route(HARNESS, tool)
+    return route if route in ('search', 'fetch') else None
+
+
+def server_of(payload, route):
+    if route != 'mcp':
+        return None
+    return payload.get('mcp_server'), 'the OpenCode configuration\'s mcp keys'
+
+
+def before_outside(payload, folder, held, route):
+    """The dispatch of a search, fetch or MCP read: `args.query`, `args.url`, or the MCP tool's `args`, the brief."""
+    server = server_of(payload, route)
+    if server is not None and shared.not_a_call(folder, server[0]):
+        return
+    args = args_of(payload)
+    kept = {'input': payload.get('input'), 'args': args, 'directory': payload.get('directory')}
+    fields = dict(common(payload, held), route=route)
+    shared.outside_call_dispatch(folder, held, HARNESS, route, args, kept, 'args', fields, 'tool.execute.before', server)
+
+
+def after_outside(payload, folder, held, route):
+    """The return of a search, fetch or MCP read from tool.execute.after: a search's or fetch's `output.output` the
+    answer and its length the size; an MCP read's `output.content` a list of parts. An after with output is
+    served."""
+    server = server_of(payload, route)
+    if server is not None and shared.not_a_call(folder, server[0]):
+        return
+    output = payload.get('output') if isinstance(payload.get('output'), dict) else {}
+    given = payload.get('input') if isinstance(payload.get('input'), dict) else {}
+    args = args_of(payload)
+    kept_output = dict(output)
+    if route == 'mcp':
+        reading = shared.mcp_reading(output.get('content'), 'tool.execute.after', folder, held, 'output.content')
+        if reading[2]:
+            kept_output['content'] = reading[2]
+    else:
+        answer = output.get('output')
+        if not isinstance(answer, str):
+            why = 'output.output absent from tool.execute.after'
+            held.error(folder, 'payload', why, record='return')
+            reading = ('failed', {'class': 'unreadable', 'text': why}, None, 'unrecorded (%s)' % why)
+        elif answer.strip():
+            reading = ('served', 'none (served)', answer, {'characters': len(answer)})
+        else:
+            reading = ('empty', dict(shared.EMPTY_REASON), answer, {'characters': len(answer)})
+    inner = dict(given)
+    if 'args' in inner:
+        inner['args'] = shared.input_moved(inner['args'], route, shared.ON_DISPATCH_BRIEF)
+    kept = {'input': inner, 'output': kept_output, 'directory': payload.get('directory')}
+    fields = dict(common(payload, held), route=route)
+    shared.outside_call_return(folder, held, route, given.get('tool'), args, kept, 'args', fields, reading, server)
+
+
+def on_outside_event(event_type, part, payload, folder, held, route):
+    """A search's, fetch's or MCP read's tool part in state "error": the failed return of its pending dispatch,
+    tied by call id alone. OpenCode sends no `after` for a web call that fails."""
+    if held.session.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'a %s error event named no session' % route, record='return')
+        return
+    server = server_of(payload, route)
+    if server is not None and shared.not_a_call(folder, server[0]):
+        return
+    call_id = None if held.call_id.startswith('unrecorded (') else held.call_id
+    if call_id and already_returned(folder, held.session, call_id):
+        return
+    if call_id is None or shared.read_pending(folder, held.session, shared.OUTSIDE_PENDING + call_id) is None:
+        held.error(folder, 'payload', 'a %s error event (%s) could not be tied to a pending dispatch: it names %s'
+                   % (route, event_type, call_id or 'no call id'), record='return')
+        return
+    state = part.get('state') if isinstance(part.get('state'), dict) else {}
+    text = state.get('error') if isinstance(state.get('error'), str) and state.get('error') else \
+        'the tool part reported status error with no error text'
+    given = state.get('input') if isinstance(state.get('input'), dict) else {}
+    reading = ('failed', ledger.reason_for(HARNESS, text), None,
+               'unrecorded (%s carries no output)' % event_type)
+    kept = {'event_type': event_type, 'event': payload.get('event'), 'directory': payload.get('directory')}
+    if server is not None:
+        kept['mcp_server'] = server[0]
+    fields = dict(common(payload, held), route=route)
+    shared.outside_call_return(folder, held, route, part.get('tool'), given, kept, 'args', fields, reading, server)
 
 
 def common(payload, held):

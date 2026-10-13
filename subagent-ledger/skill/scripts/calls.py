@@ -41,7 +41,8 @@ older ones. A call with no label line reads
   * `label for no call`: a label line whose `call_id` names no row.
   * `unattributed capture error`: an error line with no session, timed inside the session's span.
   * `record unattributed: <reason>`: a record in unattributed.jsonl, timed inside the session's span.
-  * `<n> subagent dispatches in the transcript have no record`, or the reverse, from the count check.
+  * `<n> subagent dispatches in the transcript have no record`, or the reverse, and `<n> searches,
+    fetches or MCP reads in the transcript have no record`, or the reverse, from the count check.
 
 The session's span runs from its first ledger line to its last, or across --since and --until where
 given.
@@ -49,7 +50,11 @@ given.
 Without --count-check the reader opens the ledger folder's own files only, and no transcript. With it,
 it counts in each transcript given the distinct tool-call ids of the harness's subagent tools
 (subagent-tools.json), and compares each caller's count with the ledger's: its subagent dispatch
-records, its returns with no dispatch, and the error lines naming a call that has no row. It prints
+records, its returns with no dispatch, and the error lines naming a call that has no row. It counts the
+harness's searches, fetches and MCP reads (subagent-tools.json `outside_tools`, less the tools of a
+server config.json's `mcp_not_calls` lists) the same way, as `outside_by_caller`, against the ledger's
+search, fetch and mcp records; where the harness's transcript form for them is not known, that count reads
+`unrecorded (<why>)`. `difference` sums the two. It prints
 counts only, never an id or a tool input. A transcript it cannot read gives its caller's count as
 `unrecorded (<why>)`, and the difference as `unrecorded (<n> transcripts could not be read)`, never a
 number made over a count it did not make; where a readable caller still shows a difference, that
@@ -94,7 +99,14 @@ NO_DISPATCH = 'no dispatch record'
 UNATTRIBUTED_ERROR = 'unattributed capture error'
 NO_CALL = 'unrecorded (a count names no call)'
 NO_TRANSCRIPT = 'unrecorded (no transcript was given for this caller)'
-NO_AGENT_ROUTES = ('unrecorded (no agent: cli call)', 'unrecorded (no agent: script call)')
+NO_AGENT_ROUTES = ('unrecorded (no agent: cli call)', 'unrecorded (no agent: script call)',
+                   'unrecorded (no agent: search call)', 'unrecorded (no agent: fetch call)',
+                   'unrecorded (no agent: mcp call)')
+# The routes of a call that leaves the session other than to a subagent: a search, a fetch or an MCP read. Their
+# agent ids read `unrecorded (no agent: <route> call)`.
+OUTSIDE_ROUTES = ('search', 'fetch', 'mcp')
+OUTSIDE_AGENTS = dict(('unrecorded (no agent: %s call)' % route, route) for route in OUTSIDE_ROUTES)
+NOT_CALLS_SETTING = 'mcp_not_calls'
 NO_LABEL = 'unrecorded (no label line for this call)'
 LABEL_FOR_NO_CALL = 'label for no call'
 # What a row's `labels` shows of a label line, beside `earlier`.
@@ -195,6 +207,27 @@ def pending_joins(folder, session):
 
 def pending_cli(folder, session, call_id):
     return (Path(folder) / PENDING / session / ('cli-%s.json' % call_id)).is_file()
+
+
+def pending_outside(folder, session, call_id):
+    """Whether a search, fetch or MCP read's dispatch left its pending file for this call."""
+    return (Path(folder) / PENDING / session / ('out-%s.json' % call_id)).is_file()
+
+
+def not_calls(folder):
+    """The MCP server names config.json's `mcp_not_calls` lists; a name ending in `*` covers each server whose name
+    begins with what precedes it."""
+    try:
+        config = json.loads((Path(folder) / 'config.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    names = config.get(NOT_CALLS_SETTING) if isinstance(config, dict) else None
+    return [name for name in names if isinstance(name, str) and name] if isinstance(names, list) else []
+
+
+def listed(server, names):
+    return isinstance(server, str) and any(server.startswith(name[:-1]) if name.endswith('*') else server == name
+                                           for name in names)
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +495,11 @@ def caller_from_name(path, reader):
 
 
 def tool_call_ids(path, tools, reader):
-    """(caller, the subagent tool-call ids in the transcript, in order, repeats kept)."""
+    """(caller, the tool-call ids in the transcript whose tool `tools` admits, in order, repeats kept). `tools` is a
+    set of names, or a function of a name."""
+    if not callable(tools):
+        names = tools
+        tools = lambda name: name in names  # noqa: E731
     rows, _ = jsonl(path)
     ids, caller = [], None
     for row in rows:
@@ -474,14 +511,14 @@ def tool_call_ids(path, tools, reader):
             if isinstance(content, list):
                 for block in content:
                     if (isinstance(block, dict) and block.get('type') == 'tool_use'
-                            and block.get('name') in tools and isinstance(block.get('id'), str)):
+                            and tools(block.get('name')) and isinstance(block.get('id'), str)):
                         ids.append(block['id'])
         elif reader == 'codex':
             payload = row.get('payload') if isinstance(row.get('payload'), dict) else {}
             if row.get('type') == 'session_meta' and caller is None:
                 caller = payload.get('id') if payload.get('parent_thread_id') else 'parent'
             if (row.get('type') == 'response_item' and payload.get('type') == 'function_call'
-                    and payload.get('name') in tools and isinstance(payload.get('call_id'), str)):
+                    and tools(payload.get('name')) and isinstance(payload.get('call_id'), str)):
                 ids.append(payload['call_id'])
     return caller or 'parent', ids
 
@@ -493,58 +530,65 @@ def is_subagent(row):
     return row.get('agent_id') not in NO_AGENT_ROUTES
 
 
-def ledger_callers(rows, errors, session, folder):
-    """Each subagent call the ledger holds, as its caller, or None where the record does not say."""
+def is_outside(row):
+    """Whether a row is a search, a fetch or an MCP read."""
+    route = row.get('route')
+    if isinstance(route, str) and not is_unrecorded(route):
+        return route in OUTSIDE_ROUTES
+    return row.get('agent_id') in OUTSIDE_AGENTS
+
+
+def outside_callers(rows, errors, session, folder):
+    """Each search, fetch or MCP read the ledger holds, as its caller, or None where the record does not say: its
+    rows, and the error lines naming a call with no row whose dispatch left its pending file. An MCP read of a server
+    `mcp_not_calls` lists is not counted, so a record written before the server was listed does not count."""
+    names = not_calls(folder)
     found = []
     ids = set(row['call_id'] for row in rows)
     for row in rows:
-        if is_subagent(row):
-            caller = row.get('caller')
-            found.append(caller if isinstance(caller, str) and not is_unrecorded(caller) else None)
+        if not is_outside(row):
+            continue
+        payload = row.get('harness_payload')
+        if row.get('route') == 'mcp' and isinstance(payload, dict) and listed(payload.get('server'), names):
+            continue
+        caller = row.get('caller')
+        found.append(caller if isinstance(caller, str) and not is_unrecorded(caller) else None)
     seen = set()
     for line in errors:
         call_id = line.get('call_id')
-        if (line.get('session') != session or line.get('record') not in ('dispatch', 'return')
-                or is_unrecorded(call_id) or call_id in ids or call_id in seen
-                or pending_cli(folder, session, call_id)):
+        if (line.get('session') != session or is_unrecorded(call_id) or call_id in ids or call_id in seen
+                or not pending_outside(folder, session, call_id)):
             continue
         seen.add(call_id)
-        agent = line.get('agent_id')
-        if line.get('record') == 'dispatch':
-            found.append(agent if not is_unrecorded(agent) else 'parent')
-        else:
-            found.append(None)
+        found.append(None)
     return found
 
 
-def count_check(harness, paths, rows, errors, session, folder):
-    """The count_check object, and the absences it adds."""
-    try:
-        table = json.loads(TOOLS_FILE.read_text(encoding='utf-8'))['harnesses']
-    except (OSError, ValueError, KeyError) as exc:
-        raise CannotRun('%s could not be read: %s' % (TOOLS_FILE.name, exc))
-    if harness not in table:
-        raise Refused('%s names no harness %r' % (TOOLS_FILE.name, harness))
-    reader = table[harness].get('transcript')
-    if not reader:
-        return 'unrecorded (no declaration for %s)' % harness, []
-    tools = set(table[harness].get('tools') or [])
+def outside_tool(harness_entry, names):
+    """A function telling whether a tool name is one of the harness's outside_tools, less a listed server's."""
+    rules = harness_entry.get('outside_tools') if isinstance(harness_entry.get('outside_tools'), dict) else {}
+    plain = set()
+    for route in ('search', 'fetch'):
+        plain.update(name for name in rules.get(route) or [] if isinstance(name, str))
+    rule = rules.get('mcp') if isinstance(rules.get('mcp'), dict) else {}
+    prefix, separator = rule.get('prefix'), rule.get('separator')
 
-    seen_ids, unreadable, order, unread_paths = {}, {}, [], 0
-    for path in paths:
-        try:
-            caller, ids = tool_call_ids(path, tools, reader)
-        except OSError as exc:
-            caller = caller_from_name(path, reader) or 'unrecorded (%s could not be read)' % Path(path).name
-            unreadable[caller] = 'unrecorded (the transcript could not be read: %s)' % (exc.strerror or exc)
-            unread_paths += 1
-            ids = None
-        if caller not in order:
-            order.append(caller)
-        if ids is not None:
-            seen_ids.setdefault(caller, []).extend(ids)
+    def admits(name):
+        if not isinstance(name, str):
+            return False
+        if name in plain:
+            return True
+        if isinstance(prefix, str) and prefix and name.startswith(prefix) and len(name) > len(prefix):
+            rest = name[len(prefix):]
+            server = rest.split(separator, 1)[0] if isinstance(separator, str) and separator in rest else None
+            return not listed(server, names)
+        return False
+    return admits
 
-    held = ledger_callers(rows, errors, session, folder)
+
+def compared(order, seen_ids, unreadable, held, more, fewer):
+    """(by caller, absences, difference) of one count: the transcripts' ids per caller against the ledger's callers.
+    `more` and `fewer` word the absence where the transcript holds more calls than the ledger, or fewer."""
     by_caller, absences, difference = [], [], 0
     if any(caller is None for caller in held):
         readable = [caller for caller in order if caller not in unreadable]
@@ -567,17 +611,88 @@ def count_check(harness, paths, rows, errors, session, folder):
         if isinstance(count, int) and caller not in unreadable:
             difference += abs(count - kept)
             if count > kept:
-                absences.append({'call_id': NO_CALL, 'witnesses': [],
-                                 'reason': '%d subagent dispatches in the transcript have no record' % (count - kept)})
+                absences.append({'call_id': NO_CALL, 'witnesses': [], 'reason': more % (count - kept)})
             elif kept > count:
-                absences.append({'call_id': NO_CALL, 'witnesses': [],
-                                 'reason': '%d subagent dispatch records have no dispatch in the transcript'
-                                           % (kept - count)})
+                absences.append({'call_id': NO_CALL, 'witnesses': [], 'reason': fewer % (kept - count)})
+    return by_caller, absences, difference
+
+
+def ledger_callers(rows, errors, session, folder):
+    """Each subagent call the ledger holds, as its caller, or None where the record does not say."""
+    found = []
+    ids = set(row['call_id'] for row in rows)
+    for row in rows:
+        if is_subagent(row):
+            caller = row.get('caller')
+            found.append(caller if isinstance(caller, str) and not is_unrecorded(caller) else None)
+    seen = set()
+    for line in errors:
+        call_id = line.get('call_id')
+        if (line.get('session') != session or line.get('record') not in ('dispatch', 'return')
+                or is_unrecorded(call_id) or call_id in ids or call_id in seen
+                or pending_cli(folder, session, call_id) or pending_outside(folder, session, call_id)):
+            continue
+        seen.add(call_id)
+        agent = line.get('agent_id')
+        if line.get('record') == 'dispatch':
+            found.append(agent if not is_unrecorded(agent) else 'parent')
+        else:
+            found.append(None)
+    return found
+
+
+def count_check(harness, paths, rows, errors, session, folder):
+    """The count_check object, and the absences it adds. Subagent dispatches are counted as `by_caller`; searches,
+    fetches and MCP reads (the harness's outside_tools, less a server mcp_not_calls lists) as `outside_by_caller`,
+    where the harness's transcript form for them is known. `difference` is the two counts' differences summed."""
+    try:
+        table = json.loads(TOOLS_FILE.read_text(encoding='utf-8'))['harnesses']
+    except (OSError, ValueError, KeyError) as exc:
+        raise CannotRun('%s could not be read: %s' % (TOOLS_FILE.name, exc))
+    if harness not in table:
+        raise Refused('%s names no harness %r' % (TOOLS_FILE.name, harness))
+    reader = table[harness].get('transcript')
+    if not reader:
+        return 'unrecorded (no declaration for %s)' % harness, []
+    tools = set(table[harness].get('tools') or [])
+    # Only Claude Code's transcript form of a search, fetch or MCP read has been observed: a tool_use block under the
+    # same name and id as its hook payload. Codex's rollout form of an MCP call is not.
+    outside = outside_tool(table[harness], not_calls(folder)) if reader == 'claude-code' else None
+
+    seen_ids, seen_outside, unreadable, order, unread_paths = {}, {}, {}, [], 0
+    for path in paths:
+        try:
+            caller, ids = tool_call_ids(path, tools, reader)
+            more = tool_call_ids(path, outside, reader)[1] if outside is not None else []
+        except OSError as exc:
+            caller = caller_from_name(path, reader) or 'unrecorded (%s could not be read)' % Path(path).name
+            unreadable[caller] = 'unrecorded (the transcript could not be read: %s)' % (exc.strerror or exc)
+            unread_paths += 1
+            ids = more = None
+        if caller not in order:
+            order.append(caller)
+        if ids is not None:
+            seen_ids.setdefault(caller, []).extend(ids)
+            seen_outside.setdefault(caller, []).extend(more)
+
+    by_caller, absences, difference = compared(
+        order, seen_ids, unreadable, ledger_callers(rows, errors, session, folder),
+        '%d subagent dispatches in the transcript have no record',
+        '%d subagent dispatch records have no dispatch in the transcript')
+    if outside is not None:
+        outside_by_caller, more_absences, more_difference = compared(
+            order, seen_outside, unreadable, outside_callers(rows, errors, session, folder),
+            '%d searches, fetches or MCP reads in the transcript have no record',
+            '%d search, fetch or MCP read records have no call in the transcript')
+        absences.extend(more_absences)
+        difference += more_difference
+    else:
+        outside_by_caller = 'unrecorded (no observed rollout form for an MCP call on %s)' % harness
     if unread_paths and not difference:
         # A difference is never made over a count the reader did not make.
         difference = 'unrecorded (%d transcripts could not be read)' % unread_paths
     return {'harness': harness, 'transcripts': [str(p) for p in paths], 'by_caller': by_caller,
-            'difference': difference}, absences
+            'outside_by_caller': outside_by_caller, 'difference': difference}, absences
 
 
 # ---------------------------------------------------------------------------

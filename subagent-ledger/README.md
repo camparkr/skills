@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.1-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.2-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)
@@ -45,6 +45,9 @@ For a call to a subagent or a model, it also records:
 For a search, a fetch or an MCP read, it records the query, the address or the tool's input. It keeps the answer as a
 file, with its size or the number of results. A fetch's outcome includes its HTTP status, so a missing page reads as
 failed.
+
+A message to another running session is a call of its own. It makes that session answer, and the answer costs tokens.
+The record names the receiving session and leaves the tokens to that session's own count, so they are counted once.
 
 The capture also finds a model call inside a loop, a here-document or a script the command runs. A call that slips
 past the record shows up as an absence with its reason, such as a call with no return. It does not disappear.
@@ -143,6 +146,10 @@ The skill has these limits today:
 - **A fetch through the shell**, such as `curl`, is not recorded.
 - **A Claude Code fetch** keeps the model's summary of the page, not the page itself. That is all the harness returns.
 - **A tool the harness refuses before it runs** writes no record.
+- **A message received from another session** is listed by the reader, not recorded by the hooks. Its sender is named
+  only once the sender's ledger holds a record from version 0.2.2 or later.
+- **Messages between sessions** are linked by the desktop app's session ID. Where the app gives none, such as on the
+  command line, the link reads `unrecorded`.
 
 ## Who it is for
 
@@ -220,6 +227,9 @@ records.
 Records go to `.subagent-ledger/` at the top of your repository, one file per session, unless `SUBAGENT_LEDGER_DIR`
 names another folder. Ask your agent which calls this session made, or run
 `python3 <skill>/scripts/calls.py --session <id>`.
+
+The reader also lists the messages this session received, apart from its calls. It names each sender's session where
+the sender's ledger shows it.
 
 ## Settings
 

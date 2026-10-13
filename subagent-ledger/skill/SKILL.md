@@ -68,7 +68,10 @@ python3 <skill>/scripts/calls.py --session <session id>
 It prints one JSON object with these top-level keys:
 
 - `calls`: each call, joined from its two records, with its models, tokens, cost where reported and outcome;
-- `absences`: each call the ledger cannot show, with its reason; and
+- `peer_sessions`: each message sent to another running session, in the same shape as `calls`;
+- `absences`: each call the ledger cannot show, with its reason;
+- `received_messages`: each message another session sent this one, with its sender's session where the ledger shows
+  it, present only with `--count-check`; and
 - `count_check`: the result of the check below, present only with `--count-check`.
 
 It makes no model call and changes nothing. It ends with one of these exit codes:

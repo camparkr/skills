@@ -8,6 +8,9 @@ It prints one JSON object on standard output:
 
     {"session", "ledger", "read_at", "calls": [...], "absences": [...], "count_check": ...}
 
+With --count-check it also lists, as `received_messages` and never as calls, each message another session sent
+this one, read from the transcripts given (see received_messages()).
+
 `calls` holds one row per call, in dispatch order, but for each message to another running session (route
 `peer-session`), listed in a group of its own, `peer_sessions`, in the same row shape. The rest of `calls` merging the call's dispatch and return records:
 the frame from the return record where there is one, and each selectable field from the record that
@@ -454,6 +457,55 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
 
 
 PEER_ROUTE = 'peer-session'
+NO_HOST_RECORD = 'unrecorded (no record from that host session)'
+RECEIVED = re.compile(r'^\s*<cross-session-message\b([^>]*)>')
+ATTRIBUTE = re.compile(r'([A-Za-z-]+)="([^"]*)"')
+
+
+def received_messages(paths, folder):
+    """The messages other sessions sent this one, from its transcripts' queue-operation rows (operation enqueue)
+    whose content opens with `<cross-session-message ...>`: when, the sender's name and host id, and the sender's
+    session, found through any ledger record in the folder whose harness_payload.host_session is that host id. They
+    are never calls: the receiver's tokens are counted in its own session's totals. No message text is printed."""
+    hosts = {}
+    for path in sorted(Path(folder).glob('*.jsonl')):
+        if path.name in (ledger.ERRORS_FILE, '%s.jsonl' % ledger.UNATTRIBUTED):
+            continue
+        try:
+            text = path.read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if 'host_session' not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            payload = row.get('harness_payload') if isinstance(row, dict) else None
+            host = payload.get('host_session') if isinstance(payload, dict) else None
+            if isinstance(host, str) and not is_unrecorded(host) and isinstance(row.get('session'), str):
+                hosts.setdefault(host, row['session'])
+    out = []
+    for path in paths:
+        try:
+            rows, _ = jsonl(path)
+        except OSError:
+            continue
+        for row in rows:
+            content = row.get('content')
+            if row.get('type') != 'queue-operation' or row.get('operation') != 'enqueue' or not isinstance(content, str):
+                continue
+            found = RECEIVED.match(content)
+            if not found:
+                continue
+            attrs = dict(ATTRIBUTE.findall(found.group(1)))
+            host = attrs.get('from-session')
+            out.append({'at': row.get('timestamp'),
+                        'from_name': attrs.get('from-name') or 'unrecorded (the row names no from-name)',
+                        'from_host_session': host or 'unrecorded (the row names no from-session)',
+                        'sender_session': hosts.get(host, NO_HOST_RECORD) if host else NO_HOST_RECORD})
+    return out
 
 
 def grouped(out):
@@ -786,6 +838,7 @@ def main(argv=None):
             return 2
         out['count_check'] = check
         out['absences'].extend(more)
+        out['received_messages'] = received_messages(args.transcript, folder)
     out = grouped(out)
     if args.count_check:
         if code == 0 and isinstance(check, dict) and isinstance(check['difference'], int) and check['difference']:

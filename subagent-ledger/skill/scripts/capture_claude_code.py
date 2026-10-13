@@ -652,7 +652,10 @@ def outside_return(payload, folder, held):
     if peer:
         receiver = receiving_session(given)
         fields.update({'tokens': PEER_SPENT % receiver, 'cost': PEER_SPENT % receiver})
-        fields['harness_payload'] = dict(fields['harness_payload'], receiving_session=receiver)
+        msg_id = response.get('msg_id') if isinstance(response, dict) else None
+        fields['harness_payload'] = dict(fields['harness_payload'], receiving_session=receiver,
+                                         msg_id=msg_id if isinstance(msg_id, str) and msg_id else
+                                         'unrecorded (the response names no msg_id)')
     if sent and sent.get('dispatched_at'):
         fields['dispatched_at'] = sent['dispatched_at']
     ledger.ret(ledger=folder, answer=answer, **fields)

@@ -63,6 +63,9 @@ ERRORS_FILE = 'capture-errors.jsonl'
 UNATTRIBUTED = 'unattributed'
 CONFIG_FILE = 'config.json'
 FOLDER_VARIABLE = 'SUBAGENT_LEDGER_DIR'
+# The writing session's host id (Claude Code sets it in a session's environment), kept on each call record's
+# harness_payload as `host_session`, so a message between sessions can be joined from the receiving side.
+HOST_VARIABLE = 'CLAUDE_CODE_HOST_SESSION_ID'
 DEFAULT_FOLDER_NAME = '.subagent-ledger'
 REASON_LIMIT = 400
 # An environment value shorter than this is not treated as a credential: a short value such as
@@ -398,6 +401,10 @@ def _build(kind, folder, fields, on, brief, answer):
             record[name] = value
     # Anything left is not a field of the record; it stays, so validation names it.
     record.update(given)
+    if isinstance(record.get('harness_payload'), dict):
+        host = os.environ.get(HOST_VARIABLE)
+        record['harness_payload'] = dict(record['harness_payload'], host_session=host if host else
+                                         'unrecorded (%s is not set)' % HOST_VARIABLE)
     record['fields_on'] = [name for name in SELECTABLE if name in on]
     record['fields_not_chosen'] = [name for name in SELECTABLE if name not in on]
     record['withheld'] = 0

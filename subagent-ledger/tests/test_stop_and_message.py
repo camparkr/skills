@@ -279,5 +279,62 @@ class PeerSession(base.World):
         self.assertEqual(self.records_of('toolu_to_agent_01')['dispatch']['route'], 'peer-session')
 
 
+class PeerLinks(base.World):
+    """A message between two sessions is linkable from both sides. The sender's records carry its host session id
+    (CLAUDE_CODE_HOST_SESSION_ID) and the message's msg_id; the receiver's reader lists each message its transcript
+    holds as received, from the queue-operation row a live session wrote (`<cross-session-message from=...
+    from-session="local_<id>" ... from-name=...>`), the sender's session found through any ledger record in the
+    folder carrying that host id. Received messages are never calls."""
+
+    fields = 'all'
+    HOST = 'local_00000000-1111-4222-8333-444444444444'
+    SENDER = 'sender00-0000-4000-8000-000000000001'
+    RECEIVER = 'receiver-0000-4000-8000-000000000002'
+    message = MessageOutside.message
+    peer = PeerSession.peer
+    records_of = PeerSession.records_of
+    TO = MessageOutside.TO
+
+    def test_a_sent_message_carries_the_senders_host_id_and_msg_id(self):
+        os.environ['CLAUDE_CODE_HOST_SESSION_ID'] = self.HOST
+        self.addCleanup(os.environ.pop, 'CLAUDE_CODE_HOST_SESSION_ID', None)
+        rows = self.events('background-events.jsonl')
+        self.feed(self.peer(rows))
+        found = self.records_of('toolu_peer_01')
+        for record in found.values():
+            self.assertEqual(record['harness_payload']['host_session'], self.HOST)
+        self.assertEqual(found['return']['harness_payload']['msg_id'], 'm-1')
+        self.assertEqual(found['return']['harness_payload']['receiving_session'], self.TO)
+
+    def transcript(self, host):
+        path = self.tmp / ('%s.jsonl' % self.RECEIVER)
+        row = {'type': 'queue-operation', 'operation': 'enqueue', 'sessionId': self.RECEIVER,
+               'timestamp': '2026-10-13T05:00:00.000Z',
+               'content': '<cross-session-message from="uds:/tmp/x.sock" from-session="%s" hop-chain="ab" '
+                          'from-name="The sending session" from-mode="prompting">A note.</cross-session-message>' % host}
+        path.write_text(json.dumps(row) + '\n' + json.dumps(dict(row, operation='remove')) + '\n', encoding='utf-8')
+        return path
+
+    def received(self, path):
+        done = subprocess.run([sys.executable, str(base.SCRIPTS / 'calls.py'), '--session', self.RECEIVER, '--ledger',
+                               str(self.ledger), '--json', '--count-check', '--harness', 'claude-code',
+                               '--transcript', str(path)], capture_output=True, text=True)
+        out = json.loads(done.stdout)
+        return out
+
+    def test_a_received_message_resolves_to_the_senders_session(self):
+        (self.ledger / ('%s.jsonl' % self.SENDER)).write_text(json.dumps(
+            {'record': 'dispatch', 'session': self.SENDER, 'harness_payload': {'host_session': self.HOST}}) + '\n',
+            encoding='utf-8')
+        out = self.received(self.transcript(self.HOST))
+        self.assertEqual(out['received_messages'], [{'at': '2026-10-13T05:00:00.000Z', 'from_name': 'The sending session',
+                                                     'from_host_session': self.HOST, 'sender_session': self.SENDER}])
+        self.assertEqual(out['calls'] + out['peer_sessions'], [])
+
+    def test_a_received_message_from_an_unknown_host_reads_unrecorded(self):
+        out = self.received(self.transcript(self.HOST))
+        self.assertEqual(out['received_messages'][0]['sender_session'], 'unrecorded (no record from that host session)')
+
+
 if __name__ == '__main__':
     unittest.main()

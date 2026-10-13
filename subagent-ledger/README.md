@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.0-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.1-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)
@@ -138,8 +138,8 @@ The skill has these limits today:
   only mentions the program, may be recorded as a call. In tests on one workspace's sessions, about 2% of shell records
   were such commands.
 - **Codex's web search** runs on the model service's side and fires no hook, so the capture cannot record it.
-- **A Codex MCP read** is recorded, but the form of its answer has not yet been seen in a live session. Until it has,
-  the answer may read `unreadable`.
+- **A Codex MCP read** is recorded. If the read fails, Codex sends no closing event, so the record shows a call with
+  no return and the reader lists it as such.
 - **A fetch through the shell**, such as `curl`, is not recorded.
 - **A Claude Code fetch** keeps the model's summary of the page, not the page itself. That is all the harness returns.
 - **A tool the harness refuses before it runs** writes no record.

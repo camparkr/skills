@@ -623,6 +623,37 @@ class CodexMcp(World):
         self.assertEqual(self.errors(), [])
 
 
+class CodexMcpObject(World):
+    """Codex sends an MCP answer as an object, `{content: [parts], isError}`. fixtures/outside/codex-mcp-object-events.jsonl
+    holds a live Codex-app session's two MCP calls, machine paths, the model name and the thrown error's own words
+    replaced. The first, `isError` false with one empty text part, is as its PreToolUse and PostToolUse arrived. In
+    that session the second call, which threw, reached PreToolUse only; its PostToolUse is built from the result the
+    session's own record holds (`isError` true), reconstructed, not observed."""
+
+    def returns(self):
+        codex = load(SCRIPTS / 'capture_codex.py', 'capture_codex_object')
+        self.feed(self.events('codex-mcp-object-events.jsonl'), capture=codex)
+        return dict((r['call_id'], r) for r in self.records() if r['record'] == 'return')
+
+    def test_a_served_object_with_only_empty_text_is_empty(self):
+        back = self.returns()['exec-6e1c108f-18cb-4e67-abc4-25dfe2feb84e']
+        self.assertEqual(back['outcome'], 'empty')
+        self.assertEqual(back['outcome_reason']['class'], 'empty_answer')
+        self.assertEqual(back['harness_payload']['result_size'], {'parts': 1, 'text_characters': 0})
+        self.assertIs(back['harness_payload']['tool_response']['isError'], False)
+
+    def test_an_object_with_is_error_true_is_failed_its_text_the_reason(self):
+        back = self.returns().get('exec-d44b03c2-80b1-4fc5-83b4-c360fec89e40')
+        self.assertIsNotNone(back, 'no return was written')
+        self.assertEqual(back['outcome'], 'failed')
+        self.assertEqual(back['outcome_reason'], {'class': 'other', 'text': 'a test failure'})
+        self.assertEqual(self.errors(), [])
+
+    def test_a_bare_list_of_parts_is_still_read(self):
+        self.assertEqual(self.capture.mcp_reading([{'type': 'text', 'text': 'x'}], 'PostToolUse', self.ledger,
+                                                  None)[0], 'served')
+
+
 # ---------------------------------------------------------------------------
 # The schema
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -217,7 +218,7 @@ class MessageOutside(base.World):
 class PeerSession(base.World):
     """A message to another running session is a call on the route `peer-session`, both records kept, the receiving
     session named, its tokens and cost left to that session's own close. The tool input is in the form a live session
-    sent (dry run 24: `to`, `recipient`, `recipient_kind`, `summary`, `type`); the response as it came back
+    sent (`to`, `recipient`, `recipient_kind`, `summary`, `type`); the response as it came back
     (`success`, `message`, `display`, `msg_id`). A message to this session's own subagent stays `subagent`."""
 
     fields = 'all'
@@ -296,8 +297,9 @@ class PeerLinks(base.World):
     TO = MessageOutside.TO
 
     def test_a_sent_message_carries_the_senders_host_id_and_msg_id(self):
-        os.environ['CLAUDE_CODE_HOST_SESSION_ID'] = self.HOST
-        self.addCleanup(os.environ.pop, 'CLAUDE_CODE_HOST_SESSION_ID', None)
+        patcher = mock.patch.dict(os.environ, {'CLAUDE_CODE_HOST_SESSION_ID': self.HOST})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         rows = self.events('background-events.jsonl')
         self.feed(self.peer(rows))
         found = self.records_of('toolu_peer_01')

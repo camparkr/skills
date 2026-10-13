@@ -26,8 +26,6 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const PYTHON = process.env.SUBAGENT_LEDGER_PYTHON || "python3";
-// Searches, fetches and MCP reads are handed on. A test sets this false to show what the plugin handed on before.
-const OUTSIDE_ON = true;
 
 function scriptsDir() {
   const named = process.env.SUBAGENT_LEDGER_SCRIPTS;
@@ -42,7 +40,7 @@ function capturePath() {
 function handedOn() {
   try {
     const entry = JSON.parse(readFileSync(join(scriptsDir(), "subagent-tools.json"), "utf8")).harnesses.opencode;
-    const outside = (OUTSIDE_ON && entry.outside_tools) || {};
+    const outside = entry.outside_tools || {};
     return new Set([...(entry.tools || []), ...(entry.shell_tools || []), ...(outside.search || []),
                     ...(outside.fetch || [])]);
   } catch (err) {
@@ -67,7 +65,6 @@ function serversIn(path) {
 
 // The MCP servers the configuration in effect names: the plugin's directory's own file and the global one.
 function configuredServers(directory) {
-  if (!OUTSIDE_ON) return [];
   const global = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "opencode");
   const found = new Set();
   for (const folder of [directory, global]) {
@@ -111,7 +108,7 @@ function sendEvent(event, directory, servers) {
     const part = event.properties && event.properties.part;
     if (!part || part.type !== "tool") return;
     const server = mcpServer(part.tool, servers);
-    const handed = OUTSIDE_ON ? (TOOLS.has(part.tool) && part.tool !== "bash") || server : part.tool === "task";
+    const handed = (TOOLS.has(part.tool) && part.tool !== "bash") || server;
     if (!handed) return;
     if (!part.state || part.state.status !== "error") return;
     const argv = [capturePath(), "event", event.type];

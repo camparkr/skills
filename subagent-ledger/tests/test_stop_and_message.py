@@ -214,5 +214,70 @@ class MessageOutside(base.World):
         self.assertEqual(self.returns(), {})
 
 
+class PeerSession(base.World):
+    """A message to another running session is a call on the route `peer-session`, both records kept, the receiving
+    session named, its tokens and cost left to that session's own close. The tool input is in the form a live session
+    sent (dry run 24: `to`, `recipient`, `recipient_kind`, `summary`, `type`); the response as it came back
+    (`success`, `message`, `display`, `msg_id`). A message to this session's own subagent stays `subagent`."""
+
+    fields = 'all'
+    TO = MessageOutside.TO
+    message = MessageOutside.message
+    returns = MessageOutside.returns
+
+    def peer(self, rows, kind='name', call_id='toolu_peer_01'):
+        pre, post = self.message(rows, self.TO, {'success': True, 'message': 'sent', 'display': 'sent to it',
+                                                 'msg_id': 'm-1'}, call_id=call_id)
+        for row in (pre, post):
+            row['payload']['tool_input'].update(recipient=self.TO, recipient_kind=kind, summary='A note',
+                                                type='message')
+        return [pre, post]
+
+    def records_of(self, call_id):
+        return dict((line['record'], line) for line in self.records() if line.get('call_id') == call_id)
+
+    def test_fn12_a_message_to_another_session_is_a_peer_session_call(self):
+        rows = self.events('background-events.jsonl')
+        self.feed(self.peer(rows))
+        found = self.records_of('toolu_peer_01')
+        self.assertEqual((found['dispatch']['route'], found['return']['route']), ('peer-session', 'peer-session'))
+        spent = 'unrecorded (spent in session %s, counted at its close)' % self.TO
+        self.assertEqual((found['return']['tokens'], found['return']['cost']), (spent, spent))
+        for record in found.values():
+            self.assertEqual(record['harness_payload']['receiving_session'], self.TO)
+        self.assertEqual(found['return']['outcome'], 'served')
+
+    def test_fn12_the_reader_lists_it_in_a_group_of_its_own(self):
+        rows = self.events('background-events.jsonl')
+        self.feed(self.peer(rows))
+        session = rows[0]['payload']['session_id']
+        done = subprocess.run([sys.executable, str(base.SCRIPTS / 'calls.py'), '--session', session, '--ledger',
+                               str(self.ledger), '--json'], capture_output=True, text=True)
+        out = json.loads(done.stdout)
+        self.assertEqual([row['call_id'] for row in out['peer_sessions']], ['toolu_peer_01'])
+        self.assertNotIn('toolu_peer_01', [row['call_id'] for row in out['calls']])
+
+    def test_fn12_a_message_to_a_running_subagent_stays_subagent(self):
+        rows = self.events('background-events.jsonl')
+        self.place_transcript('background-agent.jsonl', rows)
+        self.feed(rows[:3])
+        pre, post = self.message(rows, AGENT, {'success': True, 'message': 'Message queued for delivery.'},
+                                 call_id='toolu_to_agent_01')
+        for row in (pre, post):
+            row['payload']['tool_input'].update(recipient=AGENT, recipient_kind='agent')
+        self.feed([pre, post])
+        self.assertEqual(self.records_of('toolu_to_agent_01')['dispatch']['route'], 'subagent')
+
+    def test_fn12_switched_off_every_unknown_recipient_read_as_a_peer_turns_the_subagent_message(self):
+        rows = self.events('background-events.jsonl')
+        self.place_transcript('background-agent.jsonl', rows)
+        self.feed(rows[:3])
+        pre, post = self.message(rows, AGENT, {'success': True, 'message': 'Message queued for delivery.'},
+                                 call_id='toolu_to_agent_01')
+        self.capture.is_peer = lambda given, known: True
+        self.feed([pre, post])
+        self.assertEqual(self.records_of('toolu_to_agent_01')['dispatch']['route'], 'peer-session')
+
+
 if __name__ == '__main__':
     unittest.main()

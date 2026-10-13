@@ -1,5 +1,6 @@
-"""Tests for searches, fetches and MCP reads: calls that leave the session through a harness's own web tools or an
-MCP server, recorded on the routes `search`, `fetch` and `mcp`.
+"""Tests for searches, fetches and MCP reads, recorded on the routes `search`, `fetch` and `mcp`.
+
+These are calls that leave the session through a harness's own web tools or an MCP server.
 
 Each control has a half that runs on the code as built and must pass, and, where the control names one, a half that
 switches one part off and shows the fault. Before these routes were built every test here failed.
@@ -496,9 +497,8 @@ class OpenCodeRoutes(OpenCodeWorld):
 
     def test_switched_off_the_task_and_bash_plugin_hands_none_on(self):
         source = PLUGIN_JS.read_text(encoding='utf-8')
-        self.assertIn('function handedOn()', source)
-        old = re.sub(r'function handedOn\(\) \{.*?\n\}\n', 'function handedOn() { return new Set(["task", "bash"]); }\n'
-                     'function serverOf() { return null; }\n', source, flags=re.S)
+        self.assertIn('const OUTSIDE_ON = true;', source)
+        old = source.replace('const OUTSIDE_ON = true;', 'const OUTSIDE_ON = false;')
         self.run_plugin(self.rows('oc-probe-events.jsonl', 'oc-fetchok-events.jsonl', 'oc-failed-fetch-events.jsonl'),
                         source=old)
         self.assertEqual(self.records(), [])

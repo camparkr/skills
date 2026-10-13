@@ -324,7 +324,8 @@ def after_outside(payload, folder, held, route):
     args = args_of(payload)
     kept_output = dict(output)
     if route == 'mcp':
-        reading = shared.mcp_reading(output.get('content'), 'tool.execute.after', folder, held, 'output.content')
+        reading = shared.mcp_reading(output.get('content'), 'tool.execute.after', folder, held, 'output.content',
+                                     harness=HARNESS)
         if reading[2]:
             kept_output['content'] = reading[2]
     else:

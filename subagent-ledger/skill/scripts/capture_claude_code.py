@@ -1583,15 +1583,21 @@ def fetch_outcome(response):
     return 'failed', ledger.reason_for(HARNESS, text)
 
 
-def mcp_reading(parts, absent, folder, held, record_key='tool_response'):
-    """(outcome, outcome_reason, answer, result_size) of an MCP read from its list of parts `{type, text}`. A part
-    whose type is not text is not written to the answer; its type and count go into result_size. A value that is
-    not such a list is read as failed, class unreadable, with an error line. `absent` names the key and event."""
+def mcp_reading(parts, absent, folder, held, record_key='tool_response', harness=HARNESS):
+    """(outcome, outcome_reason, answer, result_size) of an MCP read from its list of parts `{type, text}`, or from
+    an object holding that list as `content` (Codex: `{content, isError}`). `isError` true is failed, its class read
+    from reasons.json against the text parts joined; otherwise as for a list. A part whose type is not text is not
+    written to the answer; its type and count go into result_size. A value that is neither is read as failed, class
+    unreadable, with an error line. `absent` names the key and event."""
     if isinstance(parts, str):
         try:
             parts = json.loads(parts)
         except ValueError:
             pass
+    is_error = False
+    if isinstance(parts, dict) and isinstance(parts.get('content'), list):
+        is_error = parts.get('isError') is True
+        parts = parts['content']
     if not isinstance(parts, list):
         why = '%s absent from %s' % (record_key, absent) if parts is None else (
             '%s in %s is not a list of parts' % (record_key, absent))
@@ -1608,9 +1614,25 @@ def mcp_reading(parts, absent, folder, held, record_key='tool_response'):
     if other:
         size['not_text'] = other
     answer = '\n'.join(texts)
+    if is_error:
+        return 'failed', ledger.reason_for(harness, answer if answer.strip() else
+                                           'the MCP tool reported isError true with no text'), None, size
     if any(text.strip() for text in texts):
         return 'served', 'none (served)', answer, size
     return 'empty', dict(EMPTY_REASON), answer, size
+
+
+def mcp_kept(response, answer):
+    """The MCP response as harness_payload keeps it once its answer has been copied: the answer in place of the parts,
+    so the writer moves it to its file; an object's other keys (such as `isError`) kept beside it."""
+    if isinstance(response, str):
+        try:
+            response = json.loads(response)
+        except ValueError:
+            return answer
+    if isinstance(response, dict) and isinstance(response.get('content'), list):
+        return dict(response, content=answer)
+    return answer
 
 
 def pre_outside(payload, folder, held, route):
@@ -1635,7 +1657,7 @@ def post_outside(event, payload, folder, held, route):
     elif route == 'mcp':
         reading = mcp_reading(payload.get('tool_response'), event, folder, held)
         if reading[2]:
-            kept['tool_response'] = reading[2]
+            kept['tool_response'] = mcp_kept(payload.get('tool_response'), reading[2])
     else:
         response = payload.get('tool_response') if isinstance(payload.get('tool_response'), dict) else None
         reading = search_reading(response, event, folder, held) if route == 'search' else \

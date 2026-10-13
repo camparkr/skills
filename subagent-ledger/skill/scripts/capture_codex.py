@@ -220,7 +220,8 @@ def _names(key):
 
 def mcp_event(event, payload, folder, held):
     """An MCP tool's PreToolUse (the dispatch) or PostToolUse (the return), read as Claude Code's MCP route reads
-    them: `tool_input` the brief, `tool_response` a list of parts `{type, text}`, sent as JSON text. The server is
+    them: `tool_input` the brief, `tool_response` the MCP result, `{content: [parts], isError}` in a live Codex-app
+    session (a bare list of parts is read too). The server is
     the payload's `mcp_server.name`, else the tool name's part after `mcp__`. A server config.json's mcp_not_calls
     lists writes nothing. Codex sends no failure event; a response that is not a list of parts is failed, class
     unreadable, with an error line."""
@@ -233,9 +234,9 @@ def mcp_event(event, payload, folder, held):
         return shared.outside_call_dispatch(folder, held, HARNESS, 'mcp', given, dict(payload), 'tool_input',
                                        common(payload, route='mcp'), event, server)
     kept = dict(payload)
-    reading = shared.mcp_reading(payload.get('tool_response'), event, folder, held)
+    reading = shared.mcp_reading(payload.get('tool_response'), event, folder, held, harness=HARNESS)
     if reading[2]:
-        kept['tool_response'] = reading[2]
+        kept['tool_response'] = shared.mcp_kept(payload.get('tool_response'), reading[2])
     return shared.outside_call_return(folder, held, 'mcp', tool, given, kept, 'tool_input', common(payload, route='mcp'),
                                  reading, server)
 

@@ -8,7 +8,8 @@ It prints one JSON object on standard output:
 
     {"session", "ledger", "read_at", "calls": [...], "absences": [...], "count_check": ...}
 
-`calls` holds one row per call, in dispatch order, merging the call's dispatch and return records:
+`calls` holds one row per call, in dispatch order, but for each message to another running session (route
+`peer-session`), listed in a group of its own, `peer_sessions`, in the same row shape. The rest of `calls` merging the call's dispatch and return records:
 the frame from the return record where there is one, and each selectable field from the record that
 carries it. Where both records carry a field and one fills it while the other reads `unrecorded
 (<reason>)`, the row shows the filled value; where both fill it, the return's. A field the record names
@@ -452,6 +453,17 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
             'absences': absences}
 
 
+PEER_ROUTE = 'peer-session'
+
+
+def grouped(out):
+    """The output with each message to another session (route peer-session) moved from `calls` to a group of its
+    own, `peer_sessions`, in the same row shape and order."""
+    out['peer_sessions'] = [row for row in out['calls'] if row.get('route') == PEER_ROUTE]
+    out['calls'] = [row for row in out['calls'] if row.get('route') != PEER_ROUTE]
+    return out
+
+
 def span(records, since, until):
     times = []
     for record in records:
@@ -524,9 +536,11 @@ def tool_call_ids(path, tools, reader):
 
 
 def is_subagent(row):
+    """A call by a subagent tool: a subagent dispatch or message, or a message to another session (peer-session),
+    which the harness sends by the same tool."""
     route = row.get('route')
     if isinstance(route, str) and not is_unrecorded(route):
-        return route == 'subagent'
+        return route in ('subagent', PEER_ROUTE)
     return row.get('agent_id') not in NO_AGENT_ROUTES
 
 
@@ -772,6 +786,8 @@ def main(argv=None):
             return 2
         out['count_check'] = check
         out['absences'].extend(more)
+    out = grouped(out)
+    if args.count_check:
         if code == 0 and isinstance(check, dict) and isinstance(check['difference'], int) and check['difference']:
             code = 4
         elif code == 0 and isinstance(check, dict) and isinstance(check['difference'], str):

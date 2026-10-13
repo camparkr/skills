@@ -255,7 +255,8 @@
             "script",
             "search",
             "fetch",
-            "mcp"
+            "mcp",
+            "peer-session"
           ]
         },
         {

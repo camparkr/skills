@@ -206,6 +206,25 @@ STOPPED_REASON = {'class': 'stopped_by_caller', 'text': 'the caller stopped the 
 MESSAGES_OUTSIDE = True
 OUTSIDE_AGENT = 'unrecorded (addressed outside this session: %s)'
 OUTSIDE_READING = 'unrecorded (a message to another session: this session holds no record of its run)'
+# A message to another running session is a call on its own route: the receiving session answers and spends tokens,
+# which its own close counts (FN-12).
+PEER_ROUTE = 'peer-session'
+PEER_KINDS = ('name', 'session')
+PEER_SPENT = 'unrecorded (spent in session %s, counted at its close)'
+
+
+def is_peer(given, known):
+    """Whether a SendMessage goes to another session: its `to` is no agent id this ledger holds, and its
+    `recipient_kind` names a session or a session's name. A message to `main` or to an agent is this session's."""
+    return not known and isinstance(given, dict) and given.get('recipient_kind') in PEER_KINDS
+
+
+def receiving_session(given, response=None):
+    """The receiving session as the payload names it: the tool input's `to`, else its `recipient`."""
+    for value in ((given or {}).get('to'), (given or {}).get('recipient')):
+        if isinstance(value, str) and value:
+            return value
+    return 'unrecorded (the payload names no receiving session)'
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
 
@@ -543,7 +562,8 @@ def pre_resume(payload, folder, held):
         agent_field = 'unrecorded (the message is addressed to %s, not an agent id this ledger holds)' % (
             to if isinstance(to, str) and to else 'no one named')
     at = ledger.now()
-    fields = common(payload, folder, route='subagent')
+    peer = is_peer(given, known)
+    fields = common(payload, folder, route=PEER_ROUTE if peer else 'subagent')
     fields.update({
         'call_id': held.call_id,
         'agent_id': agent_field,
@@ -556,10 +576,13 @@ def pre_resume(payload, folder, held):
     found, seconds = dispatch_kind(folder, message, held)
     fields.update(found)
     fields['harness_payload'] = with_triage_time(payload, seconds)
+    if peer:
+        fields['harness_payload'] = dict(fields['harness_payload'], receiving_session=receiving_session(given))
     fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
                                            payload.get('transcript_path'), fields['act_kind'], message)
     with pending_lock(folder, held.session):
-        write_pending(folder, held.session, held.call_id, {'call_id': held.call_id, 'dispatched_at': at})
+        write_pending(folder, held.session, held.call_id, {'call_id': held.call_id, 'dispatched_at': at,
+                                                           'route': fields['route']})
         if known:
             write_pending(folder, held.session, 'resume-' + held.call_id, {
                 'call_id': held.call_id, 'agent_id': to, 'dispatched_at': at,
@@ -610,7 +633,11 @@ def outside_return(payload, folder, held):
         served = False
         answer = message_text(response)
     sent = read_pending(folder, held.session, held.call_id)
-    fields = common(payload, folder, route='subagent')
+    # A message to another session (FN-12), told by its recipient_kind at dispatch or, where the dispatch was not
+    # seen or named no kind, by this structure alone, is route peer-session.
+    peer = (sent or {}).get('route') == PEER_ROUTE or is_peer(given, False) or (
+        (sent or {}).get('route') is None and not given.get('recipient_kind'))
+    fields = common(payload, folder, route=PEER_ROUTE if peer else 'subagent')
     fields.update({
         'call_id': held.call_id,
         'agent_id': OUTSIDE_AGENT % (to if isinstance(to, str) and to else 'no one named'),
@@ -622,6 +649,10 @@ def outside_return(payload, folder, held):
         'effort': OUTSIDE_READING,
         'harness_payload': without_texts(payload, message_text(given.get('message')), ON_DISPATCH_BRIEF),
     })
+    if peer:
+        receiver = receiving_session(given)
+        fields.update({'tokens': PEER_SPENT % receiver, 'cost': PEER_SPENT % receiver})
+        fields['harness_payload'] = dict(fields['harness_payload'], receiving_session=receiver)
     if sent and sent.get('dispatched_at'):
         fields['dispatched_at'] = sent['dispatched_at']
     ledger.ret(ledger=folder, answer=answer, **fields)

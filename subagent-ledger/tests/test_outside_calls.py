@@ -301,6 +301,52 @@ class ClaudeCodePairedFixtures(World):
         self.assertTrue(any('code' in line['reason'] for line in self.errors()), self.errors())
 
 
+class EmptyOutcomes(World):
+    """A search whose results hold no title-and-URL item, and an MCP read whose text parts are all empty, are
+    `empty`, class empty_answer: served with nothing in it. Built from the live run's payloads, with the results or
+    the parts emptied (constructed, not observed: no empty answer was observed)."""
+
+    def rows(self, call_id, change):
+        rows = [row for row in self.events('cc-rerun-events.jsonl') if row['payload']['tool_use_id'] == call_id]
+        change(rows[1]['payload'])
+        return rows
+
+    def empty_search(self, payload):
+        payload['tool_response']['results'] = [{'tool_use_id': 'srvtoolu_empty', 'content': []}, 'No results.']
+
+    def empty_read(self, payload):
+        payload['tool_response'] = [{'type': 'text', 'text': ''}, {'type': 'text', 'text': '  '}]
+
+    def test_a_search_with_no_items_is_empty(self):
+        self.feed(self.rows(SEARCH_ID, self.empty_search))
+        back = self.of(SEARCH_ID, 'return')
+        self.assertEqual(back['outcome'], 'empty')
+        self.assertEqual(back['outcome_reason']['class'], 'empty_answer')
+        self.assertEqual(back['harness_payload']['result_size'], {'items': 0})
+
+    def test_an_mcp_read_with_only_empty_text_is_empty(self):
+        self.feed(self.rows(MCP_ID, self.empty_read))
+        back = self.of(MCP_ID, 'return')
+        self.assertEqual(back['outcome'], 'empty')
+        self.assertEqual(back['outcome_reason']['class'], 'empty_answer')
+        self.assertEqual(back['harness_payload']['result_size'], {'parts': 2, 'text_characters': 2})
+
+    def test_switched_off_reading_any_return_as_served_the_two_read_served(self):
+        served = lambda *args, **kwargs: ('served', 'none (served)', 'x', {'items': 0})  # noqa: E731
+        with mock.patch.object(self.capture, 'search_reading', served), \
+                mock.patch.object(self.capture, 'mcp_reading', served):
+            self.feed(self.rows(SEARCH_ID, self.empty_search) + self.rows(MCP_ID, self.empty_read))
+        self.assertEqual([self.of(i, 'return')['outcome'] for i in (SEARCH_ID, MCP_ID)], ['served', 'served'])
+
+
+class NoRunLabel(unittest.TestCase):
+
+    def test_no_fixture_names_the_run_it_came_from(self):
+        hits = [str(path.relative_to(FIXTURES)) for path in sorted(FIXTURES.glob('*'))
+                if re.search(r'dr[0-9]+', path.read_text(encoding='utf-8'))]
+        self.assertEqual(hits, [])
+
+
 # ---------------------------------------------------------------------------
 # mcp_not_calls
 # ---------------------------------------------------------------------------
@@ -468,7 +514,19 @@ class OpenCodeWorld(unittest.TestCase):
         return [r for r in self.records() if r.get('call_id') == call_id and r.get('record') == kind]
 
 
+# The plugin's three lines that hand on searches, fetches and MCP reads, each with the line the plugin had before them.
+# A test rewrites a copy with the earlier lines to show what the plugin handed on before; the plugin has no switch.
+OUTSIDE_PARTS = (
+    ('const outside = entry.outside_tools || {};', 'const outside = {};'),
+    ('function configuredServers(directory) {', 'function configuredServers(directory) {\n  return [];'),
+    ('const handed = (TOOLS.has(part.tool) && part.tool !== "bash") || server;', 'const handed = part.tool === "task";'),
+)
+
+
 class OpenCodeRoutes(OpenCodeWorld):
+
+    def test_the_shipped_plugin_carries_no_test_switch(self):
+        self.assertNotIn('OUTSIDE_ON', PLUGIN_JS.read_text(encoding='utf-8'))
 
     def test_dispatches_for_all_five_and_returns_for_the_mcp_read_and_the_fetch(self):
         self.run_plugin(self.rows('oc-probe-events.jsonl', 'oc-fetchok-events.jsonl'))
@@ -497,8 +555,10 @@ class OpenCodeRoutes(OpenCodeWorld):
 
     def test_switched_off_the_task_and_bash_plugin_hands_none_on(self):
         source = PLUGIN_JS.read_text(encoding='utf-8')
-        self.assertIn('const OUTSIDE_ON = true;', source)
-        old = source.replace('const OUTSIDE_ON = true;', 'const OUTSIDE_ON = false;')
+        old = source
+        for anchor, earlier in OUTSIDE_PARTS:
+            self.assertIn(anchor, old)
+            old = old.replace(anchor, earlier)
         self.run_plugin(self.rows('oc-probe-events.jsonl', 'oc-fetchok-events.jsonl', 'oc-failed-fetch-events.jsonl'),
                         source=old)
         self.assertEqual(self.records(), [])

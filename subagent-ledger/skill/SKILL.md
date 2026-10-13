@@ -1,6 +1,6 @@
 ---
 name: subagent-ledger
-description: "Keeps a record of every call a session makes to a subagent or to another model through its command line. Hooks and scripts write it, not the agent. Use it before you hand work to a subagent or another model, when the user asks what was delegated, what it cost or what came back, and when a session closes. Triggers: /subagent-ledger, record subagent calls, what did the subagents cost, list this session's calls, delegate this to Gemini or Cursor. Not for tracking tool calls that are not calls to a model, or for judging a subagent's work."
+description: "Keeps a record of every call a session makes outside itself. That means a call to a subagent, to another model through its command line, or to a web search, a page fetch or an MCP server. Hooks and scripts write it, not the agent. Use it before you hand work to a subagent or another model, and when a session closes. Use it also when the user asks what was delegated, searched or fetched, what it cost or what came back. Triggers: /subagent-ledger, record subagent calls, what did the subagents cost, list this session's calls, delegate this to Gemini or Cursor. Not for tool calls that stay inside the session, such as reading or editing files, or for judging a subagent's work."
 ---
 
 # subagent-ledger
@@ -34,6 +34,9 @@ A model called through the shell, such as `claude -p` or `codex exec`, is record
 no kind. Codex encrypts the brief it passes to a subagent, so a Codex record carries no kind or user answer from the
 brief. The call script covers only Gemini CLI and Cursor. For a Claude or Codex call that needs a brief and a kind,
 send it as a subagent instead.
+
+Searches, page fetches and MCP reads are recorded by the same hooks. You do nothing before them. A server named in
+`config.json`'s `mcp_not_calls` is left out.
 
 ## Calls to Gemini CLI or Cursor
 

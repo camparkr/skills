@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.0-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)
@@ -12,7 +12,7 @@
 
 ## Problem
 
-An agent that hands work to subagents and other models keeps no dependable record of the calls. It does not keep
+An agent that hands work to subagents and other models, or searches and fetches from the web, keeps no dependable record of the calls. It does not keep
 what it sent, which model ran, what it cost or whether it worked. Someone rebuilds the answers from transcripts afterwards, or remembers them wrongly.
 *Subagent-ledger* writes that record as each call happens: one line when the call goes out and one when it comes back.
 The harness's hooks and scripts write it, never the agent.
@@ -29,7 +29,11 @@ This README uses a few working terms:
 
 ## What it records
 
-For every call to a subagent and every call to another model through its command line, the ledger records:
+For every call the session makes outside itself, the ledger records what was asked, what came back and the true
+outcome. A call goes to a subagent, to another model through its command line, or to a web search, a page fetch or an
+MCP server.
+
+For a call to a subagent or a model, it also records:
 
 - the brief and the answer, each kept as a file;
 - the model asked for, beside the model that ran, read from the call's own transcript;
@@ -37,6 +41,10 @@ For every call to a subagent and every call to another model through its command
 - the true outcome (served, failed or empty), with the reason, such as not signed in or a usage limit;
 - what the run touched outside its own folder; and
 - the kind of work the call did and, where the call needed the user's decision, whether the user answered first.
+
+For a search, a fetch or an MCP read, it records the query, the address or the tool's input. It keeps the answer as a
+file, with its size or the number of results. A fetch's outcome includes its HTTP status, so a missing page reads as
+failed.
 
 The capture also finds a model call inside a loop, a here-document or a script the command runs. A call that slips
 past the record shows up as an absence with its reason, such as a call with no return. It does not disappear.
@@ -129,6 +137,12 @@ The skill has these limits today:
 - **A shell command that names a model program but calls none**, such as a loop, a here-document or a script that
   only mentions the program, may be recorded as a call. In tests on one workspace's sessions, about 2% of shell records
   were such commands.
+- **Codex's web search** runs on the model service's side and fires no hook, so the capture cannot record it.
+- **A Codex MCP read** is recorded, but the form of its answer has not yet been seen in a live session. Until it has,
+  the answer may read `unreadable`.
+- **A fetch through the shell**, such as `curl`, is not recorded.
+- **A Claude Code fetch** keeps the model's summary of the page, not the page itself. That is all the harness returns.
+- **A tool the harness refuses before it runs** writes no record.
 
 ## Who it is for
 
@@ -164,9 +178,9 @@ these, with `<skill>` standing for the full path to this folder's `skill/`:
 
 ```json
 {
-  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PreToolUse"}]}],
-  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUse"}]}],
-  "PostToolUseFailure": [{"matcher": "Agent|Task|Bash|SendMessage", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUseFailure"}]}],
+  "PreToolUse":         [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop|WebSearch|WebFetch|mcp__.*", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PreToolUse"}]}],
+  "PostToolUse":        [{"matcher": "Agent|Task|Bash|SendMessage|TaskStop|WebSearch|WebFetch|mcp__.*", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUse"}]}],
+  "PostToolUseFailure": [{"matcher": "Agent|Task|Bash|SendMessage|WebSearch|WebFetch|mcp__.*", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" PostToolUseFailure"}]}],
   "SubagentStart":      [{"hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" SubagentStart"}]}],
   "SubagentStop":       [{"hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_claude_code.py\" SubagentStop"}]}]
 }
@@ -174,26 +188,29 @@ these, with `<skill>` standing for the full path to this folder's `skill/`:
 
 `Bash` in the matcher records calls to other models made through their command line, such as `claude -p` or
 `codex exec`. `SendMessage` records a message sent to a subagent that is already running. `TaskStop` records a
-subagent the agent stops before it finishes. Without `PostToolUseFailure`, a failed call writes no return.
+subagent the agent stops before it finishes. `WebSearch`, `WebFetch` and `mcp__.*` record searches, page fetches and
+MCP reads. Without `PostToolUseFailure`, a failed call writes no return.
 
 **Codex.** Add these under `hooks` in `hooks.json` in your Codex folder:
 
 ```json
 {
-  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_codex.py\" PreToolUse"}]}],
-  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_codex.py\" PostToolUse"}]}],
+  "PreToolUse":    [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task|mcp__.*", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_codex.py\" PreToolUse"}]}],
+  "PostToolUse":   [{"matcher": "Agent|Bash|spawn_agent|exec_command|collaborationspawn_agent|collaborationsend_message|collaborationfollowup_task|mcp__.*", "hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_codex.py\" PostToolUse"}]}],
   "SubagentStart": [{"hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_codex.py\" SubagentStart"}]}],
   "SubagentStop":  [{"hooks": [{"type": "command", "command": "python3 \"<skill>/scripts/capture_codex.py\" SubagentStop"}]}]
 }
 ```
 
-Codex names these tools differently across versions, so the matcher lists every name seen. Codex runs a hook only
+Codex names these tools differently across versions, so the matcher lists every name seen. `mcp__.*` records MCP
+reads. Codex's own web search fires no hook (see 'Known limits'). Codex runs a hook only
 once you have trusted it, and skips an untrusted one without saying so. In the Codex app, open Settings → Hooks and
 trust each of the four. In the Codex command-line interface (CLI), type `/hooks` in a session and trust them there.
 Then start a fresh session. A changed hook needs trusting again.
 
 **OpenCode.** Link `skill/scripts/opencode-plugin/subagent-ledger.js` into OpenCode's plugin folder, and set
-`SUBAGENT_LEDGER_SCRIPTS` to the full path of `skill/scripts`.
+`SUBAGENT_LEDGER_SCRIPTS` to the full path of `skill/scripts`. The plugin also records `websearch`, `webfetch` and
+each MCP tool, with nothing more to set.
 
 **Gemini CLI and Cursor.** These need no capture. Make these calls through `<skill>/scripts/call.py`, which writes both
 records.
@@ -220,6 +237,9 @@ chosen, so a missing field is never mistaken for an empty one.
   command reads the brief and prints the kind it found. The record uses the brief's own kind and keeps the triage's
   reading beside it. With no command, the record says no triage ran.
 - `harness_homes`: the configuration folder `call.py` gives Gemini CLI or Cursor.
+- `mcp_not_calls`: the MCP servers whose tools act on your machine or the harness, such as a browser or a terminal,
+  instead of fetching content. The capture records no call to them, and the count check leaves them out. A name
+  ending in `*` covers every server whose name starts with the rest.
 
 ## Contents of this folder
 
@@ -233,7 +253,8 @@ is a generated list of its files. Each file does this:
   schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files and appends
   the line.
 - `skill/scripts/capture_claude_code.py`: Claude Code's hook command. It writes both records for each subagent call,
-  each message to a running subagent and each model call made through the command line.
+  each message to a running subagent, each model call made through the command line, and each search, fetch and MCP
+  read.
 - `skill/scripts/capture_codex.py`: the same for Codex.
 - `skill/scripts/capture_opencode.py` and `skill/scripts/opencode-plugin/subagent-ledger.js`: the same for OpenCode,
   through a plugin that hands each event to the capture.

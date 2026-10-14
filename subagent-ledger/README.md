@@ -157,6 +157,16 @@ The skill has these limits today:
   its paths listed whole. The subagent's own transcript holds the whole command.
 - **Two messages a subagent answers in one turn** each carry that turn's answer and counts, so adding `tokens` across
   records counts that turn twice. Add each turn once.
+- **On Windows**, four things still assume macOS or Linux:
+  - `setup.sh` installs by symbolic link. Git Bash copies the folder instead unless symbolic links are turned on, and
+    a copy is neither recognised on a second run nor removed by `--uninstall`. There is no `setup.ps1` yet.
+  - The ledger folder's `triage_command` runs through the system shell, which on Windows is `cmd.exe`, so a command
+    written for `sh` fails there.
+  - The hook entries `setup.sh` prints call `python3`, which a Windows machine may lack or may route to the Microsoft
+    Store. Change the command in each entry to the Python you use. The OpenCode plugin takes it from
+    `SUBAGENT_LEDGER_PYTHON`.
+  - Codex's capture matches a message to a subagent by the last part of the subagent's path, split at `/`. If Codex
+    on Windows writes that path with backslashes, a message that names only the last part is not matched.
 
 ## Who it is for
 

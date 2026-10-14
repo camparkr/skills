@@ -47,6 +47,7 @@ which prints the reading as JSON. It changes nothing.
 
 import glob
 import json
+import ntpath
 import os
 import posixpath
 import re
@@ -379,7 +380,21 @@ def codex_turn_usage(rows, turn=None):
     return out
 
 
+# A Windows working folder: a drive letter, or a network path written with backslashes. A folder written any other
+# way is a macOS or Linux folder, and its paths are judged by the POSIX rules.
+WINDOWS_FOLDER = re.compile(r'^(?:[A-Za-z]:(?:[\\/]|$)|\\\\)')
+
+
+def _windows(folder):
+    return bool(WINDOWS_FOLDER.match(folder))
+
+
 def _inside(path, folder):
+    if _windows(folder):
+        # Windows paths take either slash and ignore case: normcase makes both backslashes and lower case.
+        path = ntpath.normcase(ntpath.normpath(path))
+        folder = ntpath.normcase(ntpath.normpath(folder))
+        return path == folder or path.startswith(folder.rstrip('\\') + '\\')
     path = posixpath.normpath(path)
     folder = posixpath.normpath(folder)
     return path == folder or path.startswith(folder.rstrip('/') + '/')
@@ -388,6 +403,9 @@ def _inside(path, folder):
 def _absolute(value, folder):
     if value.startswith('~'):
         value = os.path.expanduser(value)
+    if _windows(folder):
+        # ntpath.join keeps a path with its own drive or server, and puts a path from the root on the folder's drive.
+        return ntpath.join(folder, value)
     if value.startswith('/'):
         return value
     return posixpath.join(folder, value)

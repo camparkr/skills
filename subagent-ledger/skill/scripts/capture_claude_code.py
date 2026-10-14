@@ -860,8 +860,9 @@ def delivered_ending(ending, data):
     delivery form holding it comes before the end of the request that holds this stop's answer; its return
     then takes this stop's answer, and the counters of the turn it was delivered in, from the turn's first
     row to that request. The turn begins after the last request before that row that stopped for a reason
-    other than tool_use, or at the transcript's start. Where the transcript cannot be read, it is written at the first stop of a turn
-    that started after the message was sent."""
+    other than tool_use or called one of the harness's hand-back tools, or at the transcript's start. Where
+    the transcript cannot be read, it is written at the first stop of a turn that started after the message
+    was sent."""
     message = data.get('message')
     rows = None
     if ending['how'] not in ('no transcript', 'no path'):
@@ -877,12 +878,15 @@ def delivered_ending(ending, data):
     end = ending['span'][1] if ending.get('span') else final_request_end(rows)
     if delivered is None or end is None or delivered > end:
         return None
-    return dict(ending, span=(turn_begun(rows, delivered), end))
+    return dict(ending, span=(turn_begun(rows, delivered, handback_tools(HARNESS)), end))
 
 
-def turn_begun(rows, position):
+def turn_begun(rows, position, handbacks=None):
     """The first row of the turn that row `position` falls in: the row after the last request before it that
-    stopped for a reason other than tool_use, or 0."""
+    ended a turn, or 0. A request ends a turn when it stopped for a reason other than tool_use, or when it calls
+    one of `handbacks`, the harness's hand-back tools: a subagent that hands its answer back by a tool call
+    ends its turn with that call, and its requests may carry no stop reason at all."""
+    handbacks = handbacks or {}
     groups, order = {}, []
     for at, row in enumerate(rows[:position]):
         if transcripts._usage(row) is None:
@@ -896,9 +900,19 @@ def turn_begun(rows, position):
     for key in order:
         reasons = [(rows[at].get('message') or {}).get('stop_reason') for at in groups[key]]
         stopped = [reason for reason in reasons if reason is not None]
-        if stopped and 'tool_use' not in stopped:
+        if (stopped and 'tool_use' not in stopped) or calls_handback((rows[at] for at in groups[key]), handbacks):
             begun = groups[key][-1] + 1
     return begun
+
+
+def calls_handback(rows, handbacks):
+    """Whether any of a request's rows calls one of `handbacks`."""
+    for row in rows:
+        content = (row.get('message') or {}).get('content')
+        for part in content if isinstance(content, list) else []:
+            if isinstance(part, dict) and part.get('type') == 'tool_use' and part.get('name') in handbacks:
+                return True
+    return False
 
 
 def final_request_end(rows):

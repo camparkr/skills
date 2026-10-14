@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.2-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.3-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)
@@ -227,6 +227,9 @@ records.
 Records go to `.subagent-ledger/` at the top of your repository, one file per session, unless `SUBAGENT_LEDGER_DIR`
 names another folder. Ask your agent which calls this session made, or run
 `python3 <skill>/scripts/calls.py --session <id>`.
+
+To read one stretch of the session, such as the time since its last close, add `--since <time>`, and `--until <time>`
+if you need an end. The count check and the received messages then cover that stretch alone.
 
 The reader also lists the messages this session received, apart from its calls. It names each sender's session where
 the sender's ledger shows it.

@@ -65,6 +65,9 @@ Run `calls.py` from the repository the session works in, or pass `--ledger <fold
 python3 <skill>/scripts/calls.py --session <session id>
 ```
 
+To read one stretch of the session, such as the time since its last close, add `--since <time>`, and `--until <time>`
+if you need an end. The count check and the received messages then cover that stretch alone.
+
 It prints one JSON object with these top-level keys:
 
 - `calls`: each call, joined from its two records, with its models, tokens, cost where reported and outcome;

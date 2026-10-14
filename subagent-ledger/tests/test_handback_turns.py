@@ -169,5 +169,85 @@ class TurnReadOnce(HandbackLane):
         self.assertEqual(self.own_tokens(back)['output'], sum(tokens_of(turn)['output'] for turn in (1, 2, 3)))
 
 
+class TurnsSumOnce(HandbackLane):
+    """Each distinct turn's tokens, added up once across a lane's returns, equal the transcript's own turn-by-turn
+    totals. The third turn answers two messages with one hand-back: the first delivered as the user row that opens
+    the turn, the second queued and delivered mid-turn as a `queued_command` attachment, as in session bc2f0e03's
+    lane adec2091345ee7106 (rows 697, 776 and 892). Their two returns carry identical figures, and the sum counts
+    them once. A record carries no span, so a turn is told by what its returns share: the agent, the answer file
+    and the four counters."""
+
+    QUEUED = 'And count the lines of the third notes file too.'
+    QUEUED_ID = 'toolu_fn16_message_0004'
+
+    def turn_rows(self, turn, opening):
+        rows = super().turn_rows(turn, opening)
+        if turn == 3:
+            rows.insert(3, {'type': 'attachment', 'isSidechain': True, 'cwd': str(self.work),
+                            'attachment': {'type': 'queued_command', 'prompt': self.QUEUED, 'isMeta': True,
+                                           'origin': {'kind': 'coordinator'}}})
+        return rows
+
+    def queued_rows(self):
+        pre, post = self.message_rows(3)
+        for row in (pre, post):
+            row['payload'].update(tool_use_id=self.QUEUED_ID,
+                                  tool_input={'to': AGENT, 'message': self.QUEUED})
+        post['payload']['tool_response'] = {'success': True,
+                                            'message': 'Message queued for delivery to %s.' % AGENT}
+        return [pre, post]
+
+    def run_lane(self):
+        """Dispatch; a resume; then two messages sent before the third turn's stop, both answered by that turn."""
+        self.rows = self.events('background-events.jsonl')
+        self.path = Path(self.rows[3]['payload']['agent_transcript_path'])
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text('', encoding='utf-8')
+        self.append_turn(1, self.rows[0]['payload']['tool_input']['prompt'])
+        self.feed(self.rows)
+        self.feed(self.message_rows(2))
+        self.append_turn(2, DELIVERED % MESSAGES[2])
+        self.feed(self.stop_rows(2))
+        self.feed(self.message_rows(3) + self.queued_rows())
+        self.append_turn(3, DELIVERED % MESSAGES[3])
+        self.feed(self.stop_rows(3))
+
+    def transcript_turn_totals(self):
+        """The four counters of each turn, read straight from the transcript: a turn ends at a hand-back call."""
+        totals, current = [], dict.fromkeys(('input', 'cache_write', 'cache_read', 'output'), 0)
+        names = (('input', 'input_tokens'), ('cache_write', 'cache_creation_input_tokens'),
+                 ('cache_read', 'cache_read_input_tokens'), ('output', 'output_tokens'))
+        for line in self.path.read_text(encoding='utf-8').splitlines():
+            message = json.loads(line).get('message') or {}
+            if not isinstance(message.get('usage'), dict):
+                continue
+            for label, native in names:
+                current[label] += message['usage'][native]
+            if any(part.get('name') == 'SubagentHandback' for part in message.get('content') or []
+                   if isinstance(part, dict)):
+                totals.append(current)
+                current = dict.fromkeys(current, 0)
+        return totals
+
+    def test_fn16_each_turn_summed_once_equals_the_transcripts_turns(self):
+        self.run_lane()
+        self.assertEqual(self.errors(), [])
+        returns = self.returns()
+        self.assertEqual(len(returns), 4, sorted(returns))
+        both = returns[MESSAGE_IDS[3]], returns[self.QUEUED_ID]
+        self.assertEqual(self.own_tokens(both[0]), self.own_tokens(both[1]), 'one turn answered both messages')
+        self.assertEqual(both[0]['answer_path'], both[1]['answer_path'])
+        turns = {}
+        for record in returns.values():
+            own = self.own_tokens(record)
+            turns[(record['agent_id'], record['answer_path'], tuple(sorted(own.items())))] = own
+        self.assertEqual(len(turns), 3, 'three distinct turns')
+        summed = dict((key, sum(own[key] for own in turns.values())) for key in ('input', 'cache_write',
+                                                                                   'cache_read', 'output'))
+        per_turn = self.transcript_turn_totals()
+        self.assertEqual(len(per_turn), 3)
+        self.assertEqual(summed, dict((key, sum(turn[key] for turn in per_turn)) for key in summed))
+
+
 if __name__ == '__main__':
     unittest.main()

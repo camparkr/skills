@@ -201,6 +201,50 @@ class TheLine(LabelWorld):
 
 
 # ---------------------------------------------------------------------------
+# The labeller's call ids: one per request, however many requests the roster needs
+# ---------------------------------------------------------------------------
+
+class CallIds(LabelWorld):
+    """A label line carries one labeller call id per request: 1, 3 or 5 are written; none, or a non-id, is not."""
+
+    def label_with(self, ids):
+        return self.ledger.label(call_id='call-1', session=SESSION, labelled_at='2026-10-09T02:00:00.000Z',
+                                 labelled_because=['always: verdict-or-review'], failure_modes=[],
+                                 likelihoods=likelihoods(), cutoff=2, roster_revision=REVISION,
+                                 question_revision=QUESTION_REVISION, labeller_model='labeller-1.0.0',
+                                 labeller_call_ids=ids)
+
+    def ids(self, n):
+        return ['label-call-%d' % k for k in range(1, n + 1)]
+
+    def test_one_three_and_five_call_ids_are_written(self):
+        self.a_call('call-1')
+        for n in (1, 3, 5):
+            with self.subTest(ids=n):
+                written = self.label_with(self.ids(n))
+                self.assertTrue(written.ok, written.error)
+        lines = [r for r in self.session_lines() if r['record'] == 'label']
+        self.assertEqual([len(line['labeller_call_ids']) for line in lines], [1, 3, 5])
+        self.assertEqual(self.errors(), [])
+
+    def test_no_call_id_or_a_non_id_entry_is_refused(self):
+        self.a_call('call-1')
+        for name, ids in (('none', []), ('empty string', ['label-call-1', '']), ('a number', ['label-call-1', 7])):
+            with self.subTest(name):
+                self.assertFalse(self.label_with(ids).ok, name)
+        self.assertEqual([r for r in self.session_lines() if r['record'] == 'label'], [])
+
+    def test_switched_off_a_bound_of_three_refuses_the_five_id_line(self):
+        self.a_call('call-1')
+        bounded = json.loads(json.dumps(self.ledger.load_schema()))
+        bounded['$defs']['label']['properties']['labeller_call_ids'].update(minItems=3, maxItems=3)
+        with mock.patch.object(self.ledger, 'load_schema', lambda: bounded):
+            five = self.label_with(self.ids(5))
+        self.assertFalse(five.ok, 'with maxItems 3 restored, a five-request label line is refused')
+        self.assertIn('more than 3', str(five.error))
+
+
+# ---------------------------------------------------------------------------
 # The newest label shown, the older counted
 # ---------------------------------------------------------------------------
 

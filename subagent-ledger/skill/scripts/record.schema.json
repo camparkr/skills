@@ -1884,12 +1884,11 @@
         },
         "labeller_call_ids": {
           "type": "array",
-          "minItems": 3,
-          "maxItems": 3,
+          "minItems": 1,
           "items": {
             "$ref": "#/$defs/id"
           },
-          "description": "The call_id of each of the labeller's three requests, in request order."
+          "description": "The call_id of each of the labeller's requests, one per request, in request order."
         },
         "withheld": {
           "$ref": "#/$defs/count"

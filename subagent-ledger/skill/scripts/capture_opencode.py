@@ -72,7 +72,7 @@ NO_PROVIDER = 'unrecorded (tool.execute.before names no model, so no provider)'
 NO_EFFORT = 'unrecorded (OpenCode reports no effort level to a plugin)'
 NO_SIGN_IN = 'unrecorded (OpenCode reports no sign-in route to a plugin)'
 LIMIT = ('each tool call is listed as the model wrote it, when it names an absolute path outside the '
-         'folder; a read inside a script its shell tool ran is not seen')
+         'folder; a read inside a script its shell tool ran is not seen; ' + transcripts.CUT_NOTE)
 STATE = re.compile(r'<task\b[^>]*\bstate="([^"]*)"')
 RESULT = re.compile(r'<task_result>(.*?)</task_result>', re.S)
 

@@ -61,10 +61,13 @@ COUNTERS = (
 )
 PATH_KEYS = ('file_path', 'path', 'notebook_path', 'filePath', 'dir_path')
 COMMAND_KEYS = ('command',)
+COMMAND_CUT = 200
+CUT_NOTE = ('a command longer than 200 characters is cut to its first 200, with its full length in '
+            'command_chars; its paths are listed whole, and the file named by read_from holds it in full')
 ISOLATION_LIMIT = ('none known for tool inputs; a shell command is listed when it names an absolute '
-                   'path outside the folder, and a path a command reaches by other means is not seen')
+                   'path outside the folder, and a path a command reaches by other means is not seen; ' + CUT_NOTE)
 CODEX_LIMIT = ('each command is listed as the model wrote it, when it names an absolute path outside '
-               'the folder; a read inside a script it ran is not seen')
+               'the folder; a read inside a script it ran is not seen; ' + CUT_NOTE)
 CODEX_COUNTERS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')
 CODEX_NO_CACHE_WRITE = 'unrecorded (the rollout records no cache-write counter)'
 CODEX_CONTINUED = 'unrecorded (the session continues in another rollout)'
@@ -394,7 +397,10 @@ ABSOLUTE = re.compile(r'''(?:^|[\s'"=:(])((?:~|/)[^\s'";|&<>()]*)''')
 
 
 def isolation(reading):
-    """What the run touched outside its folder, read from its own transcript."""
+    """What the run touched outside its folder, read from its own transcript.
+
+    A listed command is cut to its first COMMAND_CUT characters; where it was cut, `command_chars` gives its full
+    length. `paths` lists every outside path the whole command names, wherever it stands in it."""
     folder = reading.get('cwd')
     if not folder:
         return 'unrecorded (the transcript records no working folder)'
@@ -417,7 +423,10 @@ def isolation(reading):
             named = [found for found in ABSOLUTE.findall(value)
                      if not _inside(_absolute(found, folder), folder)]
             if named:
-                outside.append({'tool': use.get('name'), key: value, 'paths': named})
+                entry = {'tool': use.get('name'), key: value[:COMMAND_CUT], 'paths': named}
+                if len(value) > COMMAND_CUT:
+                    entry['command_chars'] = len(value)
+                outside.append(entry)
     return {'folder': folder, 'outside': outside, 'read_from': reading.get('path'),
             'limit': reading.get('isolation_limit') or ISOLATION_LIMIT}
 

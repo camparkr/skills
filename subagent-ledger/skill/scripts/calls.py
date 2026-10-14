@@ -62,7 +62,10 @@ search, fetch and mcp records; where the harness's transcript form for them is n
 counts only, never an id or a tool input. A transcript it cannot read gives its caller's count as
 `unrecorded (<why>)`, and the difference as `unrecorded (<n> transcripts could not be read)`, never a
 number made over a count it did not make; where a readable caller still shows a difference, that
-difference is printed and the exit is 4.
+difference is printed and the exit is 4. With --since or --until the count check, and the received messages,
+take only what lies inside the window: a transcript row by its own timestamp, a ledger record by its dispatch time
+(its return time where it has none), an error line by its time. A session whose capture was installed part way
+through is checked from the install on.
 
 Exit codes: 0 listed; 1 refused on its input; 2 cannot run (the ledger folder, the schema or the
 writer missing); 3 a declared absence, such as no ledger file for the session, or a transcript the
@@ -462,7 +465,7 @@ RECEIVED = re.compile(r'^\s*<cross-session-message\b([^>]*)>')
 ATTRIBUTE = re.compile(r'([A-Za-z-]+)="([^"]*)"')
 
 
-def received_messages(paths, folder):
+def received_messages(paths, folder, since=None, until=None):
     """The messages other sessions sent this one, from its transcripts' queue-operation rows (operation enqueue)
     whose content opens with `<cross-session-message ...>`: when, the sender's name and host id, and the sender's
     session, found through any ledger record in the folder whose harness_payload.host_session is that host id. They
@@ -495,6 +498,8 @@ def received_messages(paths, folder):
         for row in rows:
             content = row.get('content')
             if row.get('type') != 'queue-operation' or row.get('operation') != 'enqueue' or not isinstance(content, str):
+                continue
+            if not in_window(row.get('timestamp'), since, until):
                 continue
             found = RECEIVED.match(content)
             if not found:
@@ -558,9 +563,25 @@ def caller_from_name(path, reader):
     return None
 
 
-def tool_call_ids(path, tools, reader):
+def in_window(text, since, until):
+    """Whether a time is inside the window. With no window, or a time that does not parse, it is counted in."""
+    if since is None and until is None:
+        return True
+    when = parse_time(text)
+    if when is None:
+        return True
+    return (since is None or when >= since) and (until is None or when <= until)
+
+
+def row_time(row):
+    """A ledger row's time for the window: its dispatch time, else its return time."""
+    at = row.get('dispatched_at')
+    return at if isinstance(at, str) and not is_unrecorded(at) else row.get('returned_at')
+
+
+def tool_call_ids(path, tools, reader, since=None, until=None):
     """(caller, the tool-call ids in the transcript whose tool `tools` admits, in order, repeats kept). `tools` is a
-    set of names, or a function of a name."""
+    set of names, or a function of a name. With a window, only the rows inside it, by their own timestamp."""
     if not callable(tools):
         names = tools
         tools = lambda name: name in names  # noqa: E731
@@ -570,6 +591,8 @@ def tool_call_ids(path, tools, reader):
         if reader == 'claude-code':
             if caller is None and row.get('isSidechain') is True and isinstance(row.get('agentId'), str):
                 caller = row['agentId']
+            if not in_window(row.get('timestamp'), since, until):
+                continue
             message = row.get('message') if isinstance(row.get('message'), dict) else {}
             content = message.get('content')
             if isinstance(content, list):
@@ -581,6 +604,8 @@ def tool_call_ids(path, tools, reader):
             payload = row.get('payload') if isinstance(row.get('payload'), dict) else {}
             if row.get('type') == 'session_meta' and caller is None:
                 caller = payload.get('id') if payload.get('parent_thread_id') else 'parent'
+            if not in_window(row.get('timestamp'), since, until):
+                continue
             if (row.get('type') == 'response_item' and payload.get('type') == 'function_call'
                     and tools(payload.get('name')) and isinstance(payload.get('call_id'), str)):
                 ids.append(payload['call_id'])
@@ -707,10 +732,13 @@ def ledger_callers(rows, errors, session, folder):
     return found
 
 
-def count_check(harness, paths, rows, errors, session, folder):
+def count_check(harness, paths, rows, errors, session, folder, since=None, until=None):
     """The count_check object, and the absences it adds. Subagent dispatches are counted as `by_caller`; searches,
     fetches and MCP reads (the harness's outside_tools, less a server mcp_not_calls lists) as `outside_by_caller`,
-    where the harness's transcript form for them is known. `difference` is the two counts' differences summed."""
+    where the harness's transcript form for them is known. `difference` is the two counts' differences summed. With
+    --since or --until, only the transcript rows and the ledger records and error lines inside the window count."""
+    rows = [row for row in rows if in_window(row_time(row), since, until)]
+    errors = [line for line in errors if in_window(line.get('at'), since, until)]
     try:
         table = json.loads(TOOLS_FILE.read_text(encoding='utf-8'))['harnesses']
     except (OSError, ValueError, KeyError) as exc:
@@ -728,8 +756,8 @@ def count_check(harness, paths, rows, errors, session, folder):
     seen_ids, seen_outside, unreadable, order, unread_paths = {}, {}, {}, [], 0
     for path in paths:
         try:
-            caller, ids = tool_call_ids(path, tools, reader)
-            more = tool_call_ids(path, outside, reader)[1] if outside is not None else []
+            caller, ids = tool_call_ids(path, tools, reader, since, until)
+            more = tool_call_ids(path, outside, reader, since, until)[1] if outside is not None else []
         except OSError as exc:
             caller = caller_from_name(path, reader) or 'unrecorded (%s could not be read)' % Path(path).name
             unreadable[caller] = 'unrecorded (the transcript could not be read: %s)' % (exc.strerror or exc)
@@ -829,7 +857,7 @@ def main(argv=None):
     if args.count_check:
         try:
             check, more = count_check(args.harness, args.transcript, out['calls'], error_lines(folder), session,
-                                      folder)
+                                      folder, parse_time(args.since), parse_time(args.until))
         except Refused as exc:
             print('calls: refused: %s' % exc, file=sys.stderr)
             return 1
@@ -838,7 +866,8 @@ def main(argv=None):
             return 2
         out['count_check'] = check
         out['absences'].extend(more)
-        out['received_messages'] = received_messages(args.transcript, folder)
+        out['received_messages'] = received_messages(args.transcript, folder, parse_time(args.since),
+                                                     parse_time(args.until))
     out = grouped(out)
     if args.count_check:
         if code == 0 and isinstance(check, dict) and isinstance(check['difference'], int) and check['difference']:

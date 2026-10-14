@@ -21,4 +21,4 @@ generated: { by: process:okf-projectdocs }
 ## Subdirectories
 
 * [skill/](skill/) - directory: 0 scripts, 1 documents
-* [tests/](tests/) - directory: 14 scripts, 0 documents
+* [tests/](tests/) - directory: 15 scripts, 0 documents

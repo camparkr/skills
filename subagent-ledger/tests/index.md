@@ -25,3 +25,4 @@ generated: { by: process:okf-projectdocs }
 * [test_stop_and_message.py](test_stop_and_message.py) - Two fixes to Claude Code's capture: a subagent its caller stops with `TaskStop`, and a `SendMessage` addressed to
 * [test_triage_command.py](test_triage_command.py) - Tests for the ledger folder's `triage_command` and for `effort_assigned`.
 * [test_wider_matching.py](test_wider_matching.py) - Controls C-11-1 to C-11-4: the shell route reads through wrappers, compound commands, here-documents and runner
+* [test_window.py](test_window.py) - Tests for the reader's window: --since and --until bound the count check and the received messages.

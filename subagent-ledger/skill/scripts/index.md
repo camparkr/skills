@@ -28,7 +28,7 @@ generated: { by: process:okf-projectdocs }
 * [capture-codex.component.md](capture-codex.component.md) - Codex's hook command. It writes both records for each subagent call, each message to a subagent and each model call made through the shell tool. It reads the model and counters from the subagent's rollout file, Codex's transcript.
 * [capture-opencode.component.md](capture-opencode.component.md) - OpenCode's capture, run by the plugin. It writes both records for each `task` call and each model call made through `bash`. When a task errors, it writes a failed return from the event stream.
 * [commands.component.md](commands.component.md) - Splits a shell command into the parts the shell runs, so a model call inside a longer command is found.
-* [ledger.component.md](ledger.component.md) - The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files and appends the line under a lock.
+* [ledger.component.md](ledger.component.md) - The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files and appends the line under a lock, which works on macOS, Linux and Windows.
 * [transcripts.component.md](transcripts.component.md) - Reads a transcript for the model that ran, its four token counters and what the run touched outside its folder.
 
 ## Subdirectories

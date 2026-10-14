@@ -173,7 +173,8 @@ It is not for logging tool calls that do not call a model, or for judging whethe
 The skill needs:
 
 - Python 3.9 or later and its standard library only (tested on 3.9.6 and 3.14.7);
-- macOS or Linux, because the writer locks the ledger file with `fcntl`, which Windows lacks; and
+- macOS, Linux or Windows. The writer locks the ledger file with `fcntl`, or with `msvcrt` on Windows, which has no
+  `fcntl`. The Windows lock has been tested against a stand-in for `msvcrt`, not yet on Windows itself; and
 - one of the harnesses tested: Claude Code 2.1.295, Codex 0.162 or OpenCode 1.18.30.
 
 ## Install

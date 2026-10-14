@@ -123,7 +123,6 @@ and event read from the raw payload before anything else.
 import base64
 import contextlib
 import datetime
-import fcntl
 import glob
 import io
 import json
@@ -2383,11 +2382,8 @@ def pending_lock(folder, session):
     target = pending_dir(folder, session)
     target.mkdir(parents=True, exist_ok=True)
     with open(target / '.lock', 'a') as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
+        with ledger.lock_file(handle):
             yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def write_pending(folder, session, name, data):

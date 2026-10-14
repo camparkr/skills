@@ -34,18 +34,13 @@ NAME="subagent-ledger"
 SCRIPTS="$SKILL_DIR/scripts"
 PLUGIN="$SCRIPTS/opencode-plugin/subagent-ledger.js"
 
-# The captures are Python, and they lock the ledger file with fcntl, which Windows does not have.
-case "$(uname -s 2>/dev/null)" in
-	MINGW*|MSYS*|CYGWIN*|Windows*)
-		echo "The capture cannot run on Windows: it needs Python's fcntl module, which Windows does not have. Nothing was changed." >&2
-		exit 1 ;;
-esac
+# The captures are Python, and they lock the ledger file: with fcntl on macOS and Linux, with msvcrt on Windows.
 if ! command -v python3 >/dev/null 2>&1; then
 	echo "python3 was not found. The capture needs Python 3; install it and run this again. Nothing was changed." >&2
 	exit 1
 fi
-if ! python3 -c 'import fcntl' >/dev/null 2>&1; then
-	echo "The capture cannot run here: it needs Python's fcntl module, which python3 cannot import on this machine. Nothing was changed." >&2
+if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import ledger; ledger.lock_module()' "$SCRIPTS" >/dev/null 2>&1; then
+	echo "The capture cannot run here: python3 cannot import the ledger's file lock (fcntl, or msvcrt on Windows). Nothing was changed." >&2
 	exit 1
 fi
 

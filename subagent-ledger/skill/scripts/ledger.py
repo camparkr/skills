@@ -44,7 +44,7 @@ the schema uses, and refuses a schema that uses any other.
 
 import contextlib
 import datetime
-import fcntl
+import errno
 import hashlib
 import json
 import os
@@ -546,13 +546,54 @@ def _copy_dir(folder, session):
     return Path(folder) / session
 
 
+def lock_module():
+    """The module that locks a file here: fcntl on macOS and Linux, msvcrt on Windows, which has no fcntl.
+
+    Raises ImportError when neither imports. setup.sh calls it to check that the ledger can lock its file.
+    """
+    try:
+        import fcntl
+        return fcntl
+    except ImportError:
+        import msvcrt
+        return msvcrt
+
+
 @contextlib.contextmanager
-def _lock(handle):
-    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+def lock_file(handle):
+    """Hold an exclusive lock on an open file for the block, waiting as long as another process holds it.
+
+    With fcntl, the lock covers the whole file. With msvcrt, it covers the file's first byte, which every writer
+    locks, so it serialises them the same way. msvcrt locks from where the file stands, so the file is moved to its
+    start to lock and to unlock; a file opened to append still writes at its end. msvcrt's blocking lock gives up
+    after ten tries a second apart, so it is tried again until it holds.
+    """
+    locker = lock_module()
+    if hasattr(locker, 'flock'):
+        locker.flock(handle.fileno(), locker.LOCK_EX)
+        try:
+            yield
+        finally:
+            locker.flock(handle.fileno(), locker.LOCK_UN)
+        return
+    handle.seek(0)
+    while True:
+        try:
+            locker.locking(handle.fileno(), locker.LK_LOCK, 1)
+            break
+        except OSError as exc:
+            if exc.errno not in (errno.EDEADLK, getattr(errno, 'EDEADLOCK', errno.EDEADLK)):
+                raise
     try:
         yield
     finally:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.flush()
+        handle.seek(0)
+        locker.locking(handle.fileno(), locker.LK_UNLCK, 1)
+
+
+def _lock(handle):
+    return lock_file(handle)
 
 
 def _append(path, line):

@@ -1,4 +1,5 @@
-"""Controls for the ledger's file lock where Python has no fcntl, as on Windows, and for setup.sh's check of it.
+"""Controls for the ledger's file lock where Python has no fcntl, as on Windows, for setup.sh's check of it, and for
+the readers of a ledger file that a Windows writer may hold locked.
 
 The writer and Claude Code's capture lock a file through one helper, `ledger.lock_file`. It uses fcntl where fcntl
 imports and msvcrt where it does not. These tests run on macOS or Linux, so they reach the msvcrt branch by making
@@ -17,6 +18,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -232,6 +234,127 @@ class Setup(Scratch):
         self.assertIn('lock', done.stderr)
         self.assertIn('Nothing was changed.', done.stderr)
         self.assertNotIn('Dry run', done.stdout)
+
+
+
+# Imported after the stand-in msvcrt: the ledger file LOCKED_FILE names reads as Windows reads a file whose first byte
+# another process holds locked. It opens, and the read raises PermissionError, for the first LOCKED_READS reads.
+LOCKED_FILE = textwrap.dedent('''
+    import builtins, io
+    real_open = io.open
+    held = {'left': int(os.environ.get('LOCKED_READS', '0')), 'refused': 0}
+    locked_path = os.path.realpath(os.environ['LOCKED_FILE'])
+
+    class Locked:
+        def __init__(self, handle):
+            self.handle = handle
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            self.handle.close()
+        def close(self):
+            self.handle.close()
+        def read(self, *args):
+            held['refused'] += 1
+            raise PermissionError(13, 'The process cannot access the file because another process has locked a '
+                                      'portion of the file')
+        def readline(self, *args):
+            return self.read()
+        def __iter__(self):
+            self.read()
+        def __getattr__(self, name):
+            return getattr(self.handle, name)
+
+    def guarded_open(file, mode='r', *args, **kwargs):
+        handle = real_open(file, mode, *args, **kwargs)
+        if 'r' in mode and isinstance(file, (str, os.PathLike)) and os.path.realpath(file) == locked_path \\
+                and held['left'] > 0:
+            held['left'] -= 1
+            return Locked(handle)
+        return handle
+
+    io.open = builtins.open = guarded_open
+''')
+
+READER_CHILD = textwrap.dedent('''
+    import atexit
+    sys.path.insert(0, sys.argv[1])
+    which, folder, session = sys.argv[2:5]
+    atexit.register(lambda: print('refused=%d' % held['refused'], file=sys.stderr))
+    if which == 'calls.py':
+        import runpy
+        sys.argv = ['calls.py', '--session', session, '--ledger', folder, '--json']
+        runpy.run_path(sys.path[0] + '/calls.py', run_name='__main__')
+    import capture_claude_code as claude
+    if which == 'agent_known':
+        print(json.dumps(claude.agent_known(folder, session, 'agent-win')))
+    elif which == 'agent_called':
+        print(json.dumps(claude.agent_called(folder, session, 'agent-win')))
+    elif which == 'previous_dispatch_at':
+        print(json.dumps(str(claude.previous_dispatch_at(folder, session, 'parent'))))
+    elif which == 'already_returned':
+        import capture_opencode
+        print(json.dumps(capture_opencode.already_returned(folder, session, 'call-win')))
+''')
+
+
+class LockedReads(Scratch):
+    """Control 4: a reader of a ledger file that a Windows writer holds locked waits for it, and reads it whole."""
+
+    ROWS = ({'schema': 'subagent-ledger/1', 'record': 'dispatch', 'session': SESSION, 'call_id': 'call-win',
+             'agent_id': 'agent-win', 'caller': 'parent', 'route': 'subagent', 'harness': 'claude-code',
+             'dispatched_at': '2026-10-14T00:00:00.000Z'},
+            {'schema': 'subagent-ledger/1', 'record': 'return', 'session': SESSION, 'call_id': 'call-win',
+             'agent_id': 'agent-win', 'caller': 'parent', 'route': 'subagent', 'harness': 'claude-code',
+             'outcome': 'served', 'returned_at': '2026-10-14T00:01:00.000Z'})
+
+    def read_while_locked(self, which, reads=3):
+        path = self.folder / ('%s.jsonl' % SESSION)
+        path.write_text(''.join(json.dumps(row) + '\n' for row in self.ROWS), encoding='utf-8')
+        script = self.tmp / 'reader.py'
+        script.write_text(STAND_IN + LOCKED_FILE + READER_CHILD, encoding='utf-8')
+        env = dict(os.environ, STAND_IN_LOG=str(self.log), LOCKED_FILE=str(path), LOCKED_READS=str(reads),
+                   PYTHONDONTWRITEBYTECODE='1')
+        env.pop('SUBAGENT_LEDGER_DIR', None)
+        done = subprocess.run([sys.executable, str(script), str(SCRIPTS), which, str(self.folder), SESSION],
+                              capture_output=True, text=True, env=env, cwd=str(self.tmp), timeout=120)
+        self.addCleanup(self.assertIn, 'refused=%d' % reads, done.stderr,
+                        'the reader did not wait out all %d locked reads' % reads)
+        return done
+
+    def test_the_reader_lists_the_call(self):
+        done = self.read_while_locked('calls.py')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn('call-win', done.stdout)
+
+    def test_the_capture_finds_the_agent(self):
+        self.assertEqual(self.read_while_locked('agent_known').stdout.strip(), 'true')
+
+    def test_the_capture_finds_the_agents_call(self):
+        self.assertEqual(json.loads(self.read_while_locked('agent_called').stdout), [True, None])
+
+    def test_the_capture_finds_the_previous_dispatch(self):
+        self.assertNotEqual(json.loads(self.read_while_locked('previous_dispatch_at').stdout), 'None')
+
+    def test_the_opencode_capture_finds_the_return(self):
+        self.assertEqual(self.read_while_locked('already_returned').stdout.strip(), 'true')
+
+
+class MacReadUnchanged(unittest.TestCase):
+    """With fcntl the lock never stops a read, so a ledger file is read once and an error is raised at once."""
+
+    def test_one_read_and_the_error_as_it_came(self):
+        sys.path.insert(0, str(SCRIPTS))
+        self.addCleanup(sys.path.remove, str(SCRIPTS))
+        import ledger
+        self.assertTrue(hasattr(ledger.lock_module(), 'flock'), 'this control runs where fcntl imports')
+        refused = mock.mock_open()
+        refused.return_value.read.side_effect = PermissionError(13, 'denied')
+        with mock.patch('builtins.open', refused), mock.patch('time.sleep') as slept:
+            with self.assertRaises(PermissionError):
+                ledger.read_text('any.jsonl', errors='replace')
+        self.assertEqual(refused.call_count, 1)
+        slept.assert_not_called()
 
 
 if __name__ == '__main__':

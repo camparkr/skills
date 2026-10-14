@@ -508,7 +508,7 @@ def agent_known(folder, session, agent):
         return True
     path = Path(folder) / ('%s.jsonl' % session)
     try:
-        lines = path.read_text(encoding='utf-8', errors='replace').splitlines() if path.is_file() else []
+        lines = ledger.read_text(path, errors='replace').splitlines() if path.is_file() else []
     except OSError:
         return False
     for line in lines:
@@ -532,7 +532,7 @@ def agent_called(folder, session, agent, records=('dispatch', 'return')):
     if not path.exists():
         return False, None
     try:
-        text = path.read_text(encoding='utf-8', errors='replace')
+        text = ledger.read_text(path, errors='replace')
     except OSError as exc:
         return False, '%s: %s' % (type(exc).__name__, exc)
     for line in text.splitlines():
@@ -2270,7 +2270,7 @@ def previous_dispatch_at(folder, session, caller):
     path = Path(folder) / ('%s.jsonl' % session)
     latest = None
     try:
-        rows = path.read_text(encoding='utf-8').splitlines() if path.is_file() else []
+        rows = ledger.read_text(path).splitlines() if path.is_file() else []
     except OSError:
         return None
     for raw in rows:

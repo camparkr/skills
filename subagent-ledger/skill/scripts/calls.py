@@ -77,6 +77,7 @@ folder of the working folder. The reader makes no model call and writes nothing.
 
 import argparse
 import datetime
+import io
 import json
 import os
 import re
@@ -170,7 +171,7 @@ def inner(reason):
 def jsonl(path):
     """The JSON lines of a file, and the line numbers that could not be read."""
     rows, bad = [], []
-    with open(path, encoding='utf-8', errors='replace') as handle:
+    with io.StringIO(ledger.read_text(path, errors='replace')) as handle:
         for number, line in enumerate(handle, 1):
             if not line.strip():
                 continue
@@ -475,7 +476,7 @@ def received_messages(paths, folder, since=None, until=None):
         if path.name in (ledger.ERRORS_FILE, '%s.jsonl' % ledger.UNATTRIBUTED):
             continue
         try:
-            text = path.read_text(encoding='utf-8', errors='replace')
+            text = ledger.read_text(path, errors='replace')
         except OSError:
             continue
         for line in text.splitlines():

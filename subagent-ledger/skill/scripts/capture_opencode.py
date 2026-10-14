@@ -220,7 +220,7 @@ def already_returned(folder, session, call_id):
     """Whether the session's ledger file already holds a return for the call."""
     path = Path(folder) / ('%s.jsonl' % session)
     try:
-        lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+        lines = ledger.read_text(path, errors='replace').splitlines()
     except OSError:
         return False
     for line in lines:

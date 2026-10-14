@@ -51,6 +51,7 @@ import os
 import re
 import socket
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -594,6 +595,29 @@ def lock_file(handle):
 
 def _lock(handle):
     return lock_file(handle)
+
+
+# How a reader waits out a writer's lock on Windows: each append holds it for one write, so a second is ample.
+LOCKED_READ_TRIES = 50
+LOCKED_READ_WAIT = 0.02
+
+
+def read_text(path, errors=None):
+    """A ledger file's text, read as a writer may be appending to it.
+
+    On Windows a lock is enforced: reading the first byte while a writer holds it raises PermissionError, so the read
+    is tried again for up to a second before the error is raised. With fcntl the lock is advisory and never stops a
+    read, so the file is read once, as before.
+    """
+    tries = 1 if hasattr(lock_module(), 'flock') else LOCKED_READ_TRIES
+    for attempt in range(tries):
+        try:
+            with open(path, encoding='utf-8', errors=errors) as handle:
+                return handle.read()
+        except PermissionError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(LOCKED_READ_WAIT)
 
 
 def _append(path, line):

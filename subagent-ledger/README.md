@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.4-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.5-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)
@@ -150,6 +150,13 @@ The skill has these limits today:
   only once the sender's ledger holds a record from version 0.2.2 or later.
 - **Messages between sessions** are linked by the desktop app's session ID. Where the app gives none, such as on the
   command line, the link reads `unrecorded`.
+- **Ledgers written before version 0.2.5** overstate the tokens and the outside reach of a subagent resumed by a
+  message, where the subagent hands its answer back by a tool call. Each such return counts every earlier turn as well
+  as its own. From 0.2.5, a return counts its own turn alone.
+- **A command in a record's outside list** keeps its first 200 characters, with its full length in `command_chars` and
+  its paths listed whole. The subagent's own transcript holds the whole command.
+- **Two messages a subagent answers in one turn** each carry that turn's answer and counts, so adding `tokens` across
+  records counts that turn twice. Add each turn once.
 
 ## Who it is for
 

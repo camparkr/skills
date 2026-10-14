@@ -504,7 +504,7 @@ def message_text(value):
 def agent_known(folder, session, agent):
     """Whether the session's ledger, or its pending files, already hold this agent id."""
     target = pending_dir(folder, session)
-    if (target / ('agent-%s.json' % _safe(agent))).is_file() or (target / ('join-%s.json' % _safe(agent))).is_file():
+    if any((target / ('%s.json' % each)).is_file() for each in _names('agent-' + agent) + _names('join-' + agent)):
         return True
     path = Path(folder) / ('%s.jsonl' % session)
     try:
@@ -2371,12 +2371,24 @@ def lookup(tree, dotted):
 # ---------------------------------------------------------------------------
 
 def _safe(name):
+    return ledger.pending_name(name)
+
+
+def _old_safe(name):
+    """The older name, which kept ':'. A pending file macOS or Linux wrote under it is still found."""
     return re.sub(r'[^A-Za-z0-9._:-]', '_', name)[:200]
+
+
+def _names(name):
+    """A pending file's name, then its older name where that differs."""
+    return [_safe(name)] + ([_old_safe(name)] if _old_safe(name) != _safe(name) else [])
 
 
 def pending_dir(folder, session):
     session = session if session and not session.startswith('unrecorded (') else 'unattributed'
-    return Path(folder) / PENDING / _safe(session)
+    target = Path(folder) / PENDING / _safe(session)
+    older = Path(folder) / PENDING / _old_safe(session)
+    return older if older != target and older.is_dir() and not target.is_dir() else target
 
 
 @contextlib.contextmanager
@@ -2395,11 +2407,13 @@ def write_pending(folder, session, name, data):
 
 
 def read_pending(folder, session, name):
-    target = pending_dir(folder, session) / ('%s.json' % _safe(name))
-    try:
-        return json.loads(target.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return None
+    for each in _names(name):
+        target = pending_dir(folder, session) / ('%s.json' % each)
+        try:
+            return json.loads(target.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def write_join(folder, session, agent, data):
@@ -2412,10 +2426,11 @@ def read_join(folder, session, agent):
 
 def clear_pending(folder, session, names):
     for name in names:
-        try:
-            (pending_dir(folder, session) / ('%s.json' % _safe(name))).unlink()
-        except OSError:
-            pass
+        for each in _names(name):
+            try:
+                (pending_dir(folder, session) / ('%s.json' % each)).unlink()
+            except OSError:
+                pass
 
 
 if __name__ == '__main__':

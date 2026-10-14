@@ -1,5 +1,6 @@
 """Controls for Windows-style paths, run on macOS or Linux: what a run touched outside its folder, judged with
-Windows paths, and the configuration folder found from a transcript path written with backslashes.
+Windows paths, the configuration folder found from a transcript path written with backslashes, and the names of
+pending files, which must be valid on Windows.
 
 A Windows path counts as absolute when it starts with a drive letter or is a network path (two slashes and a
 server), with either slash. It is compared case-insensitively, as Windows compares it. A macOS or Linux path is
@@ -10,6 +11,7 @@ Run from the skill's folder:  python3 -m unittest tests/test_windows_paths.py
 
 import os
 import posixpath
+import re
 import shutil
 import sys
 import tempfile
@@ -22,6 +24,7 @@ SCRIPTS = HERE.parent / 'skill' / 'scripts'
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import calls  # noqa: E402
 import capture_claude_code  # noqa: E402
 import transcripts  # noqa: E402
 
@@ -154,6 +157,65 @@ class ConfigFromTranscriptPath(unittest.TestCase):
         found.write_text('', encoding='utf-8')
         why = self.reading('%s/projects/-work/parent.jsonl' % config)['tokens']
         self.assertIn('does not carry the envelope', why)
+
+
+
+# What Windows refuses in a file name: these characters, control characters, and the names it keeps for devices.
+WINDOWS_FORBIDDEN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+WINDOWS_DEVICE = re.compile(r'^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)', re.I)
+
+
+def old_safe(name):
+    return re.sub(r'[^A-Za-z0-9._:-]', '_', name)[:200]
+
+
+class PendingNames(unittest.TestCase):
+    """A pending file's name is valid on Windows; a name already valid on both systems is kept as it was; and a
+    pending file written under an older name, which macOS and Linux allow, is still found."""
+
+    AWKWARD = ('a:b', 'mcp:server:tool', 'x<y>z', 'quote"d', 'back\\slash', 'pipe|q?star*', 'tab\tnew\nline',
+               'con', 'CON', 'nul', 'Com1', 'lpt9', 'aux.json', 'prn.x', 'unrecorded (no id)', 'é')
+    ALREADY_VALID = ('toolu_01ABCdef', '3f2a6c1e-9b7d-4e5f-8a0b-1c2d3e4f5a6b', 'join-a1b2c3d4', 'out-call_xyz',
+                     'cli-toolu_9', 'resume-toolu_1', 'stopped-a9f', 'msg-019a.b', 'console', 'com', 'com10',
+                     'lpt', 'nul_x', 'connect', 'a.b-c_d', 'x' * 250)
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='subagent-ledger-pending-'))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_every_name_is_valid_on_windows(self):
+        for name in self.AWKWARD + self.ALREADY_VALID:
+            with self.subTest(name=name):
+                safe = capture_claude_code._safe(name)
+                self.assertIsNone(WINDOWS_FORBIDDEN.search(safe), safe)
+                self.assertIsNone(WINDOWS_DEVICE.match(safe), safe)
+                self.assertIsNone(WINDOWS_DEVICE.match(safe + '.json'), safe)
+
+    def test_a_name_valid_on_both_is_unchanged(self):
+        for name in self.ALREADY_VALID:
+            with self.subTest(name=name):
+                self.assertEqual(capture_claude_code._safe(name), old_safe(name))
+
+    def test_a_file_under_the_older_name_is_still_found(self):
+        folder, session, call = self.tmp / 'ledger', 'sess:one', 'mcp:call:1'
+        old_dir = folder / '.pending' / old_safe(session)
+        old_dir.mkdir(parents=True)
+        (old_dir / ('%s.json' % old_safe(call))).write_text('{"call_id": "mcp:call:1"}', encoding='utf-8')
+        (old_dir / ('join-%s.json' % old_safe('agent:1'))).write_text('{"call_id": "c"}', encoding='utf-8')
+        self.assertEqual(capture_claude_code.read_pending(folder, session, call), {'call_id': 'mcp:call:1'})
+        self.assertTrue(capture_claude_code.agent_known(folder, session, 'agent:1'))
+        capture_claude_code.clear_pending(folder, session, [call])
+        self.assertIsNone(capture_claude_code.read_pending(folder, session, call))
+
+    def test_the_reader_finds_a_pending_file_under_either_name(self):
+        folder, session = self.tmp / 'ledger', 's-0001'
+        capture_claude_code.write_pending(folder, session, 'out-mcp:call:2', {'call_id': 'mcp:call:2'})
+        capture_claude_code.write_pending(folder, session, 'cli-mcp:call:3', {'call_id': 'mcp:call:3'})
+        self.assertTrue(calls.pending_outside(folder, session, 'mcp:call:2'))
+        self.assertTrue(calls.pending_cli(folder, session, 'mcp:call:3'))
+        old = folder / '.pending' / session / 'out-mcp:call:4.json'
+        old.write_text('{}', encoding='utf-8')
+        self.assertTrue(calls.pending_outside(folder, session, 'mcp:call:4'))
 
 
 if __name__ == '__main__':

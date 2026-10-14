@@ -200,10 +200,8 @@ def unattributed_lines(folder):
 def pending_joins(folder, session):
     """call id -> agent id, from the joins a background call's PostToolUse left pending."""
     joins = {}
-    where = Path(folder) / PENDING / session
-    if not where.is_dir():
-        return joins
-    for path in sorted(where.glob('join-*.json')):
+    found = [Path(folder) / PENDING / where for where in sorted({ledger.pending_name(session), session})]
+    for path in sorted(path for where in found if where.is_dir() for path in where.glob('join-*.json')):
         try:
             data = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
@@ -213,13 +211,19 @@ def pending_joins(folder, session):
     return joins
 
 
+def _pending_file(folder, session, name):
+    """Whether the session's pending file of this name exists, under the capture's name for it or the plain one."""
+    return any((Path(folder) / PENDING / where / ('%s.json' % each)).is_file()
+               for where in {ledger.pending_name(session), session} for each in {ledger.pending_name(name), name})
+
+
 def pending_cli(folder, session, call_id):
-    return (Path(folder) / PENDING / session / ('cli-%s.json' % call_id)).is_file()
+    return _pending_file(folder, session, 'cli-' + call_id)
 
 
 def pending_outside(folder, session, call_id):
     """Whether a search, fetch or MCP read's dispatch left its pending file for this call."""
-    return (Path(folder) / PENDING / session / ('out-%s.json' % call_id)).is_file()
+    return _pending_file(folder, session, 'out-' + call_id)
 
 
 def not_calls(folder):

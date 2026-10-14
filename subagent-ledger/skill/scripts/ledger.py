@@ -597,6 +597,17 @@ def _lock(handle):
     return lock_file(handle)
 
 
+# The device names Windows keeps, which no file may take as its name, with or without an extension.
+WINDOWS_DEVICE = re.compile(r'^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)', re.IGNORECASE)
+
+
+def pending_name(name):
+    """A pending file's name for `name`, valid on macOS, Linux and Windows: letters, digits, '.', '_' and '-' are
+    kept, anything else becomes '_', and a Windows device name gains a leading '_'. At most 200 characters."""
+    safe = re.sub(r'[^A-Za-z0-9._-]', '_', name)[:200]
+    return '_' + safe[:199] if WINDOWS_DEVICE.match(safe) else safe
+
+
 # How a reader waits out a writer's lock on Windows: each append holds it for one write, so a second is ample.
 LOCKED_READ_TRIES = 50
 LOCKED_READ_WAIT = 0.02

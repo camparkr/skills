@@ -1814,8 +1814,10 @@ def inner_reading(envelope, command, payload, envelope_model=None):
     else:
         folders = [transcripts.config_folder()]
         path = payload.get('transcript_path')
-        if isinstance(path, str) and '/projects/' in path:
-            folders.append(Path(path.split('/projects/', 1)[0]))
+        # <config>/projects/<project>/<session>.jsonl, with either slash: Windows writes backslashes.
+        parts = re.split(r'[\\/]projects[\\/]', path, maxsplit=1) if isinstance(path, str) else []
+        if len(parts) == 2:
+            folders.append(Path(parts[0]))
     found = None
     for folder in folders:
         hits = sorted(glob.glob(str(Path(folder) / 'projects' / '*' / ('%s.jsonl' % glob.escape(session)))))

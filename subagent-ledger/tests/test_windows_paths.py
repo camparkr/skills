@@ -1,5 +1,5 @@
 """Controls for Windows-style paths, run on macOS or Linux: what a run touched outside its folder, judged with
-Windows paths.
+Windows paths, and the configuration folder found from a transcript path written with backslashes.
 
 A Windows path counts as absolute when it starts with a drive letter or is a network path (two slashes and a
 server), with either slash. It is compared case-insensitively, as Windows compares it. A macOS or Linux path is
@@ -10,8 +10,11 @@ Run from the skill's folder:  python3 -m unittest tests/test_windows_paths.py
 
 import os
 import posixpath
+import shutil
 import sys
+import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -19,6 +22,7 @@ SCRIPTS = HERE.parent / 'skill' / 'scripts'
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import capture_claude_code  # noqa: E402
 import transcripts  # noqa: E402
 
 
@@ -109,6 +113,47 @@ class MacPathsUnchanged(unittest.TestCase):
                 with self.subTest(folder=folder, value=value):
                     self.assertEqual(transcripts._absolute(value, folder), old_absolute(value, folder))
                     self.assertIs(inside(value, folder), old_inside(old_absolute(value, folder), folder))
+
+
+
+class ConfigFromTranscriptPath(unittest.TestCase):
+    """A `claude -p` run's transcript is looked for under the calling session's configuration folder, which is read
+    from the hook's transcript_path. On Windows that path is written with backslashes."""
+
+    SESSION = 'inner-0001'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='subagent-ledger-winpath-'))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        empty = self.tmp / 'default-config'
+        empty.mkdir()
+        patcher = mock.patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(empty)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def reading(self, transcript_path):
+        return capture_claude_code.inner_reading({'session_id': self.SESSION, 'result': 'done'}, 'claude -p hi',
+                                                 {'transcript_path': transcript_path})
+
+    def test_a_backslash_path_names_the_folder_searched(self):
+        why = self.reading('C:\\Users\\me\\.claude\\projects\\C--work\\parent.jsonl')['tokens']
+        self.assertIn(str(Path('C:\\Users\\me\\.claude') / 'projects'), why)
+
+    def test_a_transcript_under_a_backslash_path_is_found(self):
+        config = self.tmp / 'config'
+        found = config / 'projects' / 'C--work' / ('%s.jsonl' % self.SESSION)
+        found.parent.mkdir(parents=True)
+        found.write_text('', encoding='utf-8')
+        why = self.reading('%s\\projects\\C--work\\parent.jsonl' % config)['tokens']
+        self.assertIn('does not carry the envelope', why)
+
+    def test_a_forward_slash_path_is_found_as_before(self):
+        config = self.tmp / 'config'
+        found = config / 'projects' / '-work' / ('%s.jsonl' % self.SESSION)
+        found.parent.mkdir(parents=True)
+        found.write_text('', encoding='utf-8')
+        why = self.reading('%s/projects/-work/parent.jsonl' % config)['tokens']
+        self.assertIn('does not carry the envelope', why)
 
 
 if __name__ == '__main__':

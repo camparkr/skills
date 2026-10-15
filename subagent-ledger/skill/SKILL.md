@@ -58,7 +58,8 @@ It writes to the same ledger as the hooks; pass `--ledger <folder>` to name anot
 
 ## Reading the ledger
 
-Run `calls.py` from the repository the session works in, or pass `--ledger <folder>`. Take the session ID from
+Run `calls.py` from the repository the session works in, or pass `--ledger <folder>`. If your hooks name a folder with
+`--ledger`, pass the same folder here. Take the session ID from
 `CLAUDE_CODE_SESSION_ID` in Claude Code or `CODEX_THREAD_ID` in Codex:
 
 ```bash

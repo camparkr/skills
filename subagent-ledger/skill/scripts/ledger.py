@@ -804,6 +804,38 @@ def _show(schema_value):
     return json.dumps(schema_value, ensure_ascii=False)[:120]
 
 
+_PATTERNS = {}
+
+
+def _pattern(source):
+    """`source` compiled so that `$` means what JSON Schema (ECMA-262) means by it: the end of the text.
+
+    Python's `$` also matches just before a final newline, so a value ending in one would pass. Each `$` that is
+    not escaped and not inside a character class becomes `\\Z`; every other character is left as it was.
+    """
+    if source not in _PATTERNS:
+        out, in_class, first, n = [], False, 0, 0
+        while n < len(source):
+            char = source[n]
+            if char == '\\':
+                out.append(source[n:n + 2])
+                n += 2
+                continue
+            if in_class:
+                # Python reads a `]` first in a class, or first after `[^`, as a literal.
+                if char == ']' and n != first:
+                    in_class = False
+            elif char == '[':
+                in_class = True
+                first = n + 2 if source[n + 1:n + 2] == '^' else n + 1
+            elif char == '$':
+                char = r'\Z'
+            out.append(char)
+            n += 1
+        _PATTERNS[source] = re.compile(''.join(out))
+    return _PATTERNS[source]
+
+
 def _validate(value, schema, root, at):
     """Messages name where a value failed and what the schema wanted, never the value itself."""
     if schema is True or schema == {}:
@@ -820,7 +852,7 @@ def _validate(value, schema, root, at):
     if 'const' in schema and not _same(value, schema['const']):
         problems.append('at %s: not %s' % (at, _show(schema['const'])))
     if isinstance(value, str):
-        if 'pattern' in schema and not re.search(schema['pattern'], value):
+        if 'pattern' in schema and not _pattern(schema['pattern']).search(value):
             problems.append('at %s: does not match %s' % (at, schema['pattern']))
         if 'minLength' in schema and len(value) < schema['minLength']:
             problems.append('at %s: shorter than %d characters' % (at, schema['minLength']))

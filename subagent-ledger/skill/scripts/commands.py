@@ -143,14 +143,31 @@ def unquoted_newlines(text):
     return ''.join(out)
 
 
+OPERATOR_CHARS = set('();|&')
+
+
+def split_operators(token):
+    """A run of operator characters shlex returns as one token, such as `);`, split into the shell's operators,
+    longest first. Any other token is returned whole."""
+    if token in SEPARATORS or not token or not set(token) <= OPERATOR_CHARS:
+        return [token]
+    known = sorted(SEPARATORS | {'&&', '||'}, key=len, reverse=True)
+    out, rest = [], token
+    while rest:
+        match = next((op for op in known if rest.startswith(op)), rest[0])
+        out.append(match)
+        rest = rest[len(match):]
+    return out
+
+
 def tokens_of(text):
     """The shell's words and operators, quotes honoured; a split at spaces and operators if the
-    quotes do not close."""
+    quotes do not close. A run of operators written together, as in `(claude -p hi); echo`, is split."""
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     lexer.commenters = ''  # unquoted_newlines() has taken the comments out; a '#' left is inside a word
     try:
-        return list(lexer)
+        return [part for token in lexer for part in split_operators(token)]
     except ValueError:
         return re.split(r'\s+|(;|&&|\|\||\|)', text)
 

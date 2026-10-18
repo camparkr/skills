@@ -1330,6 +1330,7 @@ def cli_return(folder, held, fields, command, output, exit_code, kept, no_code=N
         if sent is None:
             return  # not a command-line model call
         output = output if isinstance(output, str) else ''
+        speaks, joined = exit_speaks_for_call(command)
         fields = dict(fields, route='cli')
         fields.update({
             'call_id': held.call_id, 'agent_id': CLI_AGENT, 'spend_line': NOT_A_SCRIPT,
@@ -1360,6 +1361,10 @@ def cli_return(folder, held, fields, command, output, exit_code, kept, no_code=N
                                        'the command exited with code %s' % exit_code)
         if exit_code is None and no_code is not None:
             outcome, reason = 'failed', dict(no_code)
+        elif envelope is None and not speaks:
+            # The exit code is the whole command's, and a part runs after the call (shared with Claude Code's own
+            # shell route): it is not the call's.
+            outcome = reason = EXIT_NOT_THE_CALLS % joined
         fields.update({'outcome': outcome, 'outcome_reason': reason, 'model': model, 'cost': cost})
         fields['harness_payload'] = without_texts(kept, command, ON_DISPATCH_BRIEF)
         ledger.ret(ledger=folder, answer=answer, **fields)

@@ -348,6 +348,66 @@ class Prune(Ledger):
         self.assertEqual(self.prune('--since', '2026-10-18T00:00:00Z')[0], 1)
 
 
+class StrayNames(Ledger):
+    """The stray-name rule on its own: entries the hash check would let through."""
+
+    def test_b13_11_a_sub_folder_is_refused_by_name(self):
+        self.write_call('c-1')
+        (self.folder / 'sub').mkdir()
+        before = self.copies()
+        code, out, done = self.prune()
+        self.assertEqual(code, 5, done.stdout + done.stderr)
+        self.assertIn('sub', out['refused']['paths'])
+        self.assertEqual(self.copies(), before)
+
+    def test_b13_11_a_file_hashing_to_its_name_but_not_named_as_a_copy_is_refused(self):
+        self.write_call('c-1')
+        data = b'not the writer\'s\n'
+        stray = self.folder / ('%s.txt' % hashlib.sha256(data).hexdigest()[:16])
+        stray.write_bytes(data)
+        before = self.copies()
+        code, out, done = self.prune()
+        self.assertEqual(code, 5, done.stdout + done.stderr)
+        self.assertIn(stray.name, out['refused']['paths'])
+        self.assertEqual(self.copies(), before)
+
+
+class OldPrompt(Ledger):
+    """A record written before fingerprints that names its prompt's copy only by `moved to` under harness_payload."""
+
+    def test_the_reader_shows_an_old_records_prompt_copy(self):
+        brief = self.old_copy('An old named brief.\n')
+        prompt = self.old_copy('Follow the brief file.')
+        self.old_record('dispatch', 'c-old', 'brief_path', brief, '2026-10-18T01:00:00.000Z')
+        rows = rows_of(self.jsonl)
+        rows[-1]['harness_payload'] = {'tool_input': {'prompt': 'moved to %s' % prompt}}
+        self.jsonl.write_text(''.join(json.dumps(r) + '\n' for r in rows), encoding='utf-8')
+        row = self.read()['calls'][0]
+        self.assertEqual(sorted(row['copies']), ['brief', 'prompt'])
+        self.assertEqual(row['copies']['prompt']['state'], 'kept')
+        self.assertEqual(self.prune()[0], 0)
+        row = self.read()['calls'][0]
+        self.assertEqual(row['copies']['prompt']['state'], 'removed')
+        self.assertEqual(row['copies']['prompt']['sha256'], fingerprint(b'Follow the brief file.')['sha256'])
+
+
+class OlderRecords(unittest.TestCase):
+    """A record written before 0.2.7 lists neither answer_source nor the fields added since it was written, and
+    still validates; a 0.2.7 record, which carries a fingerprint, must list answer_source as on or not chosen."""
+
+    def test_a_record_from_before_fingerprints_validates(self):
+        writer = load('ledger')
+        record = json.loads((HERE / 'fixtures' / 'valid-dispatch-0.2.6.json').read_text(encoding='utf-8'))
+        self.assertNotIn('answer_source', record['fields_on'] + record['fields_not_chosen'])
+        self.assertEqual(writer.validate(record, ref='#/$defs/dispatch'), [])
+
+    def test_a_fingerprinted_record_lacking_answer_source_fails(self):
+        writer = load('ledger')
+        record = json.loads((HERE / 'fixtures' / 'valid-dispatch-0.2.6.json').read_text(encoding='utf-8'))
+        record['brief_fingerprint'] = 'unrecorded (no brief was passed)'
+        self.assertNotEqual(writer.validate(record, ref='#/$defs/dispatch'), [])
+
+
 # ---------------------------------------------------------------------------
 # B13-9: the reader's copies
 # ---------------------------------------------------------------------------

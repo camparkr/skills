@@ -623,6 +623,14 @@ def named_copies(record):
         for path in moved_paths(record.get('harness_payload')):
             if copy_name(path) == prompt.get('sha256', '')[:16] + '.md':
                 out['prompt'] = (path, prompt)
+    elif record.get('record') == 'dispatch':
+        # A record written before fingerprints names its prompt's copy only by `moved to`: the dispatch's one copy
+        # that is not its brief's.
+        named = set(copy_name(path) for path, _ in out.values())
+        for path in moved_paths(record.get('harness_payload')):
+            if copy_name(path) and copy_name(path) not in named:
+                out['prompt'] = (path, None)
+                break
     return out
 
 

@@ -1208,38 +1208,55 @@
           }
         },
         {
+          "$comment": "Applied to records from 0.2.7 on, which carry a fingerprint: a record written before answer_source existed lists it neither way.",
           "if": {
-            "required": [
-              "answer_source"
+            "anyOf": [
+              {
+                "required": [
+                  "brief_fingerprint"
+                ]
+              },
+              {
+                "required": [
+                  "answer_fingerprint"
+                ]
+              }
             ]
           },
           "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "answer_source"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
+            "if": {
+              "required": [
+                "answer_source"
+              ]
+            },
+            "then": {
+              "properties": {
+                "fields_on": {
                   "contains": {
                     "const": "answer_source"
                   }
+                },
+                "fields_not_chosen": {
+                  "not": {
+                    "contains": {
+                      "const": "answer_source"
+                    }
+                  }
                 }
               }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "answer_source"
-                }
-              },
-              "fields_on": {
-                "not": {
+            },
+            "else": {
+              "properties": {
+                "fields_not_chosen": {
                   "contains": {
                     "const": "answer_source"
+                  }
+                },
+                "fields_on": {
+                  "not": {
+                    "contains": {
+                      "const": "answer_source"
+                    }
                   }
                 }
               }
@@ -1403,38 +1420,55 @@
           }
         },
         {
+          "$comment": "Applied to records from 0.2.7 on, which carry a fingerprint: a record written before act_kind existed lists it neither way.",
           "if": {
-            "required": [
-              "act_kind"
+            "anyOf": [
+              {
+                "required": [
+                  "brief_fingerprint"
+                ]
+              },
+              {
+                "required": [
+                  "answer_fingerprint"
+                ]
+              }
             ]
           },
           "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "act_kind"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
+            "if": {
+              "required": [
+                "act_kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "fields_on": {
                   "contains": {
                     "const": "act_kind"
                   }
+                },
+                "fields_not_chosen": {
+                  "not": {
+                    "contains": {
+                      "const": "act_kind"
+                    }
+                  }
                 }
               }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "act_kind"
-                }
-              },
-              "fields_on": {
-                "not": {
+            },
+            "else": {
+              "properties": {
+                "fields_not_chosen": {
                   "contains": {
                     "const": "act_kind"
+                  }
+                },
+                "fields_on": {
+                  "not": {
+                    "contains": {
+                      "const": "act_kind"
+                    }
                   }
                 }
               }
@@ -1442,38 +1476,55 @@
           }
         },
         {
+          "$comment": "Applied to records from 0.2.7 on, which carry a fingerprint: a record written before user_answer existed lists it neither way.",
           "if": {
-            "required": [
-              "user_answer"
+            "anyOf": [
+              {
+                "required": [
+                  "brief_fingerprint"
+                ]
+              },
+              {
+                "required": [
+                  "answer_fingerprint"
+                ]
+              }
             ]
           },
           "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "user_answer"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
+            "if": {
+              "required": [
+                "user_answer"
+              ]
+            },
+            "then": {
+              "properties": {
+                "fields_on": {
                   "contains": {
                     "const": "user_answer"
                   }
+                },
+                "fields_not_chosen": {
+                  "not": {
+                    "contains": {
+                      "const": "user_answer"
+                    }
+                  }
                 }
               }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "user_answer"
-                }
-              },
-              "fields_on": {
-                "not": {
+            },
+            "else": {
+              "properties": {
+                "fields_not_chosen": {
                   "contains": {
                     "const": "user_answer"
+                  }
+                },
+                "fields_on": {
+                  "not": {
+                    "contains": {
+                      "const": "user_answer"
+                    }
                   }
                 }
               }
@@ -1481,38 +1532,55 @@
           }
         },
         {
+          "$comment": "Applied to records from 0.2.7 on, which carry a fingerprint: a record written before grouping existed lists it neither way.",
           "if": {
-            "required": [
-              "grouping"
+            "anyOf": [
+              {
+                "required": [
+                  "brief_fingerprint"
+                ]
+              },
+              {
+                "required": [
+                  "answer_fingerprint"
+                ]
+              }
             ]
           },
           "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "grouping"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
+            "if": {
+              "required": [
+                "grouping"
+              ]
+            },
+            "then": {
+              "properties": {
+                "fields_on": {
                   "contains": {
                     "const": "grouping"
                   }
+                },
+                "fields_not_chosen": {
+                  "not": {
+                    "contains": {
+                      "const": "grouping"
+                    }
+                  }
                 }
               }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "grouping"
-                }
-              },
-              "fields_on": {
-                "not": {
+            },
+            "else": {
+              "properties": {
+                "fields_not_chosen": {
                   "contains": {
                     "const": "grouping"
+                  }
+                },
+                "fields_on": {
+                  "not": {
+                    "contains": {
+                      "const": "grouping"
+                    }
                   }
                 }
               }
@@ -1676,38 +1744,55 @@
           }
         },
         {
+          "$comment": "Applied to records from 0.2.7 on, which carry a fingerprint: a record written before triage_kind existed lists it neither way.",
           "if": {
-            "required": [
-              "triage_kind"
+            "anyOf": [
+              {
+                "required": [
+                  "brief_fingerprint"
+                ]
+              },
+              {
+                "required": [
+                  "answer_fingerprint"
+                ]
+              }
             ]
           },
           "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "triage_kind"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
+            "if": {
+              "required": [
+                "triage_kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "fields_on": {
                   "contains": {
                     "const": "triage_kind"
                   }
+                },
+                "fields_not_chosen": {
+                  "not": {
+                    "contains": {
+                      "const": "triage_kind"
+                    }
+                  }
                 }
               }
-            }
-          },
-          "else": {
-            "properties": {
-              "fields_not_chosen": {
-                "contains": {
-                  "const": "triage_kind"
-                }
-              },
-              "fields_on": {
-                "not": {
+            },
+            "else": {
+              "properties": {
+                "fields_not_chosen": {
                   "contains": {
                     "const": "triage_kind"
+                  }
+                },
+                "fields_on": {
+                  "not": {
+                    "contains": {
+                      "const": "triage_kind"
+                    }
                   }
                 }
               }

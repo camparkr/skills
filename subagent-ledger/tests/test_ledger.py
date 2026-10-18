@@ -417,6 +417,70 @@ class K9Validator(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# A pattern's `$` keeps its JSON Schema meaning: the end of the text, never before a final newline
+# ---------------------------------------------------------------------------
+
+# Each pattern in the record schema, by where it sits, with a value it accepts.
+SCHEMA_PATTERNS = [
+    ('#/$defs/unrecorded', 'unrecorded (x)'),
+    ('#/$defs/time', '2026-10-18T04:00:00Z'),
+    ('#/$defs/session/anyOf/0', 'b5label-0000-4000-8000-000000000001'),
+    ('#/$defs/fingerprint/properties/sha256', 'a' * 64),
+    ('#/$defs/witness/properties/fingerprints/items/properties/sha256', '0' * 64),
+]
+
+
+class PatternEnd(unittest.TestCase):
+    """JSON Schema patterns follow ECMA-262, where `$` without the multiline flag matches only at
+    the end of the text. Python's `$` also matches just before a final newline, so a value ending
+    in a newline passed every pattern in the schema before the validator translated them."""
+
+    def problems(self, pattern, value):
+        return ledger.validate(value, {'type': 'string', 'pattern': pattern})
+
+    def test_every_schema_pattern_is_covered(self):
+        schema = ledger.load_schema()
+        found = []
+
+        def walk(node, at):
+            if isinstance(node, dict):
+                for key, sub in node.items():
+                    if key == 'pattern':
+                        found.append(at)
+                    walk(sub, at + '/' + key)
+            elif isinstance(node, list):
+                for n, sub in enumerate(node):
+                    walk(sub, '%s/%d' % (at, n))
+        walk(schema, '#')
+        self.assertEqual(sorted(found), sorted(ref for ref, _ in SCHEMA_PATTERNS))
+
+    def test_each_schema_pattern_accepts_its_value_and_refuses_it_with_a_newline(self):
+        for ref, value in SCHEMA_PATTERNS:
+            node = ledger.load_schema()
+            for part in ref[2:].split('/'):
+                node = node[int(part)] if isinstance(node, list) else node[part]
+            with self.subTest(ref=ref):
+                self.assertEqual(ledger.validate(value, node), [])
+                self.assertTrue(ledger.validate(value + '\n', node))
+
+    def test_an_escaped_dollar_stays_a_literal_dollar(self):
+        self.assertEqual(self.problems(r'^cost \$$', 'cost $'), [])
+        self.assertTrue(self.problems(r'^cost \$$', 'cost $\n'))
+        self.assertTrue(self.problems(r'^cost \$$', 'cost '))
+
+    def test_a_dollar_inside_a_class_stays_a_literal_dollar(self):
+        self.assertEqual(self.problems(r'^[$x]+$', '$x$'), [])
+        self.assertTrue(self.problems(r'^[$x]+$', '$x$\n'))
+        self.assertEqual(self.problems(r'^[\]$]$', '$'), [])
+        self.assertEqual(self.problems(r'^[\]$]$', ']'), [])
+        self.assertTrue(self.problems(r'^[\]$]$', ']\n'))
+
+    def test_an_escaped_backslash_before_a_dollar_leaves_the_dollar_an_end(self):
+        self.assertEqual(self.problems(r'^a\\$', 'a\\'), [])
+        self.assertTrue(self.problems(r'^a\\$', 'a\\\n'))
+
+
+# ---------------------------------------------------------------------------
 # The schema against the fixtures, by the writer's validator and, where present, by jsonschema
 # ---------------------------------------------------------------------------
 

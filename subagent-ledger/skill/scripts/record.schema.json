@@ -1835,7 +1835,7 @@
               "$ref": "#/$defs/time"
             },
             "outcome": {
-              "$ref": "#/$defs/outcome"
+              "$ref": "#/$defs/outcomeOrUnrecorded"
             }
           }
         }

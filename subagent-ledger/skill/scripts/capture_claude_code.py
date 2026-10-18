@@ -1382,6 +1382,7 @@ def post_shell(event, payload, folder, held):
             'isolation': 'unrecorded (a command-line call\'s own record is not read by this capture)',
         })
         kept = dict(payload)
+        speaks, joined = exit_speaks_for_call(command_of(payload), payload.get('cwd'))
         if event == 'PostToolUseFailure':
             text = payload.get('error') if isinstance(payload.get('error'), str) else ''
             envelope, output = envelope_in(text.split('\n', 1)[1] if '\n' in text else '')
@@ -1400,6 +1401,8 @@ def post_shell(event, payload, folder, held):
                 fields.update({'model': WRAPPED_MODEL if sent.get('wrapped') else
                                'unrecorded (the command\'s output names no model)',
                                'cost': 'unrecorded (the command\'s output reports no cost)'})
+                if not speaks:
+                    outcome = reason = EXIT_NOT_THE_CALLS % joined
             fields.update({'outcome': outcome, 'outcome_reason': reason})
         else:
             stdout = response.get('stdout') if isinstance(response.get('stdout'), str) else ''
@@ -1419,6 +1422,8 @@ def post_shell(event, payload, folder, held):
                     outcome, reason = 'empty', dict(EMPTY_REASON)
                 model = WRAPPED_MODEL if sent.get('wrapped') else 'unrecorded (the command\'s output names no model)'
                 cost = 'unrecorded (the command\'s output reports no cost)'
+                if not speaks:
+                    outcome = reason = EXIT_NOT_THE_CALLS % joined
             fields.update({'outcome': outcome, 'outcome_reason': reason, 'model': model, 'cost': cost})
             if envelope is not None:
                 fields.update(inner_reading(envelope, command_of(payload), payload, model))
@@ -1443,6 +1448,46 @@ def inline_source(payload):
     names no transcript."""
     path = payload.get('transcript_path') if isinstance(payload, dict) else None
     return 'inline in %s' % path if isinstance(path, str) and path else None
+
+
+EXIT_NOT_THE_CALLS = ('unrecorded (the shell reports one exit status for the whole command, and a part joined '
+                      'by %s runs after the model call, so the status is not the call\'s)')
+
+
+def exit_speaks_for_call(command, cwd=None):
+    """(True, None) where the command's one exit status is the model call's: the call is its last part, or only
+    `&&` joins the parts after it, which run only if it succeeded. (False, the joining operator) where a part joined
+    otherwise (`;`, `||`, `|`, a new line) runs after it, or the call is sent to the background (`&`). Where no single part is found to hold the call (one
+    made inside a here-document or a script), the status is read as before."""
+    text, _ = commands.strip_heredocs(command or '')
+    parts, joins, part = [], [], []
+    for token in commands.tokens_of(commands.unquoted_newlines(text)):
+        if token in commands.SEPARATORS:
+            if part:
+                parts.append(part)
+                joins.append(token)
+                part = []
+            elif joins:
+                joins[-1] = joins[-1] if token in commands.CLOSES else token
+            continue
+        if token:
+            part.append(token)
+    if part:
+        parts.append(part)
+        joins.append(None)
+    patterns = load_patterns()
+    called = [at for at, words in enumerate(parts)
+              if commands.reading(' '.join(shlex.quote(word) for word in words), patterns, cwd).sites]
+    if not called:
+        return True, None
+    after = [join for join in joins[called[-1]:-1] if join not in commands.CLOSES]
+    last_join = joins[called[-1]]
+    if last_join in ('&', '|&') or (called[-1] == len(parts) - 1 and joins[-1] in ('&', '|&')):
+        return False, '&'  # sent to the background: the shell's status is not the call's
+    if called[-1] == len(parts) - 1 or all(join == '&&' for join in after + ([last_join] if last_join else [])):
+        return True, None
+    joined = next(join for join in [last_join] + after if join and join != '&&')
+    return False, 'a new line' if joined == ';' and '\n' in (command or '') else joined
 
 
 def command_of(payload):

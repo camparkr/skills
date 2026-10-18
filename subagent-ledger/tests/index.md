@@ -13,6 +13,7 @@ generated: { by: process:okf-projectdocs }
 
 * [test_act_kind.py](test_act_kind.py) - Controls for the kind of act on a dispatch record, the user's answer, and the label line's new shape.
 * [test_agent_and_old_fields.py](test_agent_and_old_fields.py) - Controls: call.py's records carry an agent, and the reader names an old record's gaps.
+* [test_brief_and_exit.py](test_brief_and_exit.py) - Two fixes: a brief that opens with front matter reaches the harness as the prompt, and a command-line model call
 * [test_call.py](test_call.py) - Tests for the call script, `skill/scripts/call.py`, with stand-in harnesses.
 * [test_calls.py](test_calls.py) - Tests for the call reader, `skill/scripts/calls.py`, and its count check.
 * [test_capture_claude_code.py](test_capture_claude_code.py) - Tests for Claude Code's capture, `skill/scripts/capture_claude_code.py`, and its transcript reader.

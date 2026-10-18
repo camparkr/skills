@@ -237,14 +237,17 @@ def auth_route(spec, home, why):
 
 
 def command_for(harness, brief, model):
+    """The harness's command line. The brief is passed so no parser can read it as an option, whatever it begins
+    with (a brief opening with front matter begins `---`): Gemini CLI's as `--prompt=<brief>`, one word its parser
+    binds to the option; Cursor's after `--`, which ends its options."""
     if harness == 'gemini-cli':
-        argv = ['gemini', '-p', brief, '-o', 'json', '--skip-trust']
+        argv = ['gemini', '--prompt=' + brief, '-o', 'json', '--skip-trust']
     else:
         argv = ['cursor-agent', '-p', '--output-format', 'json', '--trust']
     if model:
         argv += ['--model', model] if harness == 'cursor' else ['-m', model]
     if harness == 'cursor':
-        argv.append(brief)
+        argv += ['--', brief]
     return argv
 
 

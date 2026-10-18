@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.7-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.8-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)

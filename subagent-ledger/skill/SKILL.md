@@ -78,13 +78,18 @@ It prints one JSON object with these top-level keys:
   it, present only with `--count-check`; and
 - `count_check`: the result of the check below, present only with `--count-check`.
 
+Each call also carries `copies`: the copy of its brief, prompt and answer, each with its state (`kept`, `removed` or
+`missing`) and its fingerprint.
+
 It makes no model call and changes nothing. It ends with one of these exit codes:
 
 - 0: it listed the calls;
 - 1: it refused the input;
 - 2: it could not run;
-- 3: it found no ledger for the session, or the count check could not read a transcript; or
-- 4: the count check found the counts differ.
+- 3: it found no ledger for the session, or the count check could not read a transcript;
+- 4: the count check found the counts differ;
+- 5: the prune refused; or
+- 6: the prune did not finish.
 
 To check that no call escaped the record, give `--transcript` once for each transcript of the session: the parent's
 and each subagent's. `--harness` takes `claude-code` or `codex`. The files are:
@@ -107,6 +112,15 @@ wrong.
 
 Run the reader with the count check, as above. Report to the user the calls, every absence with its reason, and any
 difference the count check found. Repair nothing.
+
+If the ledger folder's `config.json` sets `keep_copies` to `until-close`, run the prune last, after anything that
+reads a copy:
+
+```bash
+python3 <skill>/scripts/calls.py --session <session id> --prune
+```
+
+Report its exit code. On 5 or 6, report the reason it prints, and delete no copy by hand.
 
 ## Leave these alone
 

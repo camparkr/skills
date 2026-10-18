@@ -1,7 +1,7 @@
 # subagent-ledger
 
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](../LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.6-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.7-green.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Linux-lightgrey.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code%20%7C%20Codex%20%7C%20OpenCode%20%7C%20Gemini%20CLI%20%7C%20Cursor-lightgrey.svg)
@@ -35,7 +35,7 @@ MCP server.
 
 For a call to a subagent or a model, it also records:
 
-- the brief and the answer, each kept as a file;
+- the brief and the answer, each kept as a file while the session runs, with a fingerprint of each;
 - the model asked for, beside the model that ran, read from the call's own transcript;
 - the four token counters, read from that transcript, and the cost where the far end reports one;
 - the true outcome (served, failed or empty), with the reason, such as not signed in or a usage limit;
@@ -45,6 +45,11 @@ For a call to a subagent or a model, it also records:
 For a search, a fetch or an MCP read, it records the query, the address or the tool's input. It keeps the answer as a
 file, with its size or the number of results. A fetch's outcome includes its HTTP status, so a missing page reads as
 failed.
+
+The copies of briefs and answers are working files. Each record keeps a fingerprint of its copy: the SHA-256 hash,
+the size in bytes and the number of lines. The fingerprint outlasts the copy, so the record still shows what was
+sent and what came back. A return also names `answer_source`, the transcript that holds the answer once its copy is
+gone.
 
 A message to another running session is a call of its own. It makes that session answer, and the answer costs tokens.
 The record names the receiving session and leaves the tokens to that session's own count, so they are counted once.
@@ -100,11 +105,16 @@ How the record treats it:
 ## Record fields
 
 Every call record carries a fixed frame: the call's ID, the agent's ID, the session, the time of each side and the
-outcome. You switch every other field on or off (see 'Settings'). These fields cover the kind of work, the user's
-answer and the label line:
+outcome. You switch every other field on or off (see 'Settings'). The fields below cover the copies' fingerprints,
+the kind of work, the user's answer and the label line. The three fingerprints are written whatever the settings say,
+because the prune depends on them.
 
 | Field | Holds | Values come from | Filled by |
 |---|---|---|---|
+| `brief_fingerprint` | the brief the ledger copied | its SHA-256 hash, size in bytes and number of lines, or `unrecorded (<reason>)` | the writer |
+| `prompt_fingerprint` | the prompt copied beside a brief the caller named by its path | as `brief_fingerprint` | the writer |
+| `answer_fingerprint` | the answer the ledger copied | as `brief_fingerprint` | the writer |
+| `answer_source` | where the answer can be read once its copy is gone | the subagent's or the model's own transcript, or `unrecorded (<reason>)` | the capture |
 | `act_kind` | the kind of work the call does | one of the eight kinds, or `unrecorded (<reason>)` | the capture, from the brief |
 | `user_answer` | whether the user answered before a `user-decision` call went out | the caller's transcript: the question call, when it was asked and when it was answered; the agent's own statement kept apart and never counted as the evidence | the capture |
 | `triage_kind` | the kind the triage read from the brief, kept beside the brief's own | one of the eight kinds, or `unrecorded (<reason>)`, such as no triage ran | the capture, from the triage |
@@ -157,6 +167,15 @@ The skill has these limits today:
   its paths listed whole. The subagent's own transcript holds the whole command.
 - **Two messages a subagent answers in one turn** each carry that turn's answer and counts, so adding `tokens` across
   records counts that turn twice. Add each turn once.
+- **The prune never removes copies in `unattributed/`**, the folder for calls the capture could not tie to a session.
+- **A copy written after the prune**, by a subagent still running, stays. The reader lists it as `kept`.
+- **A ledger written before version 0.2.7** holds no fingerprints. The prune takes them from the copies themselves and
+  writes them in its line.
+- **A record from before version 0.2.7 whose copy is already gone** has no fingerprint to keep, so the prune refuses
+  and deletes nothing.
+- **A command that runs something after the model call**, such as `claude -p hi; echo done`, ends with the later
+  part's exit status. The return's outcome then reads `unrecorded`, with its reason, in place of a guess. A part joined
+  by `&&` runs only after the call succeeded, so it leaves the outcome readable.
 - **On Windows**, four things still assume macOS or Linux:
   - `setup.sh` installs by symbolic link. Git Bash copies the folder instead unless symbolic links are turned on, and
     a copy is neither recognised on a second run nor removed by `--uninstall`. There is no `setup.ps1` yet.
@@ -249,6 +268,16 @@ names another folder. Ask your agent which calls this session made, or run
 To read one stretch of the session, such as the time since its last close, add `--since <time>`, and `--until <time>`
 if you need an end. The count check and the received messages then cover that stretch alone.
 
+Where `keep_copies` is `until-close`, run `python3 <skill>/scripts/calls.py --session <id> --prune` as the session
+closes. It checks each copy against its record's fingerprint and writes one `prune` line to the ledger. Then it
+deletes the session's copy folder. It refuses, deleting nothing, where the folder holds a file the writer did not
+make, or a fingerprint disagrees with its copy. It also refuses where a record names a gone copy and holds no
+fingerprint for it.
+
+The prune prints one JSON object. It ends with exit code 0 when it pruned or had nothing to prune, and 1 when it
+refused its input. Code 2 means it could not run, and 3 that the session has no ledger. Code 5 means it refused to
+prune, and 6 that it did not finish. Afterwards the reader lists each copy as `removed`, with its fingerprint.
+
 The reader also lists the messages this session received, apart from its calls. It names each sender's session where
 the sender's ledger shows it.
 
@@ -271,6 +300,8 @@ chosen, so a missing field is never mistaken for an empty one.
 - `mcp_not_calls`: the MCP servers whose tools act on your machine or the harness, such as a browser or a terminal,
   instead of fetching content. The capture records no call to them, and the count check leaves them out. A name
   ending in `*` covers every server whose name starts with the rest.
+- `keep_copies`: what happens to the copies of briefs and answers. `always`, the default, keeps them. `until-close`
+  lets the prune remove them when the session closes. The records keep their fingerprints either way.
 
 ## Contents of this folder
 
@@ -281,8 +312,8 @@ is a generated list of its files. Each file does this:
 - `setup.sh`: links the skill into Claude Code, Codex and OpenCode, and prints the hook entries for you to add.
 - `skill/SKILL.md`: what an agent does before each call, and how it reads the ledger.
 - `skill/scripts/ledger.py`: the one writer. Every line in the ledger goes through it. It checks each line against the
-  schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files and appends
-  the line.
+  schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files, with a
+  fingerprint of each, and appends the line.
 - `skill/scripts/capture_claude_code.py`: Claude Code's hook command. It writes both records for each subagent call,
   each message to a running subagent, each model call made through the command line, and each search, fetch and MCP
   read.
@@ -291,7 +322,8 @@ is a generated list of its files. Each file does this:
   through a plugin that hands each event to the capture.
 - `skill/scripts/call.py`: makes one call to Gemini CLI or Cursor in a fresh folder and writes both records.
 - `skill/scripts/calls.py`: reads the ledger. It lists every call joined from its two records and every absence with
-  its reason. Given the transcripts, it also checks that no call was missed.
+  its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the
+  session's copies.
 - `skill/scripts/transcripts.py`: reads a transcript for the model that ran, its four token counters and what the run
   touched.
 - `skill/scripts/commands.py`: splits a shell command into its parts, so it finds a model call inside a longer command.

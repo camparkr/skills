@@ -514,7 +514,7 @@
               "$ref": "#/$defs/unrecorded"
             }
           ],
-          "description": "The file the answer can be read from once its copy is gone."
+          "description": "The transcript the answer can be read from once its copy is gone."
         },
         "isolation": {
           "$ref": "#/$defs/objectOrUnrecorded",

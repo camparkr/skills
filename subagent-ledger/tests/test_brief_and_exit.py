@@ -5,7 +5,7 @@ followed by another part of the same shell command is not given that command's e
     Gemini CLI's as `--prompt=<brief>`, one word its parser binds to the option whatever the text begins with. The
     stand-ins here parse their arguments as the real programs do for this one rule: Cursor refuses an unknown word
     beginning with `-` before `--`, and Gemini CLI refuses `-p` or `--prompt` followed by a word beginning with `-`.
-  * The shell reports one exit status for a whole command. Where the model call is the command's last part, or only
+  * The shell reports one exit status for a whole command, on Claude Code's shell route and on Codex's. Where the model call is the command's last part, or only
     `&&` joins the parts after it (each runs only if the call succeeded), the status is read as the call's. Where any
     part follows it otherwise (`;`, `||`, `|`, `&`, a new line), the status says nothing of the call: the return's
     outcome reads unrecorded, saying why, unless the command printed the call's own result envelope.
@@ -24,6 +24,7 @@ if str(HERE) not in sys.path:
 
 import test_call as call_tests  # noqa: E402
 import test_capture_claude_code as base  # noqa: E402
+import test_capture_codex as codex_tests  # noqa: E402
 
 FRONT_MATTER = '---\nact_kind: inquiry\n---\nReply with the word ok.\n'
 
@@ -104,6 +105,52 @@ class CompoundExit(base.World):
 
     def test_a_call_after_other_parts_still_reads_the_status(self):
         self.assertEqual(self.shell('cd /tmp; claude -p "say ok"', 'PostToolUseFailure')['outcome'], 'failed')
+
+    def test_a_call_piped_into_another_part_has_no_outcome_from_the_exit_status(self):
+        back = self.shell('claude -p "say ok" | tee out.txt', 'PostToolUse')
+        self.assertTrue(back['outcome'].startswith('unrecorded ('), back['outcome'])
+
+    def test_a_call_followed_by_a_new_line_has_no_outcome_from_the_exit_status(self):
+        back = self.shell('claude -p "say ok"\necho done', 'PostToolUse')
+        self.assertTrue(back['outcome'].startswith('unrecorded ('), back['outcome'])
+
+    def test_a_call_sent_to_the_background_has_no_outcome_from_the_exit_status(self):
+        back = self.shell('claude -p "say ok" &', 'PostToolUse')
+        self.assertTrue(back['outcome'].startswith('unrecorded ('), back['outcome'])
+
+    def test_a_call_in_brackets_closed_against_the_next_operator(self):
+        back = self.shell('(claude -p hi); echo done', 'PostToolUse')
+        self.assertTrue(back['outcome'].startswith('unrecorded ('), back['outcome'])
+
+
+class CompoundExitCodex(codex_tests.World):
+    """The same rule on Codex's shell route, which reads the exit code from the tool response."""
+
+    fields = 'all'
+
+    def shell(self, command, code, call_id='call_codex_compound'):
+        payload = {'session_id': 'codex-compound', 'turn_id': 't', 'cwd': str(self.work), 'model': 'a-model',
+                   'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_use_id': call_id,
+                   'tool_input': {'command': command}}
+        self.capture.handle('PreToolUse', json.dumps(payload), None)
+        done = dict(payload, hook_event_name='PostToolUse',
+                    tool_response='Chunk ID: x\nWall time: 1 seconds\nProcess exited with code %d\nOutput:\nerror\ndone\n'
+                                  % code)
+        self.capture.handle('PostToolUse', json.dumps(done), None)
+        back = [line for line in self.records() if line.get('call_id') == call_id and line['record'] == 'return']
+        self.assertEqual(len(back), 1, self.errors())
+        return back[0]
+
+    def test_a_codex_call_followed_by_another_part_has_no_outcome_from_the_exit_status(self):
+        back = self.shell('codex exec "say ok"; echo done', 0)
+        self.assertTrue(back['outcome'].startswith('unrecorded ('), back['outcome'])
+
+    def test_a_codex_call_alone_still_reads_its_own_status(self):
+        self.assertEqual(self.shell('codex exec "say ok"', 1)['outcome'], 'failed')
+
+    def test_a_codex_call_in_brackets_closed_against_the_next_operator(self):
+        back = self.shell('(claude -p hi); echo done', 0)
+        self.assertTrue(back['outcome'].startswith('unrecorded ('), back['outcome'])
 
 
 if __name__ == '__main__':

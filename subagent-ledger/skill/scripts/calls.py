@@ -697,25 +697,26 @@ def prune(session, folder):
         setting = json.loads((Path(folder) / ledger.CONFIG_FILE).read_text(encoding='utf-8')) \
             if (Path(folder) / ledger.CONFIG_FILE).is_file() else {}
     except (OSError, ValueError) as exc:
-        out['refused'] = '%s could not be read: %s' % (ledger.CONFIG_FILE, exc)
+        out['refused'] = {'reason': '%s could not be read: %s' % (ledger.CONFIG_FILE, exc)}
         return 2, out
     keep = setting.get(KEEP_SETTING, 'always') if isinstance(setting, dict) else 'always'
     out['keep_copies'] = keep
     if keep not in KEEP_VALUES:
-        out['refused'] = '%s is %r: it must be one of %s' % (KEEP_SETTING, keep, ', '.join(KEEP_VALUES))
+        out['refused'] = {'reason': '%s is %r: it must be one of %s'
+                                    % (KEEP_SETTING, keep, ', '.join(KEEP_VALUES))}
         return 1, out
     if keep == 'always':
         out['removed'] = 0
         return 0, out
     if is_unrecorded(session) or session == ledger.UNATTRIBUTED or '/' in session or '\\' in session:
-        out['refused'] = 'the session %r names no session folder the prune may act on' % session
+        out['refused'] = {'reason': 'the session %r names no session folder the prune may act on' % session}
         return 1, out
     path = Path(folder) / ('%s.jsonl' % session)
     records = jsonl(path)[0] if path.is_file() else []
     calls = [r for r in records if r.get('record') in ('dispatch', 'return')]
     if not calls:
-        out['refused'] = ('no ledger file for session %s' % session if not path.is_file()
-                          else 'the ledger file holds no call record')
+        out['refused'] = {'reason': ('no ledger file for session %s' % session if not path.is_file()
+                          else 'the ledger file holds no call record')}
         return 3, out
     copy_folder = Path(folder) / session
     entries = sorted(copy_folder.iterdir()) if copy_folder.is_dir() else []

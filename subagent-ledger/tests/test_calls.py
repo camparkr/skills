@@ -61,9 +61,9 @@ UNRECORDED = re.compile(r'^unrecorded \(.+\)$')
 SELECTABLE = (
     'model_requested', 'model', 'tokens', 'cost', 'outcome_reason', 'route', 'harness', 'machine',
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
-    'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
-    'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
-)
+    'answer_path', 'answer_source', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind',
+    'user_answer', 'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
+)  # 0.2.7 adds answer_source
 
 
 def load(path, name):

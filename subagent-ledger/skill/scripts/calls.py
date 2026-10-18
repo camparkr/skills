@@ -3,6 +3,7 @@
 
     python3 calls.py --session <id> [--ledger <folder>] [--since <RFC 3339>] [--until <RFC 3339>] --json
     python3 calls.py --session <id> ... --count-check --harness <name> --transcript <path> [--transcript <path> ...]
+    python3 calls.py --session <id> [--ledger <folder>] --prune
 
 It prints one JSON object on standard output:
 
@@ -67,12 +68,24 @@ take only what lies inside the window: a transcript row by its own timestamp, a 
 (its return time where it has none), an error line by its time. A session whose capture was installed part way
 through is checked from the install on.
 
-Exit codes: 0 listed; 1 refused on its input; 2 cannot run (the ledger folder, the schema or the
-writer missing); 3 a declared absence, such as no ledger file for the session, or a transcript the
-count check could not read; 4 the count check found a difference. No other.
+Each row also carries `copies`: for each copy its records name (`brief`, `prompt`, `answer`), the path as recorded,
+its `state` (`kept`; `removed`, with the `prune` line's `removed_at`; or `missing`, gone with no prune line dated at or
+after its record) and its fingerprint: the record's own, else the prune line's for that copy, else unrecorded. The
+reader hashes no file. A `prune` witness line is left out of the span, the witness pairing and every count.
+
+--prune removes the session's copy folder, <ledger>/<session>/, where config.json's `keep_copies` is `until-close`
+(`always`, or no setting, removes nothing). It refuses, deleting nothing, where the folder holds a file the writer did
+not make, a record's fingerprint disagrees with its copy, or a record names a gone copy and carries no fingerprint
+for it. Otherwise it appends one witness line, `event` `prune`, with the fingerprints it took from copies no record
+fingerprints, and then deletes the copies and the folder. It prints one JSON object. It is the one mode that writes.
+
+Exit codes: 0 listed (or pruned, or nothing to prune); 1 refused on its input; 2 cannot run (the ledger folder, the
+schema or the writer missing, or config.json unreadable); 3 a declared absence, such as no ledger file for the
+session, or a transcript the count check could not read; 4 the count check found a difference; 5 the prune refused;
+6 the prune did not finish (the witness line could not be written, or a removal failed). No other.
 
 The ledger folder is --ledger, then $SUBAGENT_LEDGER_DIR, then .subagent-ledger in the git top-level
-folder of the working folder. The reader makes no model call and writes nothing.
+folder of the working folder. The reader makes no model call, and writes nothing but with --prune.
 """
 
 import argparse
@@ -362,8 +375,15 @@ def order_key(row):
 # The listing
 # ---------------------------------------------------------------------------
 
+def is_prune_line(record):
+    return isinstance(record, dict) and record.get('record') == 'witness' and record.get('event') == PRUNE_EVENT
+
+
 def listing(session, folder, records, bad_lines, errors, unattributed, joins, since=None, until=None):
-    """The output object, less the count check."""
+    """The output object, less the count check. A `prune` witness line is no call and no witness to one: it is left
+    out of the span, the witness pairing and the counts, and read only for each row's `copies`."""
+    prunes = [record for record in records if is_prune_line(record)]
+    records = [record for record in records if not is_prune_line(record)]
     sent, back, witness_lines, labels = {}, {}, [], {}
     for record in records:
         kind = record.get('record')
@@ -381,6 +401,7 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
     rows.sort(key=order_key)
     for row in rows:
         row['labels'] = labels_of(labels.get(row['call_id'], []))
+        row['copies'] = copies_of(sent.get(row['call_id']), back.get(row['call_id']), folder, session, prunes)
 
     def agent_of(call_id):
         record = back.get(call_id)
@@ -549,6 +570,234 @@ def shown(folder):
         if (parent / '.git').exists():
             return str(folder.relative_to(parent))
     return str(folder)
+
+
+# ---------------------------------------------------------------------------
+# Copies: each row's, and the prune that removes them
+# ---------------------------------------------------------------------------
+
+PRUNE_EVENT = 'prune'
+COPY_NAME = re.compile(r'^[0-9a-f]{16}\.md$')
+MOVED = re.compile(r'^moved to (.+)$')
+NOT_FINGERPRINTED = 'unrecorded (written before fingerprints)'
+KEEP_SETTING = 'keep_copies'
+KEEP_VALUES = ('always', 'until-close')
+
+
+def copy_name(path):
+    """The copy's file name where a recorded path names one, else None."""
+    if not isinstance(path, str) or is_unrecorded(path):
+        return None
+    name = path.replace('\\', '/').rsplit('/', 1)[-1]
+    return name if COPY_NAME.match(name) else None
+
+
+def moved_paths(node):
+    """Every path a `moved to <path>` string under a harness_payload names."""
+    out = []
+    if isinstance(node, str):
+        found = MOVED.match(node)
+        if found:
+            out.append(found.group(1))
+    elif isinstance(node, dict):
+        for value in node.values():
+            out += moved_paths(value)
+    elif isinstance(node, list):
+        for value in node:
+            out += moved_paths(value)
+    return out
+
+
+def named_copies(record):
+    """{'brief' | 'prompt' | 'answer': (the path the record names, its fingerprint or None)} for one record. The
+    prompt's copy is the one `moved to` names whose name its fingerprint, or no other field, gives."""
+    out = {}
+    if not isinstance(record, dict):
+        return out
+    for kind, field in (('brief', 'brief_path'), ('answer', 'answer_path')):
+        if copy_name(record.get(field)):
+            found = record.get('%s_fingerprint' % kind)
+            out[kind] = (record[field], found if isinstance(found, dict) else None)
+    prompt = record.get('prompt_fingerprint')
+    if isinstance(prompt, dict):
+        for path in moved_paths(record.get('harness_payload')):
+            if copy_name(path) == prompt.get('sha256', '')[:16] + '.md':
+                out['prompt'] = (path, prompt)
+    return out
+
+
+def copies_of(sent, back, folder, session, prunes):
+    """A row's `copies`: for each of its brief, prompt and answer copies, the path as recorded, its state (`kept`,
+    `removed` with the prune line's time, or `missing`), and its fingerprint: the record's own, else the prune line's
+    for that copy, else unrecorded. No file is hashed here."""
+    out = {}
+    for record in (sent, back):
+        when = parse_time((record or {}).get('returned_at' if record is back else 'dispatched_at'))
+        for kind, (path, found) in named_copies(record).items():
+            name = copy_name(path)
+            entry = {'path': path}
+            if (Path(folder) / session / name).is_file():
+                entry['state'] = 'kept'
+            else:
+                covering = [line for line in prunes if parse_time(line.get('at')) is not None
+                            and (when is None or parse_time(line.get('at')) >= when)]
+                if covering:
+                    entry['state'] = 'removed'
+                    entry['removed_at'] = min(covering, key=lambda line: parse_time(line.get('at'))).get('at')
+                else:
+                    entry['state'] = 'missing'
+            if found is None:
+                for line in prunes:
+                    for item in line.get('fingerprints') or []:
+                        if isinstance(item, dict) and copy_name(item.get('path')) == name:
+                            found = item
+            for key in ('sha256', 'bytes', 'lines'):
+                entry[key] = found.get(key) if isinstance(found, dict) else NOT_FINGERPRINTED
+            out[kind] = entry
+    return out
+
+
+class PruneStop(Exception):
+    """The prune stops: an exit code, the output's extra keys, and a reason for standard error."""
+
+    def __init__(self, code, reason, **extra):
+        Exception.__init__(self, reason)
+        self.code = code
+        self.extra = extra
+
+
+def file_fingerprint(path):
+    """(the fingerprint taken from a copy, None) or (None, why). A copy whose hash does not begin with its own name is
+    read again as text with \r\n turned into \n, as an old Windows copy was written; one that matches neither is not
+    the writer's."""
+    data = path.read_bytes()
+    found = ledger.fingerprint(data)
+    if found['sha256'].startswith(path.stem):
+        return found, None
+    text = ledger.fingerprint(data.replace(b'\r\n', b'\n'))
+    if text['sha256'].startswith(path.stem):
+        return text, None
+    return None, 'the copy %s does not hash to its name' % path.name
+
+
+def shown_path(path, folder):
+    """A path named as the records name copies: relative to the git top level of the ledger folder, else in full."""
+    top = ledger._git_top(Path(folder))
+    try:
+        return str(path.resolve().relative_to(top.resolve())) if top else str(path)
+    except ValueError:
+        return str(path)
+
+
+def prune(session, folder):
+    """(exit code, output object) of `--prune` for one session. Nothing is deleted before the witness line is
+    written, and nothing at all where it refuses."""
+    out = {'session': session, 'ledger': shown(folder)}
+    try:
+        setting = json.loads((Path(folder) / ledger.CONFIG_FILE).read_text(encoding='utf-8')) \
+            if (Path(folder) / ledger.CONFIG_FILE).is_file() else {}
+    except (OSError, ValueError) as exc:
+        out['refused'] = '%s could not be read: %s' % (ledger.CONFIG_FILE, exc)
+        return 2, out
+    keep = setting.get(KEEP_SETTING, 'always') if isinstance(setting, dict) else 'always'
+    out['keep_copies'] = keep
+    if keep not in KEEP_VALUES:
+        out['refused'] = '%s is %r: it must be one of %s' % (KEEP_SETTING, keep, ', '.join(KEEP_VALUES))
+        return 1, out
+    if keep == 'always':
+        out['removed'] = 0
+        return 0, out
+    if is_unrecorded(session) or session == ledger.UNATTRIBUTED or '/' in session or '\\' in session:
+        out['refused'] = 'the session %r names no session folder the prune may act on' % session
+        return 1, out
+    path = Path(folder) / ('%s.jsonl' % session)
+    records = jsonl(path)[0] if path.is_file() else []
+    calls = [r for r in records if r.get('record') in ('dispatch', 'return')]
+    if not calls:
+        out['refused'] = ('no ledger file for session %s' % session if not path.is_file()
+                          else 'the ledger file holds no call record')
+        return 3, out
+    copy_folder = Path(folder) / session
+    entries = sorted(copy_folder.iterdir()) if copy_folder.is_dir() else []
+    out.update({'removed': 0, 'fingerprinted_from_copies': 0, 'already_missing': []})
+    if not entries:
+        return 0, out
+    try:
+        strays = [entry.name for entry in entries if not entry.is_file() or not COPY_NAME.match(entry.name)]
+        if strays:
+            raise PruneStop(5, 'the copy folder holds files the writer did not make: %s' % ', '.join(strays),
+                            paths=strays)
+        files = dict((entry.name, entry) for entry in entries)
+        named = {}
+        for record in calls:
+            names = set()
+            for kind, (recorded, found) in named_copies(record).items():
+                named.setdefault(copy_name(recorded), []).append(found)
+                names.add(copy_name(recorded))
+            for moved in moved_paths(record.get('harness_payload')):
+                if copy_name(moved) and copy_name(moved) not in names:
+                    named.setdefault(copy_name(moved), []).append(None)
+                    names.add(copy_name(moved))
+            for key in ledger.FINGERPRINT_FIELDS:
+                found = record.get(key)
+                if isinstance(found, dict) and isinstance(found.get('sha256'), str):
+                    name = found['sha256'][:16] + '.md'
+                    if name not in names:
+                        named.setdefault(name, []).append(found)
+                        names.add(name)
+        taken, problems = [], []
+        for name, entry in files.items():
+            found, why = file_fingerprint(entry)
+            if found is None:
+                problems.append(why)
+                continue
+            given = [f for f in named.get(name, []) if f is not None]
+            for fingerprint in given:
+                if fingerprint.get('sha256') != found['sha256']:
+                    problems.append('a record\'s fingerprint for %s disagrees with the copy\'s hash' % name)
+                    break
+            if not given:
+                taken.append(dict({'path': shown_path(entry, folder)}, **found,
+                                  named_by='a record without a fingerprint' if name in named else 'no record'))
+        for name, given in sorted(named.items()):
+            if name in files:
+                continue
+            if any(f is not None for f in given):
+                out['already_missing'].append(name)
+            else:
+                problems.append('a record names the copy %s, carries no fingerprint for it, and the copy is gone'
+                                % name)
+        if problems:
+            raise PruneStop(5, '; '.join(problems), reasons=problems)
+        at = ledger.now()
+        line = {'event': PRUNE_EVENT, 'session': session, 'agent_id': 'unrecorded (no agent: the prune)',
+                'call_id': 'unrecorded (not carried by prune)', 'at': at,
+                'copy_folder': shown_path(copy_folder, folder), 'copies': len(files)}
+        if taken:
+            line['fingerprints'] = taken
+        written = ledger.witness(ledger=str(folder), **line)
+        if not getattr(written, 'ok', False):
+            raise PruneStop(6, 'the witness line could not be written: %s' % getattr(written, 'error', 'unknown'),
+                            not_removed=sorted(files))
+        out['fingerprinted_from_copies'] = len(taken)
+        removed = []
+        for name, entry in sorted(files.items()):
+            try:
+                entry.unlink()
+            except OSError as exc:
+                out['removed'] = len(removed)
+                raise PruneStop(6, 'removing %s failed: %s' % (name, exc),
+                                not_removed=sorted(set(files) - set(removed)))
+            removed.append(name)
+        out['removed'] = len(removed)
+        try:
+            copy_folder.rmdir()
+        except OSError:
+            pass
+        return 0, out
+    except PruneStop as stop:
+        out['refused' if stop.code == 5 else 'not_removed'] = dict({'reason': str(stop)}, **stop.extra)
+        return stop.code, out
 
 
 # ---------------------------------------------------------------------------
@@ -808,6 +1057,7 @@ def arguments(argv):
     parser.add_argument('--count-check', action='store_true')
     parser.add_argument('--harness')
     parser.add_argument('--transcript', action='append', default=[])
+    parser.add_argument('--prune', action='store_true')
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -824,6 +1074,8 @@ def arguments(argv):
         raise Refused('--count-check needs --harness and at least one --transcript')
     if not args.count_check and (args.harness or args.transcript):
         raise Refused('--harness and --transcript belong to --count-check')
+    if args.prune and (args.count_check or args.since or args.until or args.harness or args.transcript):
+        raise Refused('--prune takes no --count-check, --since, --until, --harness or --transcript')
     return args
 
 
@@ -849,6 +1101,12 @@ def main(argv=None):
         return 2
 
     session = args.session
+    if args.prune:
+        code, out = prune(session, folder)
+        print(json.dumps(out, ensure_ascii=False))
+        if code:
+            print('calls: prune: exit %d' % code, file=sys.stderr)
+        return code
     path = folder / ('%s.jsonl' % session)
     declared = None
     if path.is_file():

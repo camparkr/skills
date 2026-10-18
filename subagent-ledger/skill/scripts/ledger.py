@@ -80,7 +80,7 @@ STRUCTURAL = ('schema', 'record', 'fields_on', 'fields_not_chosen', 'withheld')
 SELECTABLE = (
     'model_requested', 'model', 'tokens', 'cost', 'outcome_reason', 'route', 'harness', 'machine',
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
-    'answer_path', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
+    'answer_path', 'answer_source', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
     'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
 )
 # Fields no longer selectable, and gone from the schema. A record written before they were retired
@@ -92,7 +92,7 @@ DEFAULT_FIELDS = ('model_requested', 'model', 'tokens', 'cost', 'outcome_reason'
 # reads `unrecorded (<reason>)` saying where it is.
 DISPATCH_ONLY = {'model_requested', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
                  'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'triage_kind'}
-RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'isolation',
+RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'answer_source', 'isolation',
                'spend_line', 'failure_modes', 'roster_revision', 'labeller_model'}
 # Written beside a selectable field, and only when that field is on.
 COMPANIONS = {'model_check': 'model'}
@@ -113,6 +113,10 @@ NOT_GIVEN = {
     'task': 'unrecorded (the brief names no task)',
 }
 NO_VALUE = 'unrecorded (the capture supplied no value)'
+NO_BRIEF = 'unrecorded (no brief was passed)'
+NO_ANSWER = 'unrecorded (no answer came back)'
+PENDING_FINGERPRINT = 'unrecorded (pending copy)'
+FINGERPRINT_FIELDS = ('brief_fingerprint', 'prompt_fingerprint', 'answer_fingerprint')
 # user_answer for any call whose kind is not user-decision.
 NOT_A_DECISION = 'none (not a user decision)'
 USER_DECISION = 'user-decision'
@@ -406,6 +410,12 @@ def _build(kind, folder, fields, on, brief, answer):
         host = os.environ.get(HOST_VARIABLE)
         record['harness_payload'] = dict(record['harness_payload'], host_session=host if host else
                                          'unrecorded (%s is not set)' % HOST_VARIABLE)
+    # The fingerprint of each text the ledger copies, written whatever `fields` says: the prune depends on them. The
+    # copy stage replaces the placeholder with the object; where no text was passed the field says so.
+    if kind == 'dispatch':
+        record['brief_fingerprint'] = NO_BRIEF if brief is None else PENDING_FINGERPRINT
+    else:
+        record['answer_fingerprint'] = NO_ANSWER if answer is None else PENDING_FINGERPRINT
     record['fields_on'] = [name for name in SELECTABLE if name in on]
     record['fields_not_chosen'] = [name for name in SELECTABLE if name not in on]
     record['withheld'] = 0
@@ -497,18 +507,29 @@ def _scrub(value, secrets, shapes):
     return value, 0
 
 
+def fingerprint(data):
+    """A text's fingerprint from its bytes: the full SHA-256, the byte count, and the line count (each \\n, and one
+    more where the text is not empty and does not end in one; an empty text has none)."""
+    lines = data.count(b'\n') + (1 if data and not data.endswith(b'\n') else 0)
+    return {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data), 'lines': lines}
+
+
 def _copy(record, folder, texts):
-    """Write the brief and the answer to <ledger>/<session>/<hash>.md, and name them on the record."""
+    """Write the brief, the prompt and the answer to <ledger>/<session>/<hash>.md as the bytes hashed, name them on
+    the record, and write each one's fingerprint on it. A fingerprint that cannot be taken raises: the record is not
+    written."""
     if not texts:
         return
     folder_out = _copy_dir(folder, record['session'])
     top = _git_top(folder)
     for name, text in texts.items():
-        digest = hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
-        target = folder_out / ('%s.md' % digest)
+        data = text.encode('utf-8')
+        found = fingerprint(data)
+        target = folder_out / ('%s.md' % found['sha256'][:16])
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
-            target.write_text(text, encoding='utf-8')
+            target.write_bytes(data)
+        record['%s_fingerprint' % name] = found
         try:
             shown = str(target.resolve().relative_to(top.resolve())) if top else str(target)
         except ValueError:

@@ -25,6 +25,7 @@
     "brief_path",
     "brief_source",
     "answer_path",
+    "answer_source",
     "isolation",
     "harness_payload",
     "spend_line",

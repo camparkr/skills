@@ -13,7 +13,7 @@ x-component:
   gcs: {reads: [], writes: []}
   external-apis:
     json-schema.org:
-      - https://json-schema.org/draft/2020-12/schema  # URL literal in ledger.py:620
+      - https://json-schema.org/draft/2020-12/schema  # URL literal in ledger.py:717
   pubsub: {}
   depends-on: []
   overlaps-with: []

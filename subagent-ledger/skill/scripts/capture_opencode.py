@@ -71,6 +71,8 @@ NOT_A_SCRIPT = 'unrecorded (not a call script)'
 NO_PROVIDER = 'unrecorded (tool.execute.before names no model, so no provider)'
 NO_EFFORT = 'unrecorded (OpenCode reports no effort level to a plugin)'
 NO_SIGN_IN = 'unrecorded (OpenCode reports no sign-in route to a plugin)'
+NO_ANSWER_FILE = ('unrecorded (OpenCode\'s capture reads no file for the answer: the plugin hands it the tool\'s '
+                  'output)')
 LIMIT = ('each tool call is listed as the model wrote it, when it names an absolute path outside the '
          'folder; a read inside a script its shell tool ran is not seen; ' + transcripts.CUT_NOTE)
 STATE = re.compile(r'<task\b[^>]*\bstate="([^"]*)"')
@@ -269,7 +271,7 @@ def on_event(event_type, part, payload, folder, held):
             'outcome_reason': ledger.reason_for(HARNESS, text, fallback='harness_error'),
             'model': '%s/%s' % (provider, name) if isinstance(provider, str) and isinstance(name, str)
             and provider and name else 'unrecorded (model absent from %s)' % event_type,
-            'tokens': NO_COUNTERS, 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT, 'effort': NO_EFFORT,
+            'tokens': NO_COUNTERS, 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT, 'answer_source': NO_ANSWER_FILE, 'effort': NO_EFFORT,
             'isolation': isolation_from_db(held.agent_id),
         })
         given = state.get('input') if isinstance(state.get('input'), dict) else {}
@@ -443,7 +445,7 @@ def after(payload, folder, held):
         'agent_id': held.agent_id if not held.agent_id.startswith('unrecorded (') else
         'unrecorded (output.metadata.sessionId absent from tool.execute.after)',
         'outcome': outcome, 'outcome_reason': reason,
-        'model': model_name, 'tokens': NO_COUNTERS, 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT,
+        'model': model_name, 'tokens': NO_COUNTERS, 'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT, 'answer_source': NO_ANSWER_FILE,
         'effort': NO_EFFORT,
         'isolation': isolation_from_db(held.agent_id),
     })

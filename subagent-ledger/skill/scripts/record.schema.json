@@ -103,6 +103,7 @@
         "brief_path",
         "brief_source",
         "answer_path",
+        "answer_source",
         "isolation",
         "harness_payload",
         "spend_line",
@@ -504,6 +505,17 @@
           "$ref": "#/$defs/text",
           "description": "The ledger folder's copy of the answer."
         },
+        "answer_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "$ref": "#/$defs/unrecorded"
+            }
+          ],
+          "description": "The file the answer can be read from once its copy is gone."
+        },
         "isolation": {
           "$ref": "#/$defs/objectOrUnrecorded",
           "description": "What the run touched outside its folder."
@@ -555,6 +567,18 @@
         "model_check": {
           "$ref": "#/$defs/anyValue",
           "description": "Written beside model where the harness and the transcript disagree."
+        },
+        "brief_fingerprint": {
+          "$ref": "#/$defs/fingerprintOrUnrecorded",
+          "description": "The fingerprint of the brief the ledger copied."
+        },
+        "prompt_fingerprint": {
+          "$ref": "#/$defs/fingerprintOrUnrecorded",
+          "description": "The fingerprint of the prompt copied beside a named brief."
+        },
+        "answer_fingerprint": {
+          "$ref": "#/$defs/fingerprintOrUnrecorded",
+          "description": "The fingerprint of the answer the ledger copied."
         }
       },
       "additionalProperties": false,
@@ -1186,6 +1210,45 @@
         {
           "if": {
             "required": [
+              "answer_source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "answer_source"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "answer_source"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "fields_not_chosen": {
+                "contains": {
+                  "const": "answer_source"
+                }
+              },
+              "fields_on": {
+                "not": {
+                  "contains": {
+                    "const": "answer_source"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
               "isolation"
             ]
           },
@@ -1729,6 +1792,52 @@
         },
         "withheld": {
           "$ref": "#/$defs/count"
+        },
+        "copy_folder": {
+          "$ref": "#/$defs/text",
+          "description": "The copy folder a prune removed, named as the records name copies."
+        },
+        "copies": {
+          "$ref": "#/$defs/count",
+          "description": "The number of copies the prune set out to remove."
+        },
+        "fingerprints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256",
+              "bytes",
+              "lines",
+              "named_by"
+            ],
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/text"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "lines": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "named_by": {
+                "enum": [
+                  "a record without a fingerprint",
+                  "no record"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "The fingerprints a prune took from the copies themselves."
         }
       },
       "additionalProperties": false
@@ -1965,6 +2074,43 @@
       },
       "additionalProperties": false,
       "description": "A capture error line, in capture-errors.jsonl. Its record is the line the capture could not write: dispatch, return, witness, label (a label line the labeller could not write), or unknown."
+    },
+    "fingerprint": {
+      "type": "object",
+      "required": [
+        "sha256",
+        "bytes",
+        "lines"
+      ],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The SHA-256 of the copied text's bytes."
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The length of those bytes."
+        },
+        "lines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The count of lines in the text."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The fingerprint of a text the ledger copies."
+    },
+    "fingerprintOrUnrecorded": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/fingerprint"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
     }
   }
 }

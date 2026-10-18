@@ -441,7 +441,7 @@ class SchemaAgainstFixtures(unittest.TestCase):
     def test_the_selectable_fields_match_the_writer(self):
         names = ledger.load_schema()['$defs']['selectableName']['enum']
         self.assertEqual(list(ledger.SELECTABLE), names)
-        self.assertEqual(len(names), 28)
+        self.assertEqual(len(names), 29)  # 0.2.7 adds answer_source
         self.assertEqual(list(ledger.DEFAULT_FIELDS),
                          ['model_requested', 'model', 'tokens', 'cost', 'outcome_reason'])
 
@@ -482,7 +482,9 @@ class Setting(Folder):
         self.config('frame')
         for record in self.one_call():
             with self.subTest(record=record['record']):
-                self.assertEqual(sorted(record), sorted(FRAME + STRUCTURAL))
+                # 0.2.7: the fingerprint of the record's copied text is written whatever the setting.
+                fingerprint = ['brief_fingerprint' if record['record'] == 'dispatch' else 'answer_fingerprint']
+                self.assertEqual(sorted(record), sorted(FRAME + STRUCTURAL + fingerprint))
                 self.assertEqual(record['fields_on'], [])
                 self.assertEqual(record['fields_not_chosen'], list(ledger.SELECTABLE))
 

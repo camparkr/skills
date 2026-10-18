@@ -177,7 +177,9 @@ def finish(folder, base, outcome, reason, payload, answer, **fields):
     record = dict(base)
     record['agent_id'] = session_of_run(fields)
     record.update({'outcome': outcome, 'outcome_reason': reason, 'cost': NO_COST, 'effort': NO_EFFORT,
-                   'spend_line': NO_SPEND, 'harness_payload': payload})
+                   'spend_line': NO_SPEND, 'harness_payload': payload,
+                   'answer_source': 'unrecorded (the answer came from the program\'s standard output, which no file '
+                                    'keeps)'})
     for name in ('model', 'tokens', 'isolation'):
         record[name] = fields.get(name, 'unrecorded (the run did not reach the harness)')
     if fields.get('model_check'):

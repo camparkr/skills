@@ -297,7 +297,7 @@ def pre_spawn(payload, folder, held, message=False):
         'dispatched_at': at,
         'model_requested': asked if isinstance(asked, str) and asked else None,
         'auth_route': auth_route(),
-        'brief_source': ENCRYPTED if encrypted else source,
+        'brief_source': ENCRYPTED if encrypted else (source or shared.inline_source(payload)),
         'effort_assigned': shared.effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
     found, seconds = shared.dispatch_kind(folder, brief if source else message_text, held)
@@ -691,14 +691,14 @@ def from_rollout(path, rows, unread, answer, turn, waited):
     """model, tokens, effort and isolation from the rollout's rows as read once; never a wait for more."""
     if not path:
         why = 'unrecorded (agent_transcript_path absent from SubagentStop)'
-        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why}
+        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why, 'answer_source': why}
     if rows is None:
         why = 'unrecorded (%s)' % unread
-        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why}
+        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why, 'answer_source': why}
     reading = transcripts.read(path, rows=rows)
     if not transcripts.is_codex(rows):
         why = 'unrecorded (%s)' % (reading['error'] or 'the rollout holds no session_meta row')
-        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why}
+        return {'model': why, 'tokens': why, 'effort': why, 'isolation': why, 'answer_source': why}
     if reading['tokens'] == transcripts.CODEX_CONTINUED:
         tokens = reading['tokens']
     elif not transcripts.codex_complete(path, answer, turn, rows=rows):
@@ -710,7 +710,7 @@ def from_rollout(path, rows, unread, answer, turn, waited):
     return {'model': reading['model'] or 'unrecorded (the rollout names no model)',
             'tokens': tokens,
             'effort': reading.get('effort') or 'unrecorded (the rollout records no effort)',
-            'isolation': transcripts.isolation(reading)}
+            'isolation': transcripts.isolation(reading), 'answer_source': str(path)}
 
 
 def rollout_outcome(rows, answer):

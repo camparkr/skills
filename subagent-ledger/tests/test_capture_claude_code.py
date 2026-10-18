@@ -859,13 +859,14 @@ class CB2_8Brief(World):
         rows[0]['payload']['tool_input']['prompt'] = 'Reply with the word received and nothing else.'
         self.feed(rows[:1])
         dispatch = self.records()[0]
-        self.assertTrue(UNRECORDED.match(dispatch['brief_source']))
+        # An inline brief names the caller's transcript as its source.
+        self.assertEqual(dispatch['brief_source'], 'inline in %s' % rows[0]['payload']['transcript_path'])
         self.assertEqual(self.copied(dispatch), 'Reply with the word received and nothing else.')
 
     def test_c_b2_8_control_file_reading_switched_off_loses_the_source(self):
         with mock.patch.object(self.capture, 'brief_of', lambda prompt, cwd: (prompt, None)):
             self.feed(self.foreground()[:1])
-        self.assertTrue(UNRECORDED.match(self.records()[0]['brief_source']))
+        self.assertTrue(self.records()[0]['brief_source'].startswith('inline in '), 'the named file is lost')
 
 
 # ---------------------------------------------------------------------------

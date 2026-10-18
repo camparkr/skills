@@ -378,7 +378,7 @@ def pre_agent(payload, folder, held):
         'dispatched_at': at,
         'model_requested': given.get('model') if isinstance(given.get('model'), str) and given.get('model') else None,
         'auth_route': auth_route(),
-        'brief_source': source,
+        'brief_source': source or inline_source(payload),
         'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
     found, seconds = dispatch_kind(folder, brief if source else prompt, held)
@@ -483,6 +483,7 @@ def post_agent_failure(payload, folder, held):
             'tokens': 'unrecorded (the call failed before a transcript could be joined)',
             'effort': 'unrecorded (no SubagentStop was joined to this call)',
             'isolation': 'unrecorded (the call failed before a transcript could be joined)',
+            'answer_source': 'unrecorded (the call failed before a transcript could be joined)',
             'harness_payload': without_texts(payload, (payload.get('tool_input') or {}).get('prompt'), ON_DISPATCH_BRIEF),
         })
         if sent and sent.get('dispatched_at'):
@@ -569,7 +570,7 @@ def pre_resume(payload, folder, held):
         'dispatched_at': at,
         'model_requested': None,
         'auth_route': auth_route(),
-        'brief_source': None,
+        'brief_source': inline_source(payload) if message else None,
         'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
     })
     found, seconds = dispatch_kind(folder, message, held)
@@ -645,12 +646,13 @@ def outside_return(payload, folder, held):
             HARNESS, answer, 'the message was not delivered'),
         'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT,
         'model': OUTSIDE_READING, 'tokens': OUTSIDE_READING, 'isolation': OUTSIDE_READING,
-        'effort': OUTSIDE_READING,
+        'effort': OUTSIDE_READING, 'answer_source': OUTSIDE_READING,
         'harness_payload': without_texts(payload, message_text(given.get('message')), ON_DISPATCH_BRIEF),
     })
     if peer:
         receiver = receiving_session(given)
-        fields.update({'tokens': PEER_SPENT % receiver, 'cost': PEER_SPENT % receiver})
+        fields.update({'tokens': PEER_SPENT % receiver, 'cost': PEER_SPENT % receiver,
+                       'answer_source': PEER_SPENT % receiver})
         msg_id = response.get('msg_id') if isinstance(response, dict) else None
         fields['harness_payload'] = dict(fields['harness_payload'], receiving_session=receiver,
                                          msg_id=msg_id if isinstance(msg_id, str) and msg_id else
@@ -733,7 +735,8 @@ def write_stopped(folder, held, agent, stop, stop_tool_payload=None):
         if path and os.path.exists(str(path)):
             fields.update(from_transcript(path, response.get('resolvedModel'), None))
         else:
-            fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT})
+            fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT,
+                       'answer_source': NO_TRANSCRIPT_KEPT})
         kept = dict(payload) if payload else dict(stop_tool_payload or {})
         kept['stopped_by'] = read_pending(folder, held.session, 'stopped-' + agent)
         kept['post_tool_use_response'] = data.get('tool_response')
@@ -974,7 +977,8 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
     elif join.get('dispatched_at'):
         fields['dispatched_at'] = join['dispatched_at']
     if ending['how'] == 'no transcript':
-        fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT})
+        fields.update({'model': NO_TRANSCRIPT_KEPT, 'tokens': NO_TRANSCRIPT_KEPT, 'isolation': NO_TRANSCRIPT_KEPT,
+                       'answer_source': NO_TRANSCRIPT_KEPT})
     else:
         fields.update(from_transcript(ending['path'], response.get('resolvedModel'), None, ending.get('span')))
     if isinstance(fields.get('tokens'), dict):
@@ -1208,14 +1212,15 @@ def from_transcript(path, resolved, usage, span=None):
     that turn's rows; the checks beside them."""
     if not path:
         why = 'unrecorded (the subagent transcript was not found)'
-        return {'model': why, 'tokens': why, 'isolation': why}
+        return {'model': why, 'tokens': why, 'isolation': why, 'answer_source': why}
     reading = transcripts.read(path, span)
     if reading['error']:
         why = 'unrecorded (%s)' % reading['error']
-        return {'model': why, 'tokens': why, 'isolation': why}
+        return {'model': why, 'tokens': why, 'isolation': why, 'answer_source': why}
+    # answer_source: the subagent's own transcript, the file the counters were read from.
     out = {'model': reading['model'] or 'unrecorded (the transcript names no model)',
            'tokens': dict(reading['tokens']),
-           'isolation': transcripts.isolation(reading)}
+           'isolation': transcripts.isolation(reading), 'answer_source': str(path)}
     if isinstance(resolved, str) and resolved and reading['model'] and resolved != reading['model']:
         out['model_check'] = {'harness': resolved, 'transcript': reading['model']}
     if isinstance(usage, dict) and reading['last_request']:
@@ -1328,6 +1333,7 @@ def cli_return(folder, held, fields, command, output, exit_code, kept, no_code=N
         fields = dict(fields, route='cli')
         fields.update({
             'call_id': held.call_id, 'agent_id': CLI_AGENT, 'spend_line': NOT_A_SCRIPT,
+            'answer_source': caller_transcript(kept),
             'dispatched_at': sent.get('dispatched_at'),
             'effort': 'unrecorded (a command-line call reports no effort to this capture)',
             'tokens': 'unrecorded (a command-line call\'s counters are not read by this capture)',
@@ -1369,6 +1375,7 @@ def post_shell(event, payload, folder, held):
         fields = common(payload, folder, route='cli')
         fields.update({
             'call_id': held.call_id, 'agent_id': CLI_AGENT, 'spend_line': NOT_A_SCRIPT,
+            'answer_source': caller_transcript(payload),
             'dispatched_at': sent.get('dispatched_at'),
             'effort': 'unrecorded (a command-line call reports no effort to this capture)',
             'tokens': 'unrecorded (a command-line call\'s counters are not read by this capture)',
@@ -1419,6 +1426,23 @@ def post_shell(event, payload, folder, held):
         fields['harness_payload'] = without_texts(kept, command, ON_DISPATCH_BRIEF)
         ledger.ret(ledger=folder, answer=answer, **fields)
         clear_pending(folder, held.session, ['cli-' + held.call_id])
+
+
+def caller_transcript(payload):
+    """answer_source for a call whose output the caller's own transcript holds: the payload's transcript_path, or why
+    there is none (OpenCode's plugin is given no transcript path)."""
+    path = payload.get('transcript_path') if isinstance(payload, dict) else None
+    if isinstance(path, str) and path:
+        return path
+    return 'unrecorded (the payload names no transcript that holds the output)'
+
+
+def inline_source(payload):
+    """brief_source for a brief the prompt carried inline: the caller's transcript,
+    which keeps the text once the copy is gone; None, so the writer says the prompt named no file, where the payload
+    names no transcript."""
+    path = payload.get('transcript_path') if isinstance(payload, dict) else None
+    return 'inline in %s' % path if isinstance(path, str) and path else None
 
 
 def command_of(payload):
@@ -1594,6 +1618,7 @@ def outside_call_return(folder, held, route, tool, given, kept, input_key, field
         'cost': OUTSIDE_COST,
         'isolation': 'unrecorded (the capture reads no record of what a %s call touched)' % route,
         'spend_line': NOT_A_SCRIPT,
+        'answer_source': caller_transcript(kept),
         'harness_payload': kept,
     })
     with pending_lock(folder, held.session):

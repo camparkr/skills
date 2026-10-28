@@ -37,6 +37,9 @@ Notes on the table:
 - A fresh reader is a session or subagent with none of the author's context.
 - A change that fits no row uses the nearest row and records why.
 - Run a check when the change can run on a case. Read only when it cannot, and record why.
+- Size each check by what the change touches: the changed files, the readers a search finds and the tests
+  that read the changed paths. Run a full test suite only when its result decides a finding. 'Sizing the
+  check' in `references/scratch-copies.md` covers copies, disk and removal.
 - If the control was not run or not caught, a supported finding is inconclusive; a refutation still stands.
 - Where the question is what a model does with work, not what a reader takes the instructions to say, use
   the instructions row. Asked what a text tells it to do, a model repeats the text.
@@ -117,8 +120,8 @@ Notes on the table:
 ## The check
 
 12. **Make the scratch copies.** Skip this step when the check only reads, plants nothing and runs in this
-    session. Otherwise load `references/scratch-copies.md`. It says which copy each check needs, and has you
-    save a fingerprint of the repository before making one.
+    session. Otherwise load `references/scratch-copies.md`. It says how large a check should be and which copy
+    each check needs, and has you check free disk and save a fingerprint of the repository before making one.
 13. **Run the check.** If a subagent or a fresh reader runs it, load `references/briefing-others.md` first.
     Cite the commit the check ran at, and name any uncommitted change it included. If the control, the check
     or a commit goes wrong, load `references/when-things-go-wrong.md`.

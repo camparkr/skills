@@ -17,8 +17,8 @@ The folder holds these files:
 - `skill/references/session-record.md`: where the session's record lives, the optional test index,
   committing, lighter mode, citing versions, the record's template and filled example hypotheses;
 - `skill/references/example-dry-runs.md`: one recorded dry run per kind of change;
-- `skill/references/scratch-copies.md`: which copy each check needs, the fingerprint, making and removing
-  the copies and checking that nothing reached the real tree;
+- `skill/references/scratch-copies.md`: how large a check should be, which copy each check needs, the
+  fingerprint, making and removing the copies and checking that nothing reached the real tree;
 - `skill/references/item-answers.md`: how to record one answer per item, and the fields to use;
 - `skill/references/when-things-go-wrong.md`: what to do when the objective, a control, a check or a
   commit goes wrong;

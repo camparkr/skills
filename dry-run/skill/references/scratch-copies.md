@@ -3,6 +3,26 @@
 Load at 'Make the scratch copies', before making a copy or saving a fingerprint. 'Check the real tree' and
 'Remove the scratch copies' come back to it.
 
+## Sizing the check
+
+A check uses the smallest input that can fail. A larger one costs time and disk and finds nothing more.
+
+- **What the check reads:** the changed files, the readers a search finds and the tests that read the changed
+  paths. Find those tests by searching the test files for each changed path and name, as for any other reader.
+- **One git copy, not a clone.** A scratch copy is the script's git copy, made as 'Making the copies' says.
+  Clone only where this file names a clone: a check that must stash, branch, tag or commit. Never clone the
+  repository to get a copy, and make a second copy only for the old code a behaviour change's control runs.
+- **A full test suite** runs only when its result decides a finding, such as a hypothesis that the change
+  breaks nothing a search can find. Otherwise run the tests that read the changed paths, and name them in the
+  hypothesis before the commit.
+- **Free disk, before any copy.** Check the free space where the copy will go, such as with `df -h <scratch>`.
+  If the copy and what the check writes would not fit with room to spare, stop and tell the requester.
+- **Removal, as soon as a copy exists.** Write the command that removes it into the record straight away,
+  before the check runs. Where the check runs as a script, have the script remove what it makes when it exits,
+  such as with a shell `trap`, and list any folder the check itself makes, such as a test run's temporary
+  copies. A check that fails partway then leaves nothing behind: 'Remove the scratch copies' runs the
+  recorded commands whatever the check did.
+
 ## Which copy each check needs
 
 | The check | Scratch copy | Fingerprint |

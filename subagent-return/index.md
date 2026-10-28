@@ -15,5 +15,4 @@ and generates it from the files beside it.*
 
 ## Subdirectories
 
-* [references/](references/) - directory: 0 scripts, 2 documents. The output section's grammar, and the instruction every member's brief carries.
-* [skill/](skill/) - directory: 0 scripts, 1 documents. What the parent does before sending a member, and how it reads the results.
+* [skill/](skill/) - directory: 0 scripts, 1 documents. What the parent does before sending a member, and how it reads the results, with `skill/references/` holding the output section's grammar and the instruction every member's brief carries.

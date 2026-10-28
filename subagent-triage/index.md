@@ -15,5 +15,4 @@ and generates it from the files beside it.*
 
 ## Subdirectories
 
-* [references/](references/) - directory: 0 scripts, 3 documents. The decision definitions' format, the brief and the plan file.
-* [skill/](skill/) - directory: 0 scripts, 1 documents. The steps from checking the ledger to closing the plan, and the three decision definitions in `skill/decisions/`.
+* [skill/](skill/) - directory: 0 scripts, 1 documents. The steps from checking the ledger to closing the plan, the three decision definitions in `skill/decisions/`, and `skill/references/` holding the decision definitions' format, the brief and the plan file.

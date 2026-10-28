@@ -105,7 +105,7 @@ stage read looks in, the planner's persona, and the decision service and its key
 - `skill/decisions/d1-act.json`: the act decision.
 - `skill/decisions/d3-figure.json`: the persona decision.
 - `skill/decisions/d4-effort.json`: the effort decision.
-- `references/decisions.md`: what a decision definition holds, the lanes and the decision record.
-- `references/brief-format.md`: the brief every member gets.
-- `references/plan-format.md`: the plan file, and how `close` marks a hop cited.
+- `skill/references/decisions.md`: what a decision definition holds, the lanes and the decision record.
+- `skill/references/brief-format.md`: the brief every member gets.
+- `skill/references/plan-format.md`: the plan file, and how `close` marks a hop cited.
 - `index.md`: a generated list of this folder's files.

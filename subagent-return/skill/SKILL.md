@@ -26,7 +26,7 @@ The checks can only read what the brief sets up. For each member:
    `not_applicable (no member brief)`, and its output section is never read.
 3. **Give it a `## Write set` section**, one path or folder prefix a line, each relative to the repository's root,
    or the single word `none` for a read-only member. A writer runs in its own worktree.
-4. **Copy the instruction in [`../references/brief-instruction.md`](../references/brief-instruction.md)** into the
+4. **Copy the instruction in [`references/brief-instruction.md`](references/brief-instruction.md)** into the
    brief's body, word for word. It tells the member to end its report with an output section.
 
 The `subagent-triage` skill does all four for every brief it writes. If you write a brief by hand, do them yourself.
@@ -35,7 +35,7 @@ The `subagent-triage` skill does all four for every brief it writes. If you writ
 
 | Check | Applies to | Passes when |
 |---|---|---|
-| 1. The claimed output is the member's | the files the report's output section lists ([`../references/output-section.md`](../references/output-section.md)) | every listed file is the member's, as that file's 'Results' section defines it |
+| 1. The claimed output is the member's | the files the report's output section lists ([`references/output-section.md`](references/output-section.md)) | every listed file is the member's, as that file's 'Results' section defines it |
 | 2. Front matter conforms | every Markdown file of the kinds your settings name that the member wrote, named in its report or not | the front-matter validator your settings name passes it. It is `not_applicable` only where the member wrote no such file |
 | 3. The call is on the ledger | every member | a dispatch record carries this agent's id, member and attempt |
 | 4. Writes stay in the write set | every member | every path changed in the worktree is inside the write set, and no Write, Edit or NotebookEdit call in the member's transcript names a path outside the worktree. For a read-only member, no such call names a path outside the scratch folder. A write to the session's scratch folder never fails check 4 |

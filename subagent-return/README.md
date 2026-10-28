@@ -83,7 +83,7 @@ Not yet. The checks run inside the ledger's hook wrapper, which is not built.
 ## Use
 
 The parent writes each brief with the member key, the attempt, a write set and the instruction in
-`references/brief-instruction.md`. The hooks do the rest. The parent reads each member's results through the ledger's
+`skill/references/brief-instruction.md`. The hooks do the rest. The parent reads each member's results through the ledger's
 reader before acting on its report. `skill/SKILL.md` says how.
 
 ## Settings
@@ -96,6 +96,6 @@ that carry the member and the attempt.
 
 - `README.md`: this file.
 - `skill/SKILL.md`: what the parent does before sending a member, and how it reads the results.
-- `references/output-section.md`: the grammar of a report's output section, which the parser applies.
-- `references/brief-instruction.md`: the instruction every member's brief carries, word for word.
+- `skill/references/output-section.md`: the grammar of a report's output section, which the parser applies.
+- `skill/references/brief-instruction.md`: the instruction every member's brief carries, word for word.
 - `index.md`: a generated list of this folder's files.

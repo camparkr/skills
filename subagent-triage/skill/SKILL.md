@@ -45,7 +45,7 @@ with no record cannot be checked afterwards.
 (`decisions/d1-act.json`). Where it reads one kind, go on to step 2 for that one member. No planning subagent runs.
 
 **A delegation that divides, or one you want planned.** Dispatch the planning subagent. Before you do, the script
-writes the planner's own pending file and gives you a plan request id. Name that id in the planner's brief. The
+writes the planner's own pending file, `planner-<plan-request-id>.json`, and gives you the plan request id. Name that id in the planner's brief. The
 planner's brief carries no member key, and its dispatch record says it is the planner's.
 
 <!-- BUILD: planner pending-file command, and the planner's persona from the settings. -->
@@ -88,7 +88,7 @@ stage reads `unrecorded (no specification found for <task-id>)`.
 
 ## 3. Write each brief
 
-Write each member's brief as [`../references/brief-format.md`](../references/brief-format.md) sets out. In short,
+Write each member's brief as [`references/brief-format.md`](references/brief-format.md) sets out. In short,
 the front matter names the persona, kind, task, member and attempt. The body opens with the instruction to read the
 persona's file and memory, holds the task and the write set, and ends with the output section instruction.
 
@@ -101,7 +101,7 @@ would not hold its write set as you have it.
 ## 4. Write the plan file
 
 Write the plan file before the first dispatch, beside the briefs, as
-[`../references/plan-format.md`](../references/plan-format.md) sets out. List every member, its persona, part, brief,
+[`references/plan-format.md`](references/plan-format.md) sets out. List every member, its persona, part, brief,
 write set and attempt, the parallel order, the synthesiser and each hop. A re-dispatch is a new entry under its
 member, with the next attempt number and your reason.
 

@@ -182,7 +182,6 @@ ATTEMPT_NOT_A_NUMBER = "unrecorded (the brief's attempt is not a whole number: %
 WRITE_SET_HEADING = '## Write set'
 SESSION_START = 'SessionStart'
 SESSION_START_AGENT = 'unrecorded (no agent: a session start)'
-GIT_SECONDS = 10
 NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
 NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
 # The triage: a command named by config.json's `triage_command`, run at each subagent or call-script
@@ -539,18 +538,17 @@ def is_writer(brief):
 def baseline_of(cwd):
     """A writer's baseline: the commit its worktree branches from, which is the working folder's HEAD at dispatch.
 
-    Read with git, bounded at GIT_SECONDS, never stopping or changing the call.
+    Read with git. Like the triage, it is given no time limit, and it never stops or changes the call.
     """
     if not isinstance(cwd, str) or not cwd:
         return 'unrecorded (git could not read HEAD in the working folder: cwd absent from the payload)'
     try:
-        head = subprocess.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True, text=True,
-                              timeout=GIT_SECONDS)
+        head = subprocess.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True, text=True)
         if head.returncode != 0:
             return 'unrecorded (git could not read HEAD in the working folder: %s)' % _one_line(
                 head.stderr or 'exit %d' % head.returncode)
         branch = subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True,
-                                text=True, timeout=GIT_SECONDS)
+                                text=True)
     except (OSError, subprocess.SubprocessError) as exc:
         return 'unrecorded (git could not read HEAD in the working folder: %s)' % _one_line(exc)
     name = branch.stdout.strip() if branch.returncode == 0 and branch.stdout.strip() else 'unrecorded (no branch)'

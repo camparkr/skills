@@ -32,6 +32,23 @@ What each event does:
     `unrecorded (the caller stopped the subagent)`, its counters from the transcript as it stands.
     PostToolUse on TaskStop writes the same return where none was written. A stop naming no pending
     agent, such as a background shell task, writes nothing.
+  * SessionStart: a witness line, `event` SessionStart, before the session's first call, so a reader can tell a
+    session the capture saw from one it did not. A payload with no session id also writes an error line.
+  * PreToolUse on Agent or Task also reads, from the brief (the first readable file the prompt names), `member` and
+    `attempt` at the frontmatter keys config.json's `frontmatter` map names (by default `member` and `attempt`).
+    A prompt naming no file reads `unrecorded (the prompt names no file)`; a first file with no member id reads
+    `unrecorded (the first file the prompt names is not a brief: <path>)`, and `harness_payload.kinds_read_from`
+    says act_kind and triage_kind were read from that file. A member's pending triage file,
+    `triage-<member>-<attempt>.json` (pending.schema.json; read by pending.py), has each value copied onto the
+    record with its stamp, and is removed once the record is written; where it carries `kind`, no triage runs and
+    `harness_payload.triage_source` names the file. A malformed file writes an error line at stage `pending`, each
+    value reads unrecorded, and the record is still written. A brief with no member id that names the plan request
+    of a `planner-<id>.json` pending file is the planning skill's own dispatch: `member` and `attempt` say so and
+    name the request, and the file is removed. `session_effort` is the payload's `effort.level`. A writer, whose
+    brief's `## Write set` names a path, gets `baseline`: the working folder's HEAD, which its worktree branches
+    from. Nothing is removed outside <ledger>/.pending/<session>/, and no path a pending file names is followed.
+  * PreToolUse on SendMessage to an agent this ledger holds: `continues_call_id`, `member` and `attempt` of the
+    dispatch it continues, joined by agent id through the join file or the return record; and `session_effort`.
   * SubagentStart: a witness line, and a pending file keyed by the agent id. Each message still
     waiting for this agent's stop is marked as sent before a turn that started.
   * PostToolUse on Agent or Task, a foreground call: the return record. The tool response is the one
@@ -140,6 +157,7 @@ if str(HERE) not in sys.path:
 
 import commands  # noqa: E402
 import ledger  # noqa: E402
+import pending  # noqa: E402
 import transcripts  # noqa: E402
 
 HARNESS = 'claude-code'
@@ -154,7 +172,17 @@ AUTH_VARIABLES = ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUT
 FRONTMATTER_FIELDS = ('persona-name', 'act_kind', 'task')
 # The brief's frontmatter keys read when config.json has no `frontmatter` map; a map replaces them key by key.
 DEFAULT_FRONTMATTER = {'act_kind': 'act_kind', 'user_answer': 'user_answer', 'persona-name': 'persona-name',
-                       'task': 'task'}
+                       'task': 'task', 'member': 'member', 'attempt': 'attempt'}
+# The brief read: a brief is the first readable file the prompt names, and a member's brief carries a member id.
+NO_FILE_NAMED = 'unrecorded (the prompt names no file)'
+NOT_A_BRIEF = 'the first file the prompt names is not a brief: %s'
+NO_ATTEMPT = 'unrecorded (the brief names no attempt)'
+PLANNER_MEMBER = "unrecorded (the planner's own dispatch, plan request %s: its brief carries no member)"
+ATTEMPT_NOT_A_NUMBER = "unrecorded (the brief's attempt is not a whole number: %s)"
+WRITE_SET_HEADING = '## Write set'
+SESSION_START = 'SessionStart'
+SESSION_START_AGENT = 'unrecorded (no agent: a session start)'
+GIT_SECONDS = 10
 NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
 NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
 # The triage: a command named by config.json's `triage_command`, run at each subagent or call-script
@@ -310,6 +338,8 @@ def _route(event, payload, folder, held):
         return pre_stop(payload, folder, held)
     if READ_STOPS and event == 'PostToolUse' and tool in stop_tools(HARNESS):
         return post_stop(payload, folder, held)
+    if event == SESSION_START:
+        return session_start(payload, folder, held)
     if event == 'SubagentStart':
         return subagent_start(payload, folder, held)
     if event == 'SubagentStop':
@@ -380,10 +410,39 @@ def pre_agent(payload, folder, held):
         'auth_route': auth_route(),
         'brief_source': source or inline_source(payload),
         'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
+        'session_effort': session_effort_of(payload, 'PreToolUse'),
     })
-    found, seconds = dispatch_kind(folder, brief if source else prompt, held)
+    read, not_a_brief = brief_read(folder, brief, source)
+    fields.update(read)
+    taken = None
+    if read['member'].startswith('unrecorded (') and (not_a_brief or not source):
+        # The planning skill's own dispatch carries no member: its brief names the plan request whose pending file
+        # is planner-<id>.json. Its record says so, and the brief read's untriaged reading does not apply.
+        with pending_lock(folder, held.session):
+            taken = pending.take_planner(pending_dir(folder, held.session), brief if source else prompt)
+        if taken is not None:
+            fields['member'] = fields['attempt'] = PLANNER_MEMBER % taken.request_id
+            not_a_brief = None
+    elif source and not read['member'].startswith('unrecorded ('):
+        with pending_lock(folder, held.session):
+            taken = pending.take_triage(pending_dir(folder, held.session), read['member'], read['attempt'], _safe,
+                                        ledger.validate)
+        if taken is not None:
+            fields.update(taken.values)
+            if taken.problem:
+                held.error(folder, 'pending', 'the pending triage file is malformed: %s' % taken.problem,
+                           record='dispatch')
+        if is_writer(brief):
+            fields['baseline'] = baseline_of(payload.get('cwd'))
+    pending_kind = taken.kind if taken is not None else None
+    found, seconds = dispatch_kind(folder, brief if source else prompt, held, pending_kind=pending_kind)
     fields.update(found)
     fields['harness_payload'] = with_triage_time(payload, seconds)
+    if pending_kind is not None:
+        fields['harness_payload'] = dict(fields['harness_payload'],
+                                         triage_source='the pending triage file %s' % taken.name)
+    if not_a_brief:
+        fields['harness_payload'] = dict(fields['harness_payload'], kinds_read_from=not_a_brief)
     fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
                                            payload.get('transcript_path'), fields['act_kind'],
                                            brief if source else prompt)
@@ -392,8 +451,110 @@ def pre_agent(payload, folder, held):
             'call_id': held.call_id, 'dispatched_at': at,
             'run_in_background': bool(given.get('run_in_background')),
         })
-    ledger.dispatch(ledger=folder, brief=brief or None, prompt=prompt if source and prompt else None,
-                    **fields)
+    written = ledger.dispatch(ledger=folder, brief=brief or None, prompt=prompt if source and prompt else None,
+                              **fields)
+    if taken is not None and getattr(written, 'ok', False):
+        with pending_lock(folder, held.session):
+            pending.remove(pending_dir(folder, held.session), taken)
+
+
+def session_start(payload, folder, held):
+    """A witness line at the session's start, before its first call: the evidence the capture is on."""
+    if held.session.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'session_id absent from SessionStart', record='witness')
+    ledger.witness(ledger=folder, event=SESSION_START, session=held.session, agent_id=SESSION_START_AGENT,
+                   call_id='unrecorded (not carried by SessionStart)', at=ledger.now())
+
+
+def session_effort_of(payload, event):
+    """The level the dispatching session runs at, from the dispatch's own payload; never the member's."""
+    effort = payload.get('effort') if isinstance(payload, dict) else None
+    level = effort.get('level') if isinstance(effort, dict) else None
+    if isinstance(level, str) and level:
+        return level
+    return 'unrecorded (effort.level absent from %s)' % event
+
+
+def brief_read(folder, brief, source):
+    """({member, attempt}, the reason the first file named is not a brief, or None).
+
+    The brief is the first readable file the prompt names (brief_of). A member's brief carries a member id at
+    the frontmatter key config.json's `frontmatter` map names for `member`, and its dispatch number at the key
+    for `attempt`.
+    """
+    if not source:
+        return {'member': NO_FILE_NAMED, 'attempt': NO_FILE_NAMED}, None
+    config, _path = read_config(folder)
+    keys = frontmatter_keys(config)
+    front = frontmatter(brief) if isinstance(brief, str) else {}
+    for name in ('member', 'attempt'):
+        if not keys.get(name):
+            reason = 'unrecorded (%s names no frontmatter key for %s)' % (ledger.CONFIG_FILE, name)
+            return {'member': reason, 'attempt': reason}, None
+    member = lookup(front, keys['member'])
+    if not isinstance(member, str) or not member:
+        reason = NOT_A_BRIEF % source
+        return {'member': 'unrecorded (%s)' % reason, 'attempt': 'unrecorded (%s)' % reason}, reason
+    attempt = lookup(front, keys['attempt'])
+    if not isinstance(attempt, str) or not attempt:
+        attempt = NO_ATTEMPT
+    elif attempt.isdigit() and int(attempt) >= 1:
+        attempt = int(attempt)
+    else:
+        attempt = ATTEMPT_NOT_A_NUMBER % attempt
+    return {'member': member, 'attempt': attempt}, None
+
+
+def write_set_of(brief):
+    """The lines of the brief's write set section, or None where it has none.
+
+    The section runs from a line reading exactly `## Write set` to the next line beginning `#`. Each non-blank line
+    is one path or folder prefix, with or without backticks and a leading `- ` or `* `, or the word `none`.
+    """
+    if not isinstance(brief, str):
+        return None
+    lines = brief.splitlines()
+    starts = [at for at, line in enumerate(lines) if line.strip() == WRITE_SET_HEADING]
+    if not starts:
+        return None
+    out = []
+    for line in lines[starts[0] + 1:]:
+        if line.startswith('#'):
+            break
+        item = line.strip()
+        if item.startswith(('- ', '* ')):
+            item = item[2:].strip()
+        item = item.strip('`').strip()
+        if item:
+            out.append(item)
+    return out
+
+
+def is_writer(brief):
+    """Whether the brief's write set names a path: a writer. `none`, or no section, is a read-only member."""
+    found = write_set_of(brief)
+    return bool(found) and any(item.lower() != 'none' for item in found)
+
+
+def baseline_of(cwd):
+    """A writer's baseline: the commit its worktree branches from, which is the working folder's HEAD at dispatch.
+
+    Read with git, bounded at GIT_SECONDS, never stopping or changing the call.
+    """
+    if not isinstance(cwd, str) or not cwd:
+        return 'unrecorded (git could not read HEAD in the working folder: cwd absent from the payload)'
+    try:
+        head = subprocess.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                              timeout=GIT_SECONDS)
+        if head.returncode != 0:
+            return 'unrecorded (git could not read HEAD in the working folder: %s)' % _one_line(
+                head.stderr or 'exit %d' % head.returncode)
+        branch = subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True,
+                                text=True, timeout=GIT_SECONDS)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 'unrecorded (git could not read HEAD in the working folder: %s)' % _one_line(exc)
+    name = branch.stdout.strip() if branch.returncode == 0 and branch.stdout.strip() else 'unrecorded (no branch)'
+    return {'commit': head.stdout.strip(), 'branch': name, 'read_at': ledger.now()}
 
 
 def subagent_start(payload, folder, held):
@@ -572,7 +733,13 @@ def pre_resume(payload, folder, held):
         'auth_route': auth_route(),
         'brief_source': inline_source(payload) if message else None,
         'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
+        'session_effort': session_effort_of(payload, 'PreToolUse'),
     })
+    if known:
+        continued, member, attempt = pending.continued_call(
+            lambda agent: read_join(folder, held.session, agent), Path(folder) / ('%s.jsonl' % held.session), to)
+        fields.update({'continues_call_id': continued if continued else member, 'member': member,
+                       'attempt': attempt})
     found, seconds = dispatch_kind(folder, message, held)
     fields.update(found)
     fields['harness_payload'] = with_triage_time(payload, seconds)
@@ -2209,13 +2376,18 @@ def act_kind_of(brief_kind, triage_kind):
     return brief_kind
 
 
-def dispatch_kind(folder, text, held):
+def dispatch_kind(folder, text, held, pending_kind=None):
     """The brief's fields for a subagent or call-script dispatch, with the triage's reading. An encrypted brief
-    is never given to the triage: its triage_kind and act_kind say the harness passed it encrypted.
+    is never given to the triage: its triage_kind and act_kind say the harness passed it encrypted. Where the
+    pending triage file carries the kind (`pending_kind`), that is the triage's reading and no triage runs.
 
     Returns (persona-name, act_kind, triage_kind, task and grouping; the seconds the triage ran or None).
     """
     fields = optional_fields(folder, text, held)
+    if pending_kind is not None:
+        fields['triage_kind'] = pending_kind
+        fields['act_kind'] = act_kind_of(fields['act_kind'], pending_kind)
+        return fields, None
     if is_ciphertext(text):
         # The harness passed the brief encrypted (Codex 0.162.x encrypts every one): the triage would read
         # noise, so it is not run.

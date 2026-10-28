@@ -427,6 +427,7 @@ SCHEMA_PATTERNS = [
     ('#/$defs/session/anyOf/0', 'b5label-0000-4000-8000-000000000001'),
     ('#/$defs/fingerprint/properties/sha256', 'a' * 64),
     ('#/$defs/witness/properties/fingerprints/items/properties/sha256', '0' * 64),
+    ('#/$defs/baseline/anyOf/0/properties/commit', 'c' * 40),
 ]
 
 

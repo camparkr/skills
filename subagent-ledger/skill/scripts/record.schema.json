@@ -275,6 +275,74 @@
         }
       ]
     },
+    "attempt": {
+      "description": "A member's dispatch number: 1 for the first, one more for each re-dispatch; or unrecorded (<reason>).",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "stamped": {
+      "description": "A value a planning skill stamped from the clock as it wrote it in a pending triage file, copied with its stamp. pending.schema.json defines each value's form.",
+      "type": "object",
+      "required": [
+        "value",
+        "stamped_at"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/anyValue"
+        },
+        "stamped_at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stampedOrUnrecorded": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/stamped"
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
+    "baseline": {
+      "description": "The commit a writer's worktree branches from: the working folder's HEAD at dispatch, its branch and when it was read; or unrecorded (<reason>).",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "commit",
+            "branch",
+            "read_at"
+          ],
+          "properties": {
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+            },
+            "branch": {
+              "$ref": "#/$defs/text"
+            },
+            "read_at": {
+              "$ref": "#/$defs/time"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unrecorded"
+        }
+      ]
+    },
     "actKind": {
       "description": "One of the kinds in kinds.json, or unrecorded (<reason>). A test holds this list equal to kinds.json's.",
       "anyOf": [
@@ -563,6 +631,62 @@
         "triage_kind": {
           "$ref": "#/$defs/actKind",
           "description": "The kind a triage read from the brief, kept beside act_kind."
+        },
+        "member": {
+          "$ref": "#/$defs/text",
+          "description": "On a dispatch: the member of a team plan the call dispatches, read from the brief's frontmatter; on a resumption, the member of the dispatch it continues; or unrecorded (<reason>). Written on every subagent dispatch, whatever the field setting."
+        },
+        "attempt": {
+          "$ref": "#/$defs/attempt",
+          "description": "On a dispatch: that member's dispatch number, read from the brief's frontmatter; on a resumption, that of the dispatch it continues."
+        },
+        "session_effort": {
+          "$ref": "#/$defs/text",
+          "description": "On a dispatch: the effort level of the session that made the call, from the dispatch's own payload; never the member's, which is effort_assigned."
+        },
+        "continues_call_id": {
+          "$ref": "#/$defs/id",
+          "description": "On a resumption's dispatch: the call id of the dispatch it continues, joined by agent id; or unrecorded (<reason>)."
+        },
+        "baseline": {
+          "$ref": "#/$defs/baseline",
+          "description": "On a writer's dispatch: the commit its worktree branches from. Absent on a read-only member's."
+        },
+        "effort_unaided": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the level the dispatching agent would choose unaided."
+        },
+        "decision_records": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the planning skill's decision records for the part."
+        },
+        "triage_persona": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the persona it names for the part. Where it differs from persona-name, the brief's, both stay."
+        },
+        "persona_facts": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the facts the persona's choice rested on."
+        },
+        "kind_paired_grouping": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the grouping the part's kind is paired with; never the record's grouping."
+        },
+        "chosen_by": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: who chose the call's persona."
+        },
+        "overrides": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: what each override's decision record cannot carry."
+        },
+        "below_line": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the mark for a part no persona reached the line for."
+        },
+        "triage_failure": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: that the planning skill's triage was attempted and failed, with the reason."
         },
         "model_check": {
           "$ref": "#/$defs/anyValue",
@@ -2143,7 +2267,8 @@
             "validate",
             "scrub",
             "copy",
-            "write"
+            "write",
+            "pending"
           ]
         },
         "reason": {

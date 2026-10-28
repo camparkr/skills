@@ -320,6 +320,26 @@ class PendingTriageFile(Capture):
         self.dispatch('toolu_sc03_0007', 'Read %s.' % path)
         self.assertTrue(outside.exists(), 'a file outside <ledger>/.pending/<session>/ is never removed')
 
+    def test_sc03_a_link_in_the_pending_folder_is_never_followed(self):
+        outside = self.tmp / 'outside.json'
+        outside.write_text(json.dumps(full_triage_file()), encoding='utf-8')
+        path = self.member_brief()
+        self.pending().mkdir(parents=True, exist_ok=True)
+        link = self.pending() / 'triage-m-one-1.json'
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest('this file system makes no links')
+        sent = self.dispatch('toolu_sc03_0008', 'Read %s.' % path)
+        self.assertTrue(sent['effort_unaided'].startswith('unrecorded ('))
+        self.assertEqual(json.loads(outside.read_text(encoding='utf-8')), full_triage_file())
+        self.assertFalse(link.is_symlink() or link.exists(), 'the link itself is removed, not what it names')
+
+    def test_sc03_the_pending_schemas_kinds_are_the_kinds_in_kinds_json(self):
+        schema = json.loads((SCRIPTS / 'pending.schema.json').read_text(encoding='utf-8'))
+        kinds = json.loads((SCRIPTS / 'kinds.json').read_text(encoding='utf-8'))['kinds']
+        self.assertEqual(schema['$defs']['stampedKind']['properties']['value']['enum'], [k['name'] for k in kinds])
+
     def test_sc13_every_pending_file_malformed_still_exits_0_and_writes_each_record(self):
         for number, raw in enumerate(('', '{', '[]', '{"effort_unaided": 3}', 'null')):
             member = 'm-%d' % number
@@ -333,6 +353,48 @@ class PendingTriageFile(Capture):
 # ---------------------------------------------------------------------------
 # SC-04: no second triage where the file carries the kind
 # ---------------------------------------------------------------------------
+
+class PlannerOwnDispatch(Capture):
+    """The planning skill's own dispatch: its pending file is planner-<plan-request-id>.json, and its brief names
+    that id and carries no member. Its record says it is the planner's and names the plan request."""
+
+    def planner_file(self, request_id):
+        folder = self.pending()
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / ('planner-%s.json' % request_id)
+        path.write_text(json.dumps({'plan_request': request_id}), encoding='utf-8')
+        return path
+
+    def test_sc03_the_planners_file_is_removed_and_its_record_names_the_plan_request(self):
+        planted = self.planner_file('req-0001')
+        path = self.brief('plan.md', {'act_kind': 'deliberation'}, body='Plan request req-0001: divide the work.\n')
+        sent = self.dispatch('toolu_sc03_0101', 'Read %s.' % path)
+        mark = "unrecorded (the planner's own dispatch, plan request req-0001: its brief carries no member)"
+        self.assertEqual((sent['member'], sent['attempt']), (mark, mark))
+        self.assertNotIn('kinds_read_from', sent['harness_payload'])
+        self.assertFalse(planted.exists(), 'no pending file outlives its record')
+
+    def test_sc03_empty_a_brief_naming_no_plan_request_leaves_the_file_and_reads_as_no_brief(self):
+        planted = self.planner_file('req-0002')
+        path = self.brief('plan.md', {'act_kind': 'deliberation'}, body='Divide the work.\n')
+        sent = self.dispatch('toolu_sc03_0102', 'Read %s.' % path)
+        self.assertEqual(sent['member'], 'unrecorded (the first file the prompt names is not a brief: %s)' % path)
+        self.assertTrue(planted.exists(), 'a file this dispatch does not name is not its to remove')
+
+    def test_sc03_likeness_an_id_that_only_begins_with_the_plan_requests_is_not_it(self):
+        planted = self.planner_file('req-0003')
+        path = self.brief('plan.md', {'act_kind': 'deliberation'}, body='Plan request req-00031.\n')
+        sent = self.dispatch('toolu_sc03_0103', 'Read %s.' % path)
+        self.assertNotIn("planner's own dispatch", sent['member'])
+        self.assertTrue(planted.exists())
+
+    def test_sc03_likeness_a_member_brief_naming_the_id_is_the_members_not_the_planners(self):
+        planted = self.planner_file('req-0004')
+        path = self.brief('brief.md', {'member': 'm-one', 'attempt': '1'}, body='From plan request req-0004.\n')
+        sent = self.dispatch('toolu_sc03_0104', 'Read %s.' % path)
+        self.assertEqual((sent['member'], sent['attempt']), ('m-one', 1))
+        self.assertTrue(planted.exists())
+
 
 class NoSecondTriage(Capture):
 

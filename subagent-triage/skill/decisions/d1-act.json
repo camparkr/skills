@@ -5,6 +5,7 @@
   "definition_version": 0,
   "provisional": true,
   "basis": "No line is measured. Version 0 reads one kind with the provisional Choice. The Nouls are defined so calibration can set their lines; they are not asked at dispatch until it does.",
+  "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["noul", "choice"]},
   "decision_point_classification": "bounded_semantic",
   "exact_facts": [],
   "subject": "the part: what it asks for, as the plan states it, with the brief's task text where the brief is written",

@@ -70,8 +70,23 @@ docs/report.md
 - All the paths lie in one repository. A part whose writes span two repositories is split into one member for each.
 - A folder prefix ends with `/`, and covers everything under it.
 
-**5. The output section instruction.** The instruction in the `subagent-return` skill's
-`references/brief-instruction.md`, copied word for word. That file is its one home.
+**5. What the work is checked for.** The instruction in the `subagent-return` skill's
+`references/brief-instruction.md`, copied word for word, with its two placeholders filled from the settings. It tells
+the member what to write, where, with what front matter, and how to end its report. That file is its one home, and
+says which check each part of it keeps from failing.
+
+## Which check each field keeps from failing
+
+The `subagent-return` skill checks every member's report as it comes back. The brief's own fields keep failures in three of its
+checks from arising:
+
+| Field or rule | Keeps from failing |
+|---|---|
+| The brief's path is the first path the prompt names | check 3, the call is on the ledger: the check finds the brief by that rule, and a dispatch whose first file is not a brief has no member to match |
+| `member` | check 3, which keys the dispatch record by agent id, member and attempt. Without it, check 1 reads `not_applicable (no member brief)` and the report's output section is never read |
+| `attempt` | check 3, so a re-dispatch's record is matched to its own attempt and not an earlier one |
+| `## Write set`, each path relative to the repository's root | check 4, writes stay in the write set: the check compares every change in the worktree against these paths. A path given from the main checkout would match nothing in the worktree |
+| `none` for a read-only member | check 4 and check 1: a read-only member may write only to the scratch folder, and owns no output file |
 
 ## Paths that do not resolve
 

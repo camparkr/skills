@@ -97,5 +97,6 @@ that carry the member and the attempt.
 - `README.md`: this file.
 - `skill/SKILL.md`: what the parent does before sending a member, and how it reads the results.
 - `skill/references/output-section.md`: the grammar of a report's output section, which the parser applies.
-- `skill/references/brief-instruction.md`: the instruction every member's brief carries, word for word.
+- `skill/references/brief-instruction.md`: the instruction every member's brief carries, telling the member what each
+  check looks for.
 - `index.md`: a generated list of this folder's files.

@@ -4,6 +4,7 @@
 ![Version](https://img.shields.io/badge/version-0.0.1%20(scaffold)-lightgrey.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Claude%20Code-lightgrey.svg)
+![Jev](https://img.shields.io/badge/Jev-1.13.0-blue.svg)
 ![Format](https://img.shields.io/badge/format-Agent%20Skill-green.svg)
 
 > **Scaffold.** The instructions, references and decision definitions are drafted. The scripts are not built, the
@@ -44,7 +45,7 @@ For each member, the dispatch record carries:
 - the parent's own effort level, chosen before it saw the skill's, then the skill's level, and any override; and
 - the member id and attempt, so a re-dispatch counts against the member it repeats.
 
-The three readings are decision definitions in `skill/decisions/`. Each answer is a decision record with its
+The three readings are decision definitions in `skill/decisions/`, written for Jev at model `jev-1.13.0`. Each answer is a decision record with its
 probability, line, version and lane, so results from different versions are never pooled.
 
 ## Why use subagent-triage
@@ -67,8 +68,8 @@ probability, line, version and lane, so results from different versions are neve
   quoted. A parent that acts on a hop's output in its own words is marked not cited.
 - **Claude Code only.** Other harnesses wait on probes of whether they take a per-call effort and carry a brief's
   front matter to the record.
-- **A decision service is required** for the three decisions. Without one, every decision records its failure and the
-  parent chooses.
+- **Jev is required** for the three decisions, which are written for model `jev-1.13.0`. Without it, every decision
+  records its failure and the parent chooses.
 
 ## Who it is for
 
@@ -80,7 +81,7 @@ measurable. It is not for searches, page fetches, MCP reads, or checking what ca
 - Python 3.9 or later, standard library only.
 - The `subagent-ledger` skill, whose capture copies the pending triage file onto the dispatch record.
 - The `subagent-return` skill, whose output section instruction every brief carries.
-- A typed-decision service that answers Noul and Choice questions.
+- Jev, TypeSafe's decision engine, at model `jev-1.13.0`, and a key for it.
 
 ## Install
 
@@ -96,7 +97,7 @@ steps.
 
 <!-- BUILD: the settings keys, once the scripts fix them. -->
 The settings will name the roster, the capability register, the group paired with each kind of act, the files the
-stage read looks in, the planner's persona, and the decision service and its key's environment variable.
+stage read looks in, the planner's persona, and the environment variable that holds the Jev key.
 
 ## Contents of this folder
 

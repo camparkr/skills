@@ -9,6 +9,10 @@ This skill sits between you and every dispatch that names a persona. It reads wh
 for, chooses who takes it and at what effort, and writes the brief. It records every value in a pending triage file,
 and the ledger's capture copies that file onto the member's dispatch record. You never write the ledger.
 
+The three decisions it asks, of each part's kind, persona and effort, are written for Jev, TypeSafe's decision
+engine, at model `jev-1.13.0`. Each is a definition in `decisions/`, and
+[`references/decisions.md`](references/decisions.md) describes them.
+
 In the commands below, `<skill>` is this skill's folder.
 
 > **Scaffold.** The scripts are not built yet. Each step names what its script does. The commands are placeholders.

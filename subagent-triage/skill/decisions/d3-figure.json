@@ -5,6 +5,7 @@
   "definition_version": 0,
   "provisional": true,
   "basis": "The adequacy line of 0.5 is a starting value with no measured basis. Calibration on a labelled set replaces it.",
+  "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice", "noul"]},
   "decision_point_classification": "mixed",
   "subject": "the part, with the kind the act decision read for it",
   "exact_facts": {

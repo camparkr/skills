@@ -5,6 +5,7 @@
   "definition_version": 0,
   "provisional": true,
   "basis": "Version 0 is written from the level descriptions below, with no calibration. Each later version is written from calibration misses only and tested on a fresh held-out half.",
+  "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice"]},
   "decision_point_classification": "mixed",
   "subject": "the part, with its brief and inputs",
   "exact_facts": {

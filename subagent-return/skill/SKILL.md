@@ -27,7 +27,8 @@ The checks can only read what the brief sets up. For each member:
 3. **Give it a `## Write set` section**, one path or folder prefix a line, each relative to the repository's root,
    or the single word `none` for a read-only member. A writer runs in its own worktree.
 4. **Copy the instruction in [`references/brief-instruction.md`](references/brief-instruction.md)** into the
-   brief's body, word for word. It tells the member to end its report with an output section.
+   brief's body, word for word, with its two placeholders filled from your settings. It tells the member what each
+   check looks for: where it may write, the front matter its Markdown files need, and how to end its report.
 
 The `subagent-triage` skill does all four for every brief it writes. If you write a brief by hand, do them yourself.
 

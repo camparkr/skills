@@ -11,8 +11,12 @@ JSON file in `skill/decisions/`:
 
 A **Noul** asks whether one proposition is true and returns a probability of yes. A **Choice** picks one member of a
 closed set and returns a probability for each. Neither is a measurement, and neither probability is relabelled a
-score. The shapes follow the typed-decision service the skill calls. The definitions name no provider, so another
-service with the same shapes can answer them.
+score.
+
+The three definitions are written for Jev, TypeSafe's decision engine, at model `jev-1.13.0`. Noul and Choice are
+Jev's question types, and each definition's instructions and criteria are written to be asked of it. Each file names
+the engine and model in its `engine` key. Asking a definition of another model, or another engine, is a change to
+the definition: it takes a new version, and its lines are calibrated again.
 
 ## What a definition holds
 
@@ -23,6 +27,7 @@ service with the same shapes can answer them.
 | `definition_version` | a whole number, raised by one whenever a question, criterion, line or outcome changes |
 | `provisional` | `true` while any line or criterion has no measured basis |
 | `basis` | where the lines and criteria come from, in a sentence |
+| `engine` | the engine and model the definition is written for and asked of: Jev, `jev-1.13.0` |
 | `decision_point_classification` | `exact`, `bounded_semantic`, `mixed` or `authority_bearing` |
 | `exact_facts` | the facts established exactly before any semantic question is asked |
 | `composition` | each Noul and Choice, its instructions and criteria, and how their results combine |
@@ -60,7 +65,7 @@ record. A record carries these fields and no others:
 | `lane` | the outcome's lane |
 | `delegated_authority` | where `lane` is `delivered`: who delegated it; otherwise absent |
 | `evidence_state` | whether the answer has been checked against anything other than itself |
-| `decided_by` | the service and model version that answered |
+| `decided_by` | the engine and model that answered, such as Jev at `jev-1.13.0` |
 | `final_disposition` | `pending`, `accepted` or `overridden`: what the parent did with the answer |
 | `disposed_by` | who disposed of it, and when; absent while `pending` |
 | `override` | where `overridden`: the override's fields, as the definition's `override` lists them |

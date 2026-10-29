@@ -20,6 +20,7 @@ generated: { by: process:okf-projectdocs }
 * [test_capture_codex.py](test_capture_codex.py) - Tests for Codex's capture, `skill/scripts/capture_codex.py`, and the Codex half of `transcripts.py`.
 * [test_capture_opencode.py](test_capture_opencode.py) - Tests for OpenCode's capture: `skill/scripts/capture_opencode.py` and the plugin that feeds it,
 * [test_commands.py](test_commands.py) - Tests for the command splitter, `skill/scripts/commands.py`, through the capture that uses it.
+* [test_dispatch_record.py](test_dispatch_record.py) - Controls for the dispatch record's new values: the session-start witness, the brief read, the pending triage file,
 * [test_fingerprints_prune.py](test_fingerprints_prune.py) - Tests for the fingerprints on each record and for `calls.py --prune`, which removes a session's copies.
 * [test_handback_turns.py](test_handback_turns.py) - Fix note FN-16: a subagent resumed by `SendMessage` whose turns end with a hand-back call.
 * [test_isolation_cut.py](test_isolation_cut.py) - Fix note FN-16, second part: each command `isolation` lists is cut to its first 200 characters.

@@ -18,6 +18,7 @@ generated: { by: process:okf-projectdocs }
 * [capture_opencode.py](capture_opencode.py) - OpenCode's capture: the plugin `opencode-plugin/subagent-ledger.js` runs it on each `task` and `bash` call.
 * [commands.py](commands.py) - Split a shell command into the parts the shell runs, and name each part's program.
 * [ledger.py](ledger.py) - The subagent ledger's one writer: every line in a ledger folder is written here.
+* [pending.py](pending.py) - The pending triage file: its reader and remover, and the join a resumption reads.
 * [transcripts.py](transcripts.py) - Read a Claude Code transcript: the model that ran, its four counters, its folder and its tool calls.
 
 ## Documents
@@ -29,6 +30,7 @@ generated: { by: process:okf-projectdocs }
 * [capture-opencode.component.md](capture-opencode.component.md) - OpenCode's capture, run by the plugin. It writes both records for each `task` call and each model call made through `bash`. When a task errors, it writes a failed return from the event stream.
 * [commands.component.md](commands.component.md) - Splits a shell command into the parts the shell runs, so a model call inside a longer command is found.
 * [ledger.component.md](ledger.component.md) - The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files, with a fingerprint of each, and appends the line under a lock. The lock works on macOS, Linux and Windows.
+* [pending.component.md](pending.component.md) - Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session's pending folder. Also joins a resumption to the dispatch it continues.
 * [transcripts.component.md](transcripts.component.md) - Reads a transcript for the model that ran, its four token counters and what the run touched outside its folder.
 
 ## Subdirectories

@@ -310,7 +310,7 @@ class PendingTriageFile(Capture):
         path = self.member_brief(attempt='1')
         other = self.write_triage('m-one', 2, full_triage_file())
         sent = self.dispatch('toolu_sc03_0006', 'Read %s.' % path)
-        self.assertNotIn('effort_unaided', sent)
+        self.assertEqual(sent['effort_unaided'], 'unrecorded (no pending triage file for this call)')
         self.assertTrue(other.exists())
 
     def test_sc03_a_member_id_naming_a_path_deletes_nothing_outside_the_session_folder(self):
@@ -484,7 +484,7 @@ class Baseline(Capture):
         repo, _ = self.repository()
         path = self.writer_brief(repo, write_set='none')
         sent = self.dispatch('toolu_sc05_0102', 'Read %s.' % path, cwd=repo)
-        self.assertNotIn('baseline', sent)
+        self.assertEqual(sent['baseline'], "unrecorded (no writer's brief for this call)")
 
     def test_sc05_empty_a_writer_outside_any_repository_says_why_there_is_no_baseline(self):
         path = self.writer_brief(self.work)
@@ -497,7 +497,7 @@ class Baseline(Capture):
         path.write_text('---\nmember: m-r\nattempt: 1\n---\nReview src/a.py and report.\n\n## Write set\n\nnone\n',
                         encoding='utf-8')
         sent = self.dispatch('toolu_sc05_0104', 'Read %s.' % path, cwd=repo)
-        self.assertNotIn('baseline', sent)
+        self.assertEqual(sent['baseline'], "unrecorded (no writer's brief for this call)")
 
 
 class ResumptionJoin(Capture):
@@ -568,7 +568,7 @@ class ResumptionJoin(Capture):
         payload['tool_input']['recipient_kind'] = 'name'
         self.run_event('PreToolUse', payload)
         sent = self.resumed('toolu_sc05_0241')
-        self.assertNotIn('continues_call_id', sent)
+        self.assertEqual(sent['continues_call_id'], 'unrecorded (not a resumption)')
 
 
 

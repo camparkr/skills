@@ -63,7 +63,10 @@ SELECTABLE = (
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
     'answer_path', 'answer_source', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind',
     'user_answer', 'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
-)  # 0.2.7 adds answer_source
+    'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided', 'decision_records',
+    'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by', 'overrides', 'below_line',
+    'triage_failure',
+)  # 0.2.7 adds answer_source; U2a adds the last fourteen
 
 
 def load(path, name):

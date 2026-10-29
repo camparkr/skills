@@ -82,6 +82,9 @@ SELECTABLE = (
     'caller', 'project', 'effort', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
     'answer_path', 'answer_source', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
     'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
+    'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided', 'decision_records',
+    'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by', 'overrides', 'below_line',
+    'triage_failure',
 )
 # Fields no longer selectable, and gone from the schema. A record written before they were retired
 # keeps them as written, and the reader prints them where a record carries them. A `fields` list
@@ -91,7 +94,12 @@ DEFAULT_FIELDS = ('model_requested', 'model', 'tokens', 'cost', 'outcome_reason'
 # Which record a selectable field belongs to. A field that is on and belongs to the other record
 # reads `unrecorded (<reason>)` saying where it is.
 DISPATCH_ONLY = {'model_requested', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
-                 'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'triage_kind'}
+                 'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'triage_kind',
+                 'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided',
+                 'decision_records', 'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by',
+                 'overrides', 'below_line', 'triage_failure'}
+# The values a planning skill's pending triage file carries, absent where there was none.
+NO_PENDING_FILE = 'unrecorded (no pending triage file for this call)'
 RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'answer_source', 'isolation',
                'spend_line', 'failure_modes', 'roster_revision', 'labeller_model'}
 # Written beside a selectable field, and only when that field is on.
@@ -110,6 +118,20 @@ NOT_GIVEN = {
     'persona-name': 'unrecorded (the brief names no persona)',
     'grouping': 'unrecorded (the brief names no persona)',
     'act_kind': 'unrecorded (the brief names no kind; no triage ran)',
+    'member': 'unrecorded (not a subagent dispatch)',
+    'attempt': 'unrecorded (not a subagent dispatch)',
+    'session_effort': 'unrecorded (not read for this route)',
+    'continues_call_id': 'unrecorded (not a resumption)',
+    'baseline': "unrecorded (no writer's brief for this call)",
+    'effort_unaided': NO_PENDING_FILE,
+    'decision_records': NO_PENDING_FILE,
+    'triage_persona': NO_PENDING_FILE,
+    'persona_facts': NO_PENDING_FILE,
+    'kind_paired_grouping': NO_PENDING_FILE,
+    'chosen_by': NO_PENDING_FILE,
+    'overrides': NO_PENDING_FILE,
+    'below_line': NO_PENDING_FILE,
+    'triage_failure': NO_PENDING_FILE,
     'task': 'unrecorded (the brief names no task)',
 }
 NO_VALUE = 'unrecorded (the capture supplied no value)'

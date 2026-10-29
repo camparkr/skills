@@ -115,7 +115,21 @@
         "failure_modes",
         "roster_revision",
         "labeller_model",
-        "triage_kind"
+        "triage_kind",
+        "member",
+        "attempt",
+        "session_effort",
+        "continues_call_id",
+        "baseline",
+        "effort_unaided",
+        "decision_records",
+        "triage_persona",
+        "persona_facts",
+        "kind_paired_grouping",
+        "chosen_by",
+        "overrides",
+        "below_line",
+        "triage_failure"
       ]
     },
     "fieldList": {
@@ -634,7 +648,7 @@
         },
         "member": {
           "$ref": "#/$defs/text",
-          "description": "On a dispatch: the member of a team plan the call dispatches, read from the brief's frontmatter; on a resumption, the member of the dispatch it continues; or unrecorded (<reason>). Written on every subagent dispatch, whatever the field setting."
+          "description": "On a dispatch: the member of a team plan the call dispatches, read from the brief's frontmatter; on a resumption, the member of the dispatch it continues; or unrecorded (<reason>)."
         },
         "attempt": {
           "$ref": "#/$defs/attempt",
@@ -1922,6 +1936,342 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "member"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "member"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "member"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "attempt"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "attempt"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "attempt"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "session_effort"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "session_effort"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "session_effort"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "continues_call_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "continues_call_id"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "continues_call_id"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "baseline"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "baseline"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "baseline"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "effort_unaided"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "effort_unaided"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "effort_unaided"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "decision_records"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "decision_records"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "decision_records"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "triage_persona"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "triage_persona"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "triage_persona"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "persona_facts"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "persona_facts"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "persona_facts"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "kind_paired_grouping"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "kind_paired_grouping"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "kind_paired_grouping"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "chosen_by"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "chosen_by"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "chosen_by"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "overrides"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "overrides"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "overrides"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "below_line"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "below_line"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "below_line"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "triage_failure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "triage_failure"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "triage_failure"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
         }
       ]
     },

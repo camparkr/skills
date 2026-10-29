@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:subagent-ledger:record-schema:1",
   "title": "subagent-ledger record",
-  "description": "One line of a subagent ledger: a dispatch or a return record of one call, a witness line, a label line, or a capture error line. x-opentelemetry is an annotation giving the OpenTelemetry generative-AI attribute each field corresponds to; it does not validate.",
+  "description": "One line of a subagent ledger: a dispatch or a return record of one call, a witness line, a label line, a disposition line, or a capture error line. x-opentelemetry is an annotation giving the OpenTelemetry generative-AI attribute each field corresponds to; it does not validate.",
   "oneOf": [
     {
       "$ref": "#/$defs/dispatch"
@@ -15,6 +15,9 @@
     },
     {
       "$ref": "#/$defs/label"
+    },
+    {
+      "$ref": "#/$defs/disposition"
     },
     {
       "$ref": "#/$defs/error"
@@ -2413,6 +2416,21 @@
             "additionalProperties": false
           },
           "description": "The fingerprints a prune took from the copies themselves."
+        },
+        "check_results": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "$ref": "#/$defs/unrecorded"
+              }
+            ]
+          },
+          "description": "At a hand-back, and at a stop, where a check ran there: the check's result for that point, as the check left it (pending.schema.json, checkResult), so it is on the record before the report can reach the parent. The call's one return carries the same result again. Absent where no check ran."
         }
       },
       "additionalProperties": false
@@ -2580,6 +2598,130 @@
       },
       "additionalProperties": false
     },
+    "disposition": {
+      "type": "object",
+      "description": "A disposition line: the parent's decision on one call's failing check results, which settles the results it names by id. The capture writes it from a pending disposition file at the PostToolUse of the shell call that ran the disposition script, then removes the file. It takes no field setting.",
+      "required": [
+        "schema",
+        "record",
+        "session",
+        "call_id",
+        "agent_id",
+        "member",
+        "attempt",
+        "result_ids",
+        "kind",
+        "reason",
+        "decided_by",
+        "decided_at",
+        "recorded_at_call",
+        "withheld"
+      ],
+      "properties": {
+        "schema": {
+          "const": "subagent-ledger/1"
+        },
+        "record": {
+          "const": "disposition"
+        },
+        "session": {
+          "$ref": "#/$defs/session"
+        },
+        "call_id": {
+          "$ref": "#/$defs/id",
+          "description": "The dispatch call whose results this settles."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The agent the call ran as, as its check results name it."
+        },
+        "member": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/attempt"
+            },
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "description": "The id of each check result this settles, each a result of this call."
+        },
+        "kind": {
+          "enum": [
+            "accepted",
+            "repaired",
+            "sent back",
+            "re-dispatched",
+            "discarded"
+          ],
+          "description": "accepted: the output stands as it is; repaired: the parent changes it itself, at the paths named; sent back: the parent resumes the member; re-dispatched: the parent dispatches the member's next attempt; discarded: the output is dropped."
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        },
+        "decided_by": {
+          "enum": [
+            "parent",
+            "user"
+          ],
+          "description": "Who decided, as the parent states it: evidence of the path taken, not a control."
+        },
+        "quote": {
+          "$ref": "#/$defs/text",
+          "description": "The user's words, where the user decided."
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "description": "For repaired: each path the parent will change."
+        },
+        "repository": {
+          "$ref": "#/$defs/text",
+          "description": "For repaired: the repository the paths are read in, or unrecorded."
+        },
+        "decided_at": {
+          "$ref": "#/$defs/time"
+        },
+        "recorded_at_call": {
+          "$ref": "#/$defs/id",
+          "description": "The shell call at whose PostToolUse the line was written."
+        },
+        "withheld": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "additionalProperties": false
+    },
     "error": {
       "type": "object",
       "required": [
@@ -2617,6 +2759,7 @@
             "return",
             "witness",
             "label",
+            "disposition",
             "unknown"
           ]
         },

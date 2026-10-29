@@ -7,11 +7,13 @@ process.
 
 The capture is installed nowhere else on an event the wrapper holds. Which checks run is config.json's `checks`,
 beside `triage_command`: a command for `stop` runs at each SubagentStop; one for `handback` at PreToolUse on the
-harness's hand-back tools (subagent-tools.json `handback`); one for `dispatch` at PreToolUse on Agent and Task. A
-check gets the payload on standard input and, in its environment, SUBAGENT_LEDGER_DIR, SUBAGENT_LEDGER_SESSION and
-SUBAGENT_LEDGER_SCRIPTS; it prints one JSON object, {"refuse": true or false, "reason": "<text>"}, and may add keys
-of its own. `check_seconds` bounds each check (10 by default). With no check named, the wrapper only runs the
-capture, and writes what the capture alone writes.
+harness's hand-back tools (subagent-tools.json `handback`); one for `dispatch` at PreToolUse on Agent and Task; one
+for `gate` at every PreToolUse of the parent (a payload with no `agent_id`), whatever the tool; and one for `context`
+after the capture at the parent's PostToolUse on Agent or Task and at its UserPromptSubmit. A check gets the payload
+on standard input and, in its environment, SUBAGENT_LEDGER_DIR, SUBAGENT_LEDGER_SESSION and SUBAGENT_LEDGER_SCRIPTS;
+it prints one JSON object, {"refuse": true or false, "reason": "<text>"}, and may add keys of its own; a `context`
+check may add `context`, text the wrapper hands the parent as additionalContext. `check_seconds` bounds each check
+(10 by default). With no check named, the wrapper only runs the capture, and writes what the capture alone writes.
 
 What each part does:
 
@@ -20,9 +22,17 @@ What each part does:
     refuses nothing: `not_checkable (check timed out)`. Its time is `check_seconds`.
   * At a stop or a hand-back the check's result is kept for the call's one return (pending.py, `checkResult`): its
     own keys less `refuse`, with `event`, `at`, `refused`, `reason`, `result` (`checked`, or `not_checkable (...)`),
-    `check_seconds` and, at a hand-back, `tool_use_id`. Then the capture runs: at a stop the check refused, it writes
-    the witness line and no return; at a hand-back it writes nothing, and where the check refused, the wrapper has it
-    write the witness line.
+    `check_seconds` and, at a hand-back, `tool_use_id`. Then the capture runs: at a stop it writes the witness line,
+    carrying the stop's result, and at a stop the check refused, no return; at a hand-back it writes no call record,
+    and the wrapper has it write the witness line carrying the hand-back's result, refused or not, before the call
+    goes on and so before its report can reach the parent.
+  * The gate runs before anything else at the parent's PreToolUse. Where it refuses, the call is refused: an Agent or
+    Task call gets its dispatch record and one `failed` return, class refused_by_check, as a refused dispatch does;
+    for any other tool the capture is not run, since the call never runs. A gate that errors or overruns refuses
+    nothing, and a witness line records its result, `not_checkable (...)`, under `check_results`. A member's tool
+    call never meets the gate; where no check and no capture route applies to it, the wrapper exits at once.
+  * The context step runs after the capture, so a foreground call's return is on the record when it reads. Its text
+    is printed as hookSpecificOutput additionalContext, at PostToolUse and at UserPromptSubmit alike.
   * At PostToolUse on a hand-back tool the kept result is marked delivered, with the SHA-256 of the message
     delivered. With a hand-back check on and no result kept for that call, one is kept saying so, so its return reads
     `unrecorded (no check result when the return was written)`.
@@ -36,8 +46,10 @@ What each part does:
 
 The hook's time limit is set explicitly in the hook entries, above the capture's longest wait: `--hook-entries`
 prints them, each with `timeout` set to `background_wait_seconds` plus `check_seconds` plus a margin of 30 seconds.
-It refuses (exit 2) where `background_wait_seconds` is not set, since an unbounded wait has no limit to sit above.
-Placing the entries in settings other sessions load is the user's act.
+With a `gate` check named, the PreToolUse entry matches every tool, and the limit holds one more `check_seconds`,
+since a PreToolUse may run the gate and then the dispatch check; with a `context` check named, a UserPromptSubmit
+entry is added. It refuses (exit 2) where `background_wait_seconds` is not set, since an unbounded wait has no limit to
+sit above. Placing the entries in settings other sessions load is the user's act.
 """
 
 import contextlib
@@ -64,6 +76,7 @@ import pending  # noqa: E402
 CHECK_SECONDS = 10
 MARGIN_SECONDS = 30
 DISPATCH_TOOLS = ('Agent', 'Task')
+CAPTURED_PRE = ('Agent', 'Task', 'Bash', 'SendMessage', 'TaskStop', 'SubagentHandback', 'WebSearch', 'WebFetch')
 CHECKED = 'checked'
 TIMED_OUT = 'not_checkable (check timed out)'
 CHECK_ERROR = 'not_checkable (check error: %s)'
@@ -76,6 +89,7 @@ EVENTS = (
     ('SubagentStart', None),
     ('SubagentStop', None),
 )
+CONTEXT_EVENT = 'UserPromptSubmit'
 
 
 def config_of(folder):
@@ -91,6 +105,49 @@ def check_bound(config):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         return CHECK_SECONDS
     return value
+
+
+def at_once(event, payload, checks):
+    """Whether this event needs nothing from the wrapper: a PreToolUse on a tool the capture does not read and no
+    check takes, such as a member's Read when the PreToolUse entry matches every tool for the gate."""
+    if event != 'PreToolUse':
+        return False
+    tool = payload.get('tool_name')
+    if not isinstance(tool, str) or tool in CAPTURED_PRE or tool.startswith('mcp__'):
+        return False
+    if not payload.get('agent_id') and checks.get('gate'):
+        return False
+    return which_check(event, payload) is None
+
+
+def gate_witness(payload, folder, result, seconds):
+    """A witness line saying the gate could not decide at this call: it refused nothing. Never raises."""
+    held = capture.Held('PreToolUse', payload)
+    try:
+        ledger.witness(ledger=str(folder), event='PreToolUse', session=held.session,
+                       agent_id='unrecorded (no agent: the parent)', call_id=held.call_id, at=now(),
+                       check_results=[{'check': 'gate', 'result': result, 'check_seconds': seconds}])
+    except Exception as exc:
+        held.error(str(folder), 'payload', 'the gate\'s witness line could not be written: %s' % exc, record='witness')
+
+
+def context_of(event, payload, command, folder, config):
+    """The context check's text for this event, or None."""
+    if payload.get('agent_id') or not isinstance(command, str) or not command:
+        return None
+    if not (event == CONTEXT_EVENT or (event == 'PostToolUse' and payload.get('tool_name') in DISPATCH_TOOLS)):
+        return None
+    try:
+        text = json.dumps(payload)
+        env = dict(os.environ, SUBAGENT_LEDGER_DIR=str(folder), SUBAGENT_LEDGER_SESSION=str(payload.get('session_id')),
+                   SUBAGENT_LEDGER_SCRIPTS=str(HERE))
+        done = subprocess.run(shlex.split(command), input=text, capture_output=True, text=True, env=env,
+                              cwd=str(folder), timeout=check_bound(config))
+        said = json.loads(done.stdout) if done.returncode == 0 else {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    found = said.get('context') if isinstance(said, dict) else None
+    return found if isinstance(found, str) and found else None
 
 
 def which_check(event, payload):
@@ -181,19 +238,29 @@ def refusal(event, reason):
 
 
 def handle(event, text, folder_named):
-    """Run the event's check, then the capture. Returns the refusal to print, or None."""
+    """Run the gate and the event's check, then the capture, then the context step. Returns what to print, or None."""
     try:
         payload = json.loads(text)
         payload = payload if isinstance(payload, dict) else {}
     except (TypeError, ValueError):
         payload = {}
-    folder, config, which, decision = None, {}, None, None
+    folder, config, checks, which, decision, gated, kept = None, {}, {}, None, None, False, None
     try:
         folder = Path(ledger.ledger_folder(folder_named))
         config = config_of(folder)
         checks = config.get(capture.CHECKS_SETTING) if isinstance(config.get(capture.CHECKS_SETTING), dict) else {}
+        if at_once(event, payload, checks):
+            return None
+        gate = checks.get('gate')
+        if event == 'PreToolUse' and not payload.get('agent_id') and isinstance(gate, str) and gate:
+            refused, reason, _own, result, seconds = run_check(gate, text, folder, payload.get('session_id'),
+                                                               check_bound(config))
+            if result != CHECKED:
+                gate_witness(payload, folder, result, seconds)
+            if refused:
+                decision, gated = reason or 'refused by the gate', True
         which = which_check(event, payload)
-        command = checks.get(which) if which else None
+        command = checks.get(which) if which and not gated else None
         if isinstance(command, str) and command:
             refused, reason, own, result, seconds = run_check(command, text, folder, payload.get('session_id'),
                                                               check_bound(config))
@@ -213,14 +280,24 @@ def handle(event, text, folder_named):
     except Exception as exc:  # the wrapper's own fault: recorded, refuses nothing
         capture.Held(event, payload).error(folder_named, 'payload', 'the wrapper failed before the capture: %s: %s'
                                            % (type(exc).__name__, exc))
-        decision = None
+        decision, gated = None, False
+    tool = payload.get('tool_name')
     with contextlib.redirect_stdout(io.StringIO()):
-        capture.handle(event, text, folder_named)
-        if decision is not None and which == 'dispatch':
+        if not gated or tool in DISPATCH_TOOLS:
+            capture.handle(event, text, folder_named)
+        if decision is not None and (which == 'dispatch' or (gated and tool in DISPATCH_TOOLS)):
             capture.refused_dispatch(payload, folder_named, decision)
-        if decision is not None and which == 'handback':
-            capture.handback_witness(payload, folder_named)
-    return refusal(event, decision) if decision is not None else None
+        if which == 'handback' and kept is not None:
+            capture.handback_witness(payload, folder_named, kept)
+    if decision is not None:
+        return refusal(event, decision)
+    try:
+        found = context_of(event, payload, checks.get('context'), folder, config) if folder is not None else None
+    except Exception:
+        found = None
+    if found:
+        return {'hookSpecificOutput': {'hookEventName': event, 'additionalContext': found}}
+    return None
 
 
 def hook_entries(folder_named):
@@ -231,10 +308,17 @@ def hook_entries(folder_named):
     if isinstance(wait, bool) or not isinstance(wait, (int, float)) or wait <= 0:
         return 2, ('%s sets no %s: the background wait is unbounded, so no time limit can sit above it'
                    % (folder / ledger.CONFIG_FILE, capture.WAIT_SETTING))
-    limit = int(math.ceil(wait + check_bound(config) + MARGIN_SECONDS))
+    checks = config.get(capture.CHECKS_SETTING) if isinstance(config.get(capture.CHECKS_SETTING), dict) else {}
+    bounds = 2 if checks.get('gate') else 1
+    limit = int(math.ceil(wait + bounds * check_bound(config) + MARGIN_SECONDS))
     command = 'python3 "%s" %%s --ledger "%s"' % (Path(__file__).resolve(), folder)
+    events = list(EVENTS)
+    if checks.get('context'):
+        events.append((CONTEXT_EVENT, None))
     hooks = {}
-    for event, matcher in EVENTS:
+    for event, matcher in events:
+        if event == 'PreToolUse' and checks.get('gate'):
+            matcher = None  # the gate decides at every tool call of the parent
         entry = {'hooks': [{'type': 'command', 'command': command % event, 'timeout': limit}]}
         if matcher:
             entry = dict({'matcher': matcher}, **entry)

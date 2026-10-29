@@ -4,8 +4,9 @@
 A call to a subagent, or to another model through a command-line tool or a call script, leaves two
 records: a dispatch record when it is sent and a return record when it comes back, joined by
 `call_id`. A harness's subagent start and stop events may also leave witness lines, a labeller
-leaves a label line beside a call it has labelled, and a capture that could not write its record
-leaves an error line saying why.
+leaves a label line beside a call it has labelled, a parent's decision on a failing check result
+leaves a disposition line, and a capture that could not write its record leaves an error line
+saying why.
 
 Use it as a module:
 
@@ -15,17 +16,18 @@ Use it as a module:
     back = ledger.ret(sent, session=..., outcome='served', answer=<text>, ...)
     ledger.witness(event='SubagentStart', session=..., agent_id=...)
     ledger.label(call_id=<the labelled call>, session=..., likelihoods={...}, ...)
+    ledger.disposition(call_id=<the settled call>, session=..., result_ids=[...], kind='accepted', ...)
     ledger.error(stage='payload', reason=..., session=..., event=...)
 
 or as a command, with the fields as one JSON object on standard input:
 
-    python3 ledger.py dispatch|return|witness|label|error [--ledger <folder>]
+    python3 ledger.py dispatch|return|witness|label|disposition|error [--ledger <folder>]
 
 The command prints nothing on standard output and exits 0 on every path, so a harness hook that
 runs it never blocks or changes a call.
 
-Before a record is written the writer applies the field setting (a witness line and a label line
-take none), validates the record against
+Before a record is written the writer applies the field setting (a witness line, a label line and
+a disposition line take none), validates the record against
 `record.schema.json`, replaces every credential it can recognise with `[withheld]`, and copies the
 brief and the answer into the ledger folder, recording their paths in place of the text. A record
 that fails at any of these stages, or whose write fails, is not written: one line goes to
@@ -151,8 +153,11 @@ SPECIAL = ('brief', 'answer', 'prompt', 'ledger')
 LABEL_ORDER = ('schema', 'record', 'call_id', 'session', 'labelled_at', 'labelled_because', 'failure_modes',
                'likelihoods', 'cutoff', 'roster_revision', 'question_revision', 'labeller_model', 'labeller_call_ids',
                'withheld')
+DISPOSITION_ORDER = ('schema', 'record', 'session', 'call_id', 'agent_id', 'member', 'attempt', 'result_ids', 'kind',
+                     'reason', 'decided_by', 'quote', 'paths', 'repository', 'decided_at', 'recorded_at_call',
+                     'withheld')
 # The line kinds that take no field setting.
-UNSET_LINES = ('witness', 'label')
+UNSET_LINES = ('witness', 'label', 'disposition')
 
 
 class UnknownKeyword(Exception):
@@ -202,6 +207,12 @@ def label(ledger=None, **fields):
     It takes no field setting and is always written, as a witness line is. `labelled_at` defaults to now.
     """
     return _record('label', ledger, fields)
+
+
+def disposition(ledger=None, **fields):
+    """Write a disposition line: the parent's decision on one call's failing check results, settling the results it
+    names by id. It takes no field setting and is always written, as a witness line is."""
+    return _record('disposition', ledger, fields)
 
 
 def error(ledger=None, **fields):
@@ -348,7 +359,8 @@ def _held(fields, kind, record_kind):
         event = NOT_PASSED
     return {'session': text('session'), 'call_id': text('call_id'), 'agent_id': text('agent_id'),
             'harness': text('harness'), 'event': event if isinstance(event, str) else NOT_PASSED,
-            'record': record_kind if record_kind in ('dispatch', 'return', 'witness', 'label') else 'unknown'}
+            'record': record_kind if record_kind in ('dispatch', 'return', 'witness', 'label', 'disposition')
+            else 'unknown'}
 
 
 def _fields_on(folder):
@@ -391,6 +403,13 @@ def _build(kind, folder, fields, on, brief, answer):
         given.setdefault('labelled_at', now())
         record = dict((name, given.pop(name)) for name in LABEL_ORDER if name in given)
         # Anything left is not a field of the line; it stays, so validation names it.
+        record.update(given)
+        return record
+    if kind == 'disposition':
+        given = dict(fields, schema=RECORD_SCHEMA, record='disposition', withheld=0)
+        given.pop('event', None)
+        given.setdefault('session', 'unrecorded (no session was passed)')
+        record = dict((name, given.pop(name)) for name in DISPOSITION_ORDER if name in given)
         record.update(given)
         return record
     record = {'schema': RECORD_SCHEMA, 'record': kind}
@@ -944,7 +963,8 @@ def _validate(value, schema, root, at):
 # The command
 # ---------------------------------------------------------------------------
 
-COMMANDS = {'dispatch': 'dispatch', 'return': 'return', 'witness': 'witness', 'label': 'label', 'error': 'error'}
+COMMANDS = {'dispatch': 'dispatch', 'return': 'return', 'witness': 'witness', 'label': 'label',
+            'disposition': 'disposition', 'error': 'error'}
 
 
 def main(argv=None):
@@ -957,7 +977,7 @@ def main(argv=None):
         del argv[at:at + 2]
     kind = argv[0] if argv else None
     if kind not in COMMANDS:
-        print('subagent-ledger: usage: ledger.py dispatch|return|witness|label|error [--ledger <folder>]',
+        print('subagent-ledger: usage: ledger.py dispatch|return|witness|label|disposition|error [--ledger <folder>]',
               file=sys.stderr)
         return 0
     try:
@@ -977,6 +997,8 @@ def main(argv=None):
             witness(ledger=folder, **payload)
         elif kind == 'label':
             label(ledger=folder, **payload)
+        elif kind == 'disposition':
+            disposition(ledger=folder, **payload)
         else:
             error(ledger=folder, **payload)
     except Exception as exc:  # a payload key colliding with an argument name, or worse

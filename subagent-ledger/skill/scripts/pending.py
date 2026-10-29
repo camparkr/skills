@@ -21,7 +21,13 @@ Kept check results: a check the wrapper runs at a stop or a hand-back leaves its
 `checkResult`). At each stop the capture takes that stop's result (take_stop_result): a refused stop writes no return.
 Where the ledger folder's config.json switches a stop check on and a stop left no result, a placeholder is kept, so the
 return reads `unrecorded (no check result when the return was written)` for it, never `pass`. The call's one return
-carries every kept result, as it was found, in order (results_for_return); then they are removed.
+carries every kept result, as it was found, in order (results_for_return); then they are removed. The stop's own
+witness line carries the results the stop has not yet taken (unseen_stop_results), so the result is on the record at
+the stop even where no return follows it.
+
+Pending disposition files: the return check's disposition script writes <ledger>/.pending/<session>/disposition-<call
+id>.json (pending.schema.json, `disposition`). At the PostToolUse of the parent's shell call the capture takes each
+(take_dispositions), writes it as a disposition line and removes it.
 
 continued_call() joins a resumption to the dispatch it continues, by agent id: through the join file a background
 call's PostToolUse writes, or, once that is gone, through the return record that names the agent. It returns the
@@ -182,6 +188,39 @@ def take_stop_result(directory, agent, safe, validate, check_on):
             keep_result(directory, agent, {'event': 'SubagentStop', 'missing': True, 'seen': True}, safe)
         return False
     return unseen[-1][1].get('refused') is True
+
+
+def unseen_stop_results(directory, agent, safe, validate):
+    """The stop results kept for `agent` that no stop has taken yet, in the order kept, as found. Marks nothing."""
+    out = []
+    for path in _kept_paths(directory, agent, safe):
+        data, problem = _read_result(path)
+        if problem or validate(data, load_schema(), ref='#/$defs/checkResult'):
+            continue
+        if data.get('event') == 'SubagentStop' and not data.get('seen') and not data.get('missing'):
+            out.append(dict((key, value) for key, value in data.items() if key not in OWN_KEYS))
+    return out
+
+
+DISPOSITION_PREFIX = 'disposition-'
+
+
+def take_dispositions(directory, validate):
+    """[(path, the file's content or None, the problem or None)] for each pending disposition file in `directory`,
+    in name order. Nothing is removed here: remove_paths() does that once each line is written."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        return []
+    out = []
+    for path in sorted(directory.glob(DISPOSITION_PREFIX + '*.json')):
+        if path.parent != directory:
+            continue
+        data, problem = _read_result(path)
+        if problem is None:
+            found = validate(data, load_schema(), ref='#/$defs/disposition')
+            problem = _short('; '.join(found)) if found else None
+        out.append((path, None if problem else data, problem))
+    return out
 
 
 def results_for_return(directory, agent, safe, validate):

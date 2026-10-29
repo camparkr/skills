@@ -159,6 +159,99 @@
           "description": "The capture's mark: a stop check was on and left no result."
         }
       }
+    },
+    "disposition": {
+      "type": "object",
+      "description": "A pending disposition file, <ledger>/.pending/<session>/disposition-<call id>.json (or -2, -3 where one already waits), written by the return check's disposition script. At the PostToolUse of the parent's next shell call the capture writes it as a disposition line and removes it.",
+      "required": [
+        "call_id",
+        "result_ids",
+        "kind",
+        "reason",
+        "decided_by",
+        "decided_at"
+      ],
+      "properties": {
+        "call_id": {
+          "$ref": "#/$defs/text"
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "member": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempt": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "kind": {
+          "enum": [
+            "accepted",
+            "repaired",
+            "sent back",
+            "re-dispatched",
+            "discarded"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        },
+        "decided_by": {
+          "enum": [
+            "parent",
+            "user"
+          ]
+        },
+        "quote": {
+          "$ref": "#/$defs/text"
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "repository": {
+          "$ref": "#/$defs/text"
+        },
+        "decided_at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

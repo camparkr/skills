@@ -102,12 +102,24 @@ hand-back's message (on a foreground call `tool_response.handbackReport.text`, e
 whose result is no error), never the closing text or the harness's note; otherwise the final message.
 `harness_payload.answer_from` says which: `hand-back message` or `final message`.
 
-Kept check results (pending.py): at each SubagentStop the capture takes that stop's kept result. A result that
-refused the stop leaves the witness line and no return; the member runs on and a later stop writes it. The call's one
-return, at whichever event its route names, carries every kept result for its agent as `check_results`, in order, as
-it was found, whatever the field setting, and the kept files are removed once it is written. Where config.json's
-`checks` names a `stop` check and a stop left no result, that stop's entry reads `unrecorded (no check result when the
-return was written)`. With no check on and none kept, the return carries no `check_results`.
+Kept check results (pending.py): at each SubagentStop the capture takes that stop's kept result, and the stop's witness
+line carries it as `check_results`, so it is on the record at the stop. A result that refused the stop leaves the
+witness line and no return; the member runs on and a later stop writes it. The call's one return, at whichever event
+its route names, carries every kept result for its agent as `check_results`, in order, as it was found, whatever the
+field setting, and the kept files are removed once it is written. Where config.json's `checks` names a `stop` check
+and a stop left no result, that stop's entry reads `unrecorded (no check result when the return was written)`. With no
+check on and none kept, the return carries no `check_results`. At a hand-back the wrapper has the capture write a
+witness line carrying the hand-back's result (handback_witness), before the report can reach the parent.
+
+A hand-back member, whose stop payload carries `permission_mode` `auto` (the mode in which Claude Code gives a
+subagent its hand-back tool), has no report at a stop with no delivered hand-back before it: Claude Code refuses that
+stop itself until the member hands back. Such a stop writes its witness line and no return, and a background call's
+return waits for the first stop after a delivered hand-back. A background hand-back member that ends with no delivered
+hand-back has no return; the count check reports it.
+
+PostToolUse on the parent's shell tool: each pending disposition file (pending.py, take_dispositions), written by the
+return check's disposition script, becomes a disposition line naming this shell call in `recorded_at_call`, and is
+removed. A file that does not validate writes an error line at stage `pending` and is removed.
 
 The brief's frontmatter gives `persona-name`, `act_kind`, `user_answer` and `task`, each at the key of
 the same name unless `config.json`'s `frontmatter` map names another; a map replaces a default key by
@@ -372,6 +384,8 @@ def _route(event, payload, folder, held):
     if event == 'PreToolUse' and tool in shell_tools(HARNESS):
         return pre_shell(payload, folder, held)
     if event in ('PostToolUse', 'PostToolUseFailure') and tool in shell_tools(HARNESS):
+        if event == 'PostToolUse':
+            write_dispositions(payload, folder, held)
         return post_shell(event, payload, folder, held)
     route = outside_route(HARNESS, tool) if event in OUTSIDE_EVENTS else None
     if route == 'mcp' and not_a_call(folder, mcp_server_of(HARNESS, tool, payload.get('mcp_server'))[0]):
@@ -511,14 +525,51 @@ def refused_dispatch(payload, folder, text):
                    record='return')
 
 
-def handback_witness(payload, folder):
-    """The witness line at a hand-back the wrapper's check refused: no call record is written there. Never raises."""
+def handback_witness(payload, folder, result=None):
+    """The witness line at a hand-back where the wrapper's check ran, carrying the check's `result` where there is one:
+    no call record is written there. Never raises."""
     held = Held('PreToolUse', payload)
+    extra = {'check_results': [result]} if isinstance(result, dict) else {}
     try:
         ledger.witness(ledger=ledger.ledger_folder(folder), event='PreToolUse', session=held.session,
-                       agent_id=held.agent_id, call_id=held.call_id, at=ledger.now())
+                       agent_id=held.agent_id, call_id=held.call_id, at=ledger.now(), **extra)
     except Exception as exc:
         held.error(folder, 'payload', 'the hand-back witness could not be written: %s' % exc, record='witness')
+
+
+def before_handback(payload):
+    """Whether this stop is a hand-back member's with no delivered hand-back before it: its payload carries
+    `permission_mode` `auto` and its transcript shows no hand-back delivered. An unreadable transcript is not read as
+    one, so the return is written as before."""
+    if payload.get('permission_mode') != 'auto':
+        return False
+    path = payload.get('agent_transcript_path')
+    if not isinstance(path, str) or not path or not Path(path).is_file():
+        return False
+    try:
+        return not transcripts.delivered_handbacks(path, handback_tools(HARNESS))
+    except (OSError, ValueError):
+        return False
+
+
+def write_dispositions(payload, folder, held):
+    """At the parent's shell PostToolUse: each pending disposition file becomes a disposition line, then is removed."""
+    if payload.get('agent_id'):
+        return
+    directory = pending_dir(folder, held.session)
+    with pending_lock(folder, held.session):
+        found = pending.take_dispositions(directory, ledger.validate)
+        for path, data, problem in found:
+            if problem:
+                held.error(folder, 'pending', 'the pending disposition file %s is malformed: %s' % (path.name, problem),
+                           record='disposition')
+            else:
+                fields = dict({'agent_id': None, 'member': None, 'attempt': None}, **data)
+                written = ledger.disposition(ledger=folder, session=held.session, recorded_at_call=held.call_id,
+                                             **fields)
+                if not getattr(written, 'ok', False):
+                    continue  # the writer has written its error line; the file stays for the next shell call
+            pending.remove_paths(directory, [path])
 
 
 def session_start(payload, folder, held):
@@ -1001,16 +1052,24 @@ def read_resumes(folder, session, agent):
 def subagent_stop(payload, folder, held):
     if held.agent_id.startswith('unrecorded ('):
         held.error(folder, 'payload', 'agent_id absent from SubagentStop', record='witness')
-    ledger.witness(ledger=folder, event='SubagentStop', session=held.session, agent_id=held.agent_id,
-                   call_id='unrecorded (not carried by SubagentStop)', at=ledger.now())
-    if held.agent_id.startswith('unrecorded ('):
+        ledger.witness(ledger=folder, event='SubagentStop', session=held.session, agent_id=held.agent_id,
+                       call_id='unrecorded (not carried by SubagentStop)', at=ledger.now())
         return
     agent = held.agent_id
+    with pending_lock(folder, held.session):
+        seen = pending.unseen_stop_results(pending_dir(folder, held.session), agent, _safe, ledger.validate)
+    extra = {'check_results': seen} if seen else {}
+    ledger.witness(ledger=folder, event='SubagentStop', session=held.session, agent_id=held.agent_id,
+                   call_id='unrecorded (not carried by SubagentStop)', at=ledger.now(), **extra)
     with pending_lock(folder, held.session):
         refused = pending.take_stop_result(pending_dir(folder, held.session), agent, _safe, ledger.validate,
                                            stop_check_on(folder))
     if refused:
         # The check refused this stop: the member runs on with the reason, and a later stop writes the return.
+        return
+    if before_handback(payload):
+        # A hand-back member's stop with no delivered hand-back before it: Claude Code refuses it, and no report
+        # reached the parent. The witness line above holds the stop's result; a later stop writes the return.
         return
     stop = {'agent_transcript_path': payload.get('agent_transcript_path'),
             'effort': (payload.get('effort') or {}).get('level') if isinstance(payload.get('effort'), dict) else None,

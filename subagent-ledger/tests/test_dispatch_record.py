@@ -571,5 +571,47 @@ class ResumptionJoin(Capture):
         self.assertNotIn('continues_call_id', sent)
 
 
+
+# ---------------------------------------------------------------------------
+# H-14 item 4: the new fields are selectable like the rest
+# ---------------------------------------------------------------------------
+
+NEW_FIELDS = ('member', 'attempt', 'session_effort', 'continues_call_id', 'baseline') + PENDING_VALUES
+
+
+class NewFieldsSelectable(Capture):
+
+    def setting(self, fields):
+        (self.ledger / 'config.json').write_text(json.dumps({'fields': fields}), encoding='utf-8')
+
+    def test_selectable_the_writer_and_the_schema_list_every_new_field(self):
+        schema = json.loads((SCRIPTS / 'record.schema.json').read_text(encoding='utf-8'))
+        names = schema['$defs']['selectableName']['enum']
+        for name in NEW_FIELDS:
+            self.assertIn(name, names)
+
+    def test_selectable_empty_the_frame_setting_writes_none_of_them(self):
+        self.setting('frame')
+        path = self.brief('brief.md', {'member': 'm-one', 'attempt': '1'})
+        self.write_triage('m-one', 1, full_triage_file())
+        sent = self.dispatch('toolu_sel_0001', 'Read %s.' % path)
+        for name in NEW_FIELDS:
+            self.assertNotIn(name, sent)
+        self.assertEqual(sorted(set(NEW_FIELDS) & set(sent['fields_not_chosen'])), sorted(NEW_FIELDS))
+
+    def test_selectable_likeness_a_list_naming_one_writes_that_one_only(self):
+        self.setting(['member'])
+        path = self.brief('brief.md', {'member': 'm-one', 'attempt': '1'})
+        sent = self.dispatch('toolu_sel_0002', 'Read %s.' % path)
+        self.assertEqual(sent['member'], 'm-one')
+        for name in NEW_FIELDS[1:]:
+            self.assertNotIn(name, sent)
+
+    def test_selectable_a_field_on_with_no_value_says_why(self):
+        sent = self.dispatch('toolu_sel_0003', 'Say hello.')
+        self.assertEqual(sent['baseline'], "unrecorded (no writer's brief for this call)")
+        self.assertEqual(sent['continues_call_id'], 'unrecorded (not a resumption)')
+        self.assertEqual(sent['effort_unaided'], 'unrecorded (no pending triage file for this call)')
+
 if __name__ == '__main__':
     unittest.main()

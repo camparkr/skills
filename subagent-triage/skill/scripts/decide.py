@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Ask Jev the act decision and the persona decision for one part of a delegation, and write its pending triage file.
+"""Ask Jev the act, persona and effort decisions for one part of a delegation, and write its pending triage file.
 
     python3 decide.py --delegation <file> --roster <file> --ledger <folder> --session <id> --member <id>
-                      [--attempt 1] [--pending-ledger <folder>] [--key-from-zsh]
+                      --effort-unaided <level> [--attempt 1] [--pending-ledger <folder>] [--key-from-zsh]
                       [--rows-key rows] [--name-key name] [--group-key group] [--file-key file]
                       [--goal-key declaration.goal] [--ratified-key declaration-ratified]
                       [--file-root <folder>] [--user <name> ...]
@@ -20,6 +20,14 @@ persona, the answer is `none adequate` with the rule that emptied the set, and J
 over the eligible personas, each criterion `<persona>, in <group>: <goal>`, then the adequacy Noul on the persona it
 ranks first, against the definition's line.
 
+The effort decision (decisions/d4-effort.json), asked after the other two whatever they read. The parent's unaided
+level, --effort-unaided, is stamped from the clock before Jev is asked anything. One Choice over the levels the Agent
+tool offers (low, medium, high, xhigh, max), with the part and these exact facts as state: the kind (or `none`), the
+persona (or `none`), the stage (`unrecorded (stage read not built)`), the delegation's length in words, how many of
+the absolute paths it names outside its write set are files and their total size in bytes, and the number of paths
+in its `## Write set` (or `none`). Where the request fails, the level reads `unrecorded (<reason>)` and the output
+says to pass the unaided level.
+
 Each Jev request is recorded as its own dispatch and return through the ledger skill's ledger.py, in the ledger
 folder --ledger names, under --session. The part's text goes to Jev only; no record holds it. A retry on HTTP 429 or
 5xx is a request of its own with its own pair.
@@ -32,6 +40,14 @@ Output: one JSON object on standard output. Exit codes: 0 answered; 1 refused on
 scripts, kinds.json or a decision file not found, or the roster unreadable); 3 a decision's request to Jev failed (the
 output and the pending file record the failure).
 
+The override, when the parent passes a level other than the effort decision's:
+
+    python3 decide.py override --pending <file> --decision d4-effort --level <level> --reason <text>
+
+It appends to the pending file's `overrides` list the decision's level (read from the file's own d4-effort record),
+the level passed instead, the reason and the time, and restamps the list. It refuses, with exit 1 and the file
+unchanged, a file with no d4-effort record, an unknown level, an empty reason or another decision.
+
 The key is JEV_API_KEY; --key-from-zsh fills it, when it is not set, from what zsh sets it to on starting. The
 endpoint is SUBAGENT_TRIAGE_JEV_URL where set, for a stand-in, else Jev's own.
 """
@@ -41,6 +57,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -76,6 +93,11 @@ NO_REQUEST = 'unrecorded (no request was sent)'
 NO_STAGE = 'unrecorded (the stage read is not built)'
 UNCHECKED = 'unchecked: returned by Jev and not checked against anything else'
 CHOSEN_BY = 'the planning skill'
+LEVELS = ('low', 'medium', 'high', 'xhigh', 'max')  # the levels the Agent tool offers
+EFFORT_DECISION = 'd4-effort'
+EFFORT_STAGE = 'unrecorded (stage read not built)'
+ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`\'"(<\[])|^)(~?/[^\s`\'"<>()\[\]{}]+|[A-Za-z]:[\\/][^\s`\'"<>()\[\]{}]+)',
+                           re.MULTILINE)
 
 
 class CannotRun(Exception):
@@ -150,12 +172,44 @@ def dig(data, dotted):
     return dig(data[head], rest)
 
 
-def body_of(text):
+def full_body(text):
     if text.startswith('---'):
         end = text.find('\n---', 3)
         if end != -1:
             text = text[end + 4:]
-    return text.strip()[:STATE_LIMIT]
+    return text.strip()
+
+
+def body_of(text):
+    return full_body(text)[:STATE_LIMIT]
+
+
+def split_write_set(body):
+    """(the body less its `## Write set` section, the section's paths or None where it has none or says `none`)."""
+    lines = body.splitlines()
+    for start, line in enumerate(lines):
+        if line.strip().lower() == '## write set':
+            break
+    else:
+        return body, None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith('#')), len(lines))
+    paths = [line.strip() for line in lines[start + 1:end]
+             if line.strip() and not line.strip().startswith(('```', '<!--'))]
+    rest = '\n'.join(lines[:start] + lines[end:])
+    return rest, (None if paths == ['none'] or not paths else paths)
+
+
+def named_inputs(body):
+    """(named, resolving, bytes): the absolute paths the body names outside its write set, in order and once each;
+    those that are files; and their total size."""
+    rest, _ = split_write_set(body)
+    named = []
+    for found in ABSOLUTE_PATH.findall(rest):
+        path = found.rstrip('.,;:!?')
+        if path not in named:
+            named.append(path)
+    resolving = [path for path in named if Path(os.path.expanduser(path)).is_file()]
+    return named, resolving, sum(Path(os.path.expanduser(path)).stat().st_size for path in resolving)
 
 
 def git_commit(path):
@@ -496,6 +550,79 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
 
 
+def effort_decision(jev, definition, part, body, kind, persona, unaided, subject, quote, decided_by):
+    """The printed effort section and its decision record. Asked whatever the act and persona decisions read."""
+    named, resolving, size = named_inputs(body)
+    _, write_set = split_write_set(body)
+    facts = {'kind': kind or NONE_LABEL, 'persona': persona or NONE_LABEL, 'stage': EFFORT_STAGE,
+             'words': len(body.split()), 'input_files_resolving': len(resolving), 'input_bytes': size,
+             'write_set_paths': len(write_set) if write_set else NONE_LABEL}
+    composition = definition['composition']['choice']
+    criteria = dict((level, composition['criteria'][level]) for level in LEVELS)
+    question = {'type': 'choice', 'instructions': composition['instructions'], 'criteria': criteria}
+    state = dict({'part': part}, **facts)
+    section = {'unaided': unaided, 'facts': facts, 'input_files_named': len(named), 'choice': None, 'level': None}
+    try:
+        choice = jev.ask('%s choice' % definition['id'], state, 'effort', question)
+    except JevFailure as failure:
+        answer = 'unrecorded (%s)' % failure.reason
+        lane_from = outcome(definition, 'the request fails')
+        section.update(answer=answer, failure=failure.reason, route=lane_from['route'], **{'pass': unaided})
+        basis = {'choice': None, 'definition_version': definition['definition_version'],
+                 'provisional': definition['provisional']}
+        return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=facts)
+    answer = choice['choice']
+    lane_from = outcome(definition, 'the Choice returns')
+    section.update(choice=choice, level=answer, answer=answer, route=lane_from['route'], **{'pass': answer})
+    basis = {'choice': choice['probabilities'], 'definition_version': definition['definition_version'],
+             'provisional': definition['provisional']}
+    return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=facts)
+
+
+# ---------------------------------------------------------------------------
+# The override
+# ---------------------------------------------------------------------------
+
+def override(argv):
+    parser = argparse.ArgumentParser(prog='decide.py override',
+                                     description='Record a level the parent passes instead of the decision\'s.')
+    parser.add_argument('--pending', required=True)
+    parser.add_argument('--decision', required=True)
+    parser.add_argument('--level', required=True)
+    parser.add_argument('--reason', required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return fail(1, 'the arguments could not be read')
+    if args.decision != EFFORT_DECISION:
+        return fail(1, 'only %s takes an override here, not %s' % (EFFORT_DECISION, args.decision))
+    if args.level not in LEVELS:
+        return fail(1, 'unknown level %r: the levels are %s' % (args.level, ', '.join(LEVELS)))
+    if not args.reason.strip():
+        return fail(1, 'the reason is empty')
+    path = Path(args.pending)
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        return fail(1, 'the pending file could not be read: %s' % exc)
+    held = data.get('decision_records') if isinstance(data, dict) else None
+    records = held.get('value') if isinstance(held, dict) else None
+    found = [r for r in records or [] if isinstance(r, dict) and r.get('question') == args.decision]
+    if not found:
+        return fail(1, 'the pending file holds no %s record: %s' % (args.decision, path))
+    entry = {'decision': args.decision, 'decision_level': found[-1].get('answer'), 'level_passed': args.level,
+             'reason': args.reason, 'at': stamp()}
+    kept = data.get('overrides')
+    entries = list(kept['value']) if isinstance(kept, dict) and isinstance(kept.get('value'), list) else []
+    entries.append(entry)
+    data['overrides'] = stamped(entries)
+    written = path.with_name(path.name + '.writing')
+    written.write_text(json.dumps(data, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
+    os.replace(str(written), str(path))
+    print(json.dumps({'pending_file': str(path), 'override': entry}, indent=1, ensure_ascii=False))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -518,12 +645,13 @@ def key_from_zsh():
 
 
 def parse(argv):
-    parser = argparse.ArgumentParser(description='Ask the act and persona decisions for one part.')
+    parser = argparse.ArgumentParser(description='Ask the act, persona and effort decisions for one part.')
     parser.add_argument('--delegation', required=True)
     parser.add_argument('--roster', required=True)
     parser.add_argument('--ledger', required=True)
     parser.add_argument('--session', required=True)
     parser.add_argument('--member', required=True)
+    parser.add_argument('--effort-unaided', required=True, choices=LEVELS)
     parser.add_argument('--attempt', default='1')
     parser.add_argument('--pending-ledger')
     parser.add_argument('--key-from-zsh', action='store_true')
@@ -544,6 +672,9 @@ def fail(code, text):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ['override']:
+        return override(argv[1:])
     try:
         args = parse(argv)
     except SystemExit:
@@ -554,6 +685,7 @@ def main(argv=None):
     except OSError as exc:
         return fail(1, 'the delegation could not be read: %s' % exc)
     part = body_of(text)
+    body = full_body(text)
     if not part:
         return fail(1, 'the delegation is empty')
     try:
@@ -562,6 +694,7 @@ def main(argv=None):
         kinds = [(k['name'], k['test']) for k in read_json(scripts / 'kinds.json')['kinds']]
         d1 = read_json(DECISIONS / 'd1-act.json')
         d3 = read_json(DECISIONS / 'd3-figure.json')
+        d4 = read_json(DECISIONS / 'd4-effort.json')
         eligible, excluded, rows = read_roster(args)
     except CannotRun as exc:
         return fail(2, str(exc))
@@ -579,7 +712,8 @@ def main(argv=None):
     decided_by = '%s at %s' % (d1['engine']['name'], model)
     jev = Jev(args.ledger, args.session, model)
 
-    pending = {}
+    # The unaided level is stamped before Jev is asked anything, so its stamp precedes the effort decision's.
+    pending = {'effort_unaided': stamped(args.effort_unaided)}
     act, act_record = act_decision(jev, d1, kinds, part, subject, quote, decided_by)
     records = [act_record]
     failures = []
@@ -605,6 +739,12 @@ def main(argv=None):
                                                  'line_version': persona['line_version']})
     else:
         persona = None
+    effort, effort_record = effort_decision(jev, d4, part, body, act['kind'], persona and persona['persona'],
+                                            args.effort_unaided, subject, quote,
+                                            '%s at %s' % (d4['engine']['name'], d4['engine']['model']))
+    records.append(effort_record)
+    if effort.get('failure'):
+        failures.append('effort decision: %s' % effort['failure'])
     pending['decision_records'] = stamped(records)
     if failures:
         pending['triage_failure'] = stamped('; '.join(failures))
@@ -615,7 +755,8 @@ def main(argv=None):
     path.write_text(json.dumps(pending, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
 
     print(json.dumps({'delegation': str(delegation.resolve()), 'session': args.session, 'member': args.member,
-                      'attempt': args.attempt, 'act': act, 'persona': persona, 'decision_records': records,
+                      'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'act': act,
+                      'persona': persona, 'effort': effort, 'decision_records': records,
                       'jev_calls': jev.calls, 'pending_file': str(path)}, indent=1, ensure_ascii=False))
     return 3 if failures else 0
 

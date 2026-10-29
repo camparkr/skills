@@ -4,8 +4,8 @@
     python3 capture_claude_code.py <event> [--ledger <folder>]
 
 with the hook's payload on standard input. It prints nothing on standard output and exits 0 on every
-path, including a payload that is empty or is not JSON, so it never blocks or changes a call. It
-imposes no time limit.
+path, including a payload that is empty or is not JSON, so it never blocks or changes a call. Its one
+time limit is the bound config.json may set on a background return's wait (`background_wait_seconds`).
 
 What each event does:
 
@@ -82,8 +82,10 @@ What each event does:
     A transcript that is absent, or that does not carry the envelope's result, leaves each of them
     unrecorded, saying why.
 
-A background return waits until the subagent's own transcript shows it has ended, re-reading it with
-no limit of its own; the harness's time-out on hooks is the only bound. It has ended at the first of:
+A background return waits until the subagent's own transcript shows it has ended, re-reading it. Where
+config.json sets `background_wait_seconds`, the wait ends at that bound: the return is written with the counters as
+the transcript stood, and `harness_payload.wait` says the wait was unfinished. With no setting, the harness's
+time-out on hooks is the only bound; a setting that is no positive number writes an error line and leaves it so. It has ended at the first of:
 its final request stopped for a reason other than tool_use and holds the answer SubagentStop reports;
 its final request is a call to one of the harness's hand-back tools (subagent-tools.json), whose
 input at the tool's answer key is then the answer; the transcript does not exist when SubagentStop
@@ -94,6 +96,18 @@ The turn is found by what started it: a background dispatch's turn opens the tra
 message's turn starts at the first row of a listed delivery form holding that message. The model, the
 counters and the isolation evidence are then that turn's, ending at the request that holds the answer.
 The wait is recorded as `tokens.read_after_seconds`.
+
+The return's answer is the one the parent received: on a call with a delivered hand-back, the last delivered
+hand-back's message (on a foreground call `tool_response.handbackReport.text`, else the transcript's last hand-back
+whose result is no error), never the closing text or the harness's note; otherwise the final message.
+`harness_payload.answer_from` says which: `hand-back message` or `final message`.
+
+Kept check results (pending.py): at each SubagentStop the capture takes that stop's kept result. A result that
+refused the stop leaves the witness line and no return; the member runs on and a later stop writes it. The call's one
+return, at whichever event its route names, carries every kept result for its agent as `check_results`, in order, as
+it was found, whatever the field setting, and the kept files are removed once it is written. Where config.json's
+`checks` names a `stop` check and a stop left no result, that stop's entry reads `unrecorded (no check result when the
+return was written)`. With no check on and none kept, the return carries no `check_results`.
 
 The brief's frontmatter gives `persona-name`, `act_kind`, `user_answer` and `task`, each at the key of
 the same name unless `config.json`'s `frontmatter` map names another; a map replaces a default key by
@@ -182,6 +196,12 @@ ATTEMPT_NOT_A_NUMBER = "unrecorded (the brief's attempt is not a whole number: %
 WRITE_SET_HEADING = '## Write set'
 SESSION_START = 'SessionStart'
 SESSION_START_AGENT = 'unrecorded (no agent: a session start)'
+# The wrapper's checks, named in config.json beside triage_command; `stop` runs at each SubagentStop.
+CHECKS_SETTING = 'checks'
+# The bound on a background return's wait for its transcript to end, in seconds, from config.json. None: no bound.
+WAIT_SETTING = 'background_wait_seconds'
+HANDBACK_ANSWER = 'hand-back message'
+FINAL_ANSWER = 'final message'
 NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
 NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
 # The triage: a command named by config.json's `triage_command`, run at each subagent or call-script
@@ -597,7 +617,7 @@ def post_agent(payload, folder, held):
         else:
             agent_field = agent
             path = (stop or {}).get('agent_transcript_path') or transcripts.lane_path(held.session, agent)
-        answer = answer_text(response.get('content'))
+        answer, answer_from = foreground_answer(response, path)
         outcome, reason = agent_outcome(response.get('status'), answer)
         fields = common(payload, folder, route='subagent')
         fields.update({
@@ -617,8 +637,13 @@ def post_agent(payload, folder, held):
         if 'content' in response:
             payload_kept['tool_response']['content'] = answer
         prompt = (payload.get('tool_input') or {}).get('prompt') if isinstance(payload.get('tool_input'), dict) else None
-        fields['harness_payload'] = without_texts(payload_kept, prompt, ON_DISPATCH_BRIEF)
-        ledger.ret(ledger=folder, answer=answer, **fields)
+        fields['harness_payload'] = dict(without_texts(payload_kept, prompt, ON_DISPATCH_BRIEF),
+                                         answer_from=answer_from)
+        results, kept_paths = kept_for_return(folder, held.session, agent)
+        fields.update(results)
+        written = ledger.ret(ledger=folder, answer=answer, **fields)
+        if getattr(written, 'ok', False):
+            pending.remove_paths(pending_dir(folder, held.session), kept_paths)
         if agent:
             clear_pending(folder, held.session, [held.call_id, 'agent-' + agent, 'stop-' + agent,
                                                  'join-' + agent])
@@ -907,7 +932,11 @@ def write_stopped(folder, held, agent, stop, stop_tool_payload=None):
         kept['post_tool_use_response'] = data.get('tool_response')
         kept.pop('last_assistant_message', None)
         fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
-        ledger.ret(ledger=folder, **fields)
+        results, kept_paths = kept_for_return(folder, held.session, agent)
+        fields.update(results)
+        written = ledger.ret(ledger=folder, **fields)
+        if getattr(written, 'ok', False):
+            pending.remove_paths(pending_dir(folder, held.session), kept_paths)
         clear_pending(folder, held.session, cleared)
     clear_pending(folder, held.session, ['stopped-' + agent, 'agent-' + agent, 'stop-' + agent])
 
@@ -933,6 +962,12 @@ def subagent_stop(payload, folder, held):
     if held.agent_id.startswith('unrecorded ('):
         return
     agent = held.agent_id
+    with pending_lock(folder, held.session):
+        refused = pending.take_stop_result(pending_dir(folder, held.session), agent, _safe, ledger.validate,
+                                           stop_check_on(folder))
+    if refused:
+        # The check refused this stop: the member runs on with the reason, and a later stop writes the return.
+        return
     stop = {'agent_transcript_path': payload.get('agent_transcript_path'),
             'effort': (payload.get('effort') or {}).get('level') if isinstance(payload.get('effort'), dict) else None,
             'last_assistant_message': payload.get('last_assistant_message'),
@@ -1108,12 +1143,61 @@ def background_ending(folder, held, agent, stop, turn=None):
         if payload:
             held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = transcripts.lane_path(held.session, agent)
+    bound = wait_bound(folder, held)
     answer, how, span = wait_for_end(path, answer, handback_tools(HARNESS), turn,
-                                     ended=lambda: stop_ended(folder, held.session, agent))
+                                     ended=lambda: stop_ended(folder, held.session, agent), bound=bound)
     if how != 'handback' and 'last_assistant_message' not in payload and payload:
         held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
-    return {'answer': answer, 'how': how, 'path': path, 'span': span,
+    return {'answer': answer, 'how': how, 'path': path, 'span': span, 'bound': bound,
             'seconds': round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)}
+
+
+def stop_check_on(folder):
+    """Whether config.json switches on a check at each stop (`checks.stop`)."""
+    try:
+        config, _path = read_config(folder)
+    except (OSError, ValueError):
+        return False
+    checks = config.get(CHECKS_SETTING)
+    return isinstance(checks, dict) and isinstance(checks.get('stop'), str) and bool(checks.get('stop'))
+
+
+def wait_bound(folder, held):
+    """The bound on a background return's wait, from config.json, or None. A setting that is no positive number
+    writes an error line, and the wait is unbounded."""
+    try:
+        config, _path = read_config(folder)
+    except (OSError, ValueError):
+        return None
+    value = config.get(WAIT_SETTING)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        held.error(folder, 'setting', '%s %s is not a positive number of seconds; the wait is unbounded'
+                   % (WAIT_SETTING, json.dumps(value)), record='return')
+        return None
+    return value
+
+
+def kept_for_return(folder, session, agent):
+    """({'check_results': [...]} where any result is kept for the agent, else {}; the kept files to remove)."""
+    if not isinstance(agent, str) or not agent:
+        return {}, []
+    entries, paths = pending.results_for_return(pending_dir(folder, session), agent, _safe, ledger.validate)
+    return ({'check_results': entries} if entries else {}), paths
+
+
+def foreground_answer(response, path):
+    """(the answer the parent received, where it came from) for a foreground call: the delivered hand-back's text
+    (`handbackReport.text`), else the last delivered hand-back the transcript shows, else the tool's content."""
+    report = response.get('handbackReport') if isinstance(response.get('handbackReport'), dict) else {}
+    if isinstance(report.get('text'), str) and report.get('text'):
+        return report['text'], HANDBACK_ANSWER
+    if path and os.path.exists(str(path)):
+        delivered = transcripts.delivered_handbacks(path, handback_tools(HARNESS))
+        if delivered:
+            return delivered[-1], HANDBACK_ANSWER
+    return answer_text(response.get('content')), FINAL_ANSWER
 
 
 def write_background_return(folder, held, agent, stop, join, ending, cleared):
@@ -1124,7 +1208,11 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
     response = join.get('tool_response')
     response = response if isinstance(response, dict) else {}
     sent = read_pending(folder, held.session, call_id)
-    answer = ending['answer']
+    answer, answer_from = ending['answer'], HANDBACK_ANSWER if ending['how'] == 'handback' else FINAL_ANSWER
+    if ending['how'] not in ('no transcript', 'no path'):
+        delivered = transcripts.delivered_handbacks(ending['path'], handback_tools(HARNESS))
+        if delivered:
+            answer, answer_from = delivered[-1], HANDBACK_ANSWER
     outcome, reason = agent_outcome('completed', answer)
     fields = common(payload or {'cwd': None, 'agent_id': None}, folder, route='subagent')
     fields['caller'] = join.get('caller') or fields['caller']
@@ -1150,10 +1238,18 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
         fields['tokens']['read_after_seconds'] = ending['seconds']
     kept = dict(payload)
     kept['post_tool_use_response'] = join.get('tool_response')
-    if isinstance(kept.get('last_assistant_message'), str) and ending['how'] != 'handback':
+    if isinstance(kept.get('last_assistant_message'), str) and answer_from == FINAL_ANSWER:
         kept['last_assistant_message'] = answer
+    kept['answer_from'] = answer_from
+    if ending['how'] == 'unfinished':
+        kept['wait'] = ('unfinished after %s seconds: the transcript had not ended, so its counters are read as it '
+                        'stood' % ending['bound'])
     fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
-    ledger.ret(ledger=folder, answer=answer, **fields)
+    results, kept_paths = kept_for_return(folder, held.session, agent)
+    fields.update(results)
+    written = ledger.ret(ledger=folder, answer=answer, **fields)
+    if getattr(written, 'ok', False):
+        pending.remove_paths(pending_dir(folder, held.session), kept_paths)
     clear_pending(folder, held.session, cleared)
 
 
@@ -1168,7 +1264,7 @@ def stop_ended(folder, session, agent):
     return not pending_call_for(folder, session, agent)
 
 
-def wait_for_end(path, answer, handbacks, turn=None, ended=None):
+def wait_for_end(path, answer, handbacks, turn=None, ended=None, bound=None):
     """(the answer, how the run's end was read, the rows of the turn or None), once the transcript shows the
     subagent has ended.
 
@@ -1181,12 +1277,14 @@ def wait_for_end(path, answer, handbacks, turn=None, ended=None):
     request that holds the answer, so the counters are that turn's and not the later run's. `turn` says
     what started the turn (see turn_starter); with none, that last check is not made. With no path to
     read it returns at once (`no path`). Where `ended` is given and returns true between reads, the wait ends
-    (`stopped`): the caller stopped the subagent, or another hook wrote its return.
+    (`stopped`): the caller stopped the subagent, or another hook wrote its return. Where `bound` is a number of
+    seconds and the wait passes it, the wait ends (`unfinished`).
     """
     if not path:
         return answer, 'no path', None
     if not os.path.exists(str(path)):
         return answer, 'no transcript', None
+    began = time.monotonic()
     while True:
         found = transcript_end(path, answer, handbacks)
         if found is not None:
@@ -1196,6 +1294,8 @@ def wait_for_end(path, answer, handbacks, turn=None, ended=None):
             return answer, 'turn', span
         if ended is not None and ended():
             return answer, 'stopped', None
+        if bound is not None and time.monotonic() - began >= bound:
+            return answer, 'unfinished', None
         time.sleep(REREAD_SECONDS)
 
 

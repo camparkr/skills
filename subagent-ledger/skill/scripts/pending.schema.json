@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "subagent-ledger/pending/1",
   "title": "The ledger's pending triage file",
-  "description": "A pending triage file, <ledger>/.pending/<session>/triage-<member>-<attempt>.json, holds the values a planning skill decided for one member's dispatch before the dispatch is issued. Its file name carries the member id and the attempt the brief's frontmatter names. Each value is stamped from the clock as it is written: an object holding the value and the time. The capture copies every value onto that dispatch record with its stamp, then removes the file; where the file carries `kind`, the capture runs no triage of its own and records that kind as the triage's reading. A file that does not validate against this schema gives an error line, and the dispatch record is still written. The capture reads a file only by the name the brief's member and attempt make, inside the session's pending folder, and never follows a path a file names. pending.py reads this schema; no other file defines the pending triage file. The planning skill's own dispatch has a pending file of its own, <ledger>/.pending/<session>/planner-<plan-request-id>.json, whose name is its whole content as far as the capture is concerned: the capture reads no value from it. Where the brief of a dispatch carrying no member id names that plan-request id, standing alone, the capture records the dispatch as the planner's own, naming the plan request in member and attempt, and removes the file once the record is written.",
+  "description": "A pending triage file, <ledger>/.pending/<session>/triage-<member>-<attempt>.json, holds the values a planning skill decided for one member's dispatch before the dispatch is issued. Its file name carries the member id and the attempt the brief's frontmatter names. Each value is stamped from the clock as it is written: an object holding the value and the time. The capture copies every value onto that dispatch record with its stamp, then removes the file; where the file carries `kind`, the capture runs no triage of its own and records that kind as the triage's reading. A file that does not validate against this schema gives an error line, and the dispatch record is still written. The capture reads a file only by the name the brief's member and attempt make, inside the session's pending folder, and never follows a path a file names. pending.py reads this schema; no other file defines the pending triage file. The planning skill's own dispatch has a pending file of its own, <ledger>/.pending/<session>/planner-<plan-request-id>.json, whose name is its whole content as far as the capture is concerned: the capture reads no value from it. Where the brief of a dispatch carrying no member id names that plan-request id, standing alone, the capture records the dispatch as the planner's own, naming the plan request in member and attempt, and removes the file once the record is written. A kept check result, <ledger>/.pending/<session>/check-<agent>-<n>.json, is a check's result at one stop or hand-back of that agent, numbered in the order the checks ran (`checkResult`). It names its event and may carry any other key the check writes; the capture copies it onto the call's one return as it finds it, less its own `seen` and `missing` marks, and removes it.",
   "$ref": "#/$defs/triage",
   "$defs": {
     "time": {
@@ -135,6 +135,30 @@
         }
       },
       "additionalProperties": false
+    },
+    "checkResult": {
+      "type": "object",
+      "required": [
+        "event"
+      ],
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/text",
+          "description": "The harness event the check ran at: SubagentStop, or PreToolUse at a hand-back."
+        },
+        "refused": {
+          "type": "boolean",
+          "description": "Whether the check refused the stop or the hand-back."
+        },
+        "seen": {
+          "type": "boolean",
+          "description": "The capture's mark: a stop has taken this result."
+        },
+        "missing": {
+          "type": "boolean",
+          "description": "The capture's mark: a stop check was on and left no result."
+        }
+      }
     }
   }
 }

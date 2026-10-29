@@ -16,6 +16,13 @@ the file's own folder must be that folder.
 take_planner() finds the planning skill's own pending file, planner-<plan-request-id>.json, whose id the brief of a
 dispatch carrying no member names. The capture records that dispatch as the planner's own and removes the file.
 
+Kept check results: a check the wrapper runs at a stop or a hand-back leaves its result in
+<ledger>/.pending/<session>/check-<agent>-<n>.json, numbered in the order the checks ran (pending.schema.json,
+`checkResult`). At each stop the capture takes that stop's result (take_stop_result): a refused stop writes no return.
+Where the ledger folder's config.json switches a stop check on and a stop left no result, a placeholder is kept, so the
+return reads `unrecorded (no check result when the return was written)` for it, never `pass`. The call's one return
+carries every kept result, as it was found, in order (results_for_return); then they are removed.
+
 continued_call() joins a resumption to the dispatch it continues, by agent id: through the join file a background
 call's PostToolUse writes, or, once that is gone, through the return record that names the agent. It returns the
 call id, member and attempt of that dispatch.
@@ -116,6 +123,94 @@ def take_planner(directory, text):
             taken.request_id = request_id
             return taken
     return None
+
+
+CHECK_PREFIX = 'check-'
+NO_RESULT = 'unrecorded (no check result when the return was written)'
+BAD_RESULT = 'unrecorded (a kept check result could not be read: %s)'
+# Keys the capture adds to a kept result and removes before it goes on the return.
+OWN_KEYS = ('seen', 'missing')
+
+
+def _kept_paths(directory, agent, safe):
+    directory = Path(directory)
+    if not directory.is_dir():
+        return []
+    stem = safe('%s%s-' % (CHECK_PREFIX, agent))
+    return sorted(path for path in directory.glob(stem + '*.json') if path.parent == directory
+                  and path.name[len(stem):-len('.json')].isdigit())
+
+
+def keep_result(directory, agent, data, safe):
+    """Keep one check result for `agent`, numbered after the last. Returns its path."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    stem = safe('%s%s-' % (CHECK_PREFIX, agent))
+    numbers = [int(path.name[len(stem):-len('.json')]) for path in _kept_paths(directory, agent, safe)]
+    path = directory / ('%s%04d.json' % (stem, (max(numbers) if numbers else 0) + 1))
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    return path
+
+
+def _read_result(path):
+    if path.is_symlink():
+        return None, 'it is a link, which the capture never follows'
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        return None, '%s: %s' % (type(exc).__name__, exc)
+    return data, None
+
+
+def take_stop_result(directory, agent, safe, validate, check_on):
+    """Mark the stop results not yet taken as taken, and return whether the newest of them refused the stop.
+
+    With a stop check switched on (`check_on`) and no result left for this stop, a placeholder is kept for it.
+    """
+    unseen = []
+    for path in _kept_paths(directory, agent, safe):
+        data, problem = _read_result(path)
+        if problem or validate(data, load_schema(), ref='#/$defs/checkResult'):
+            continue
+        if data.get('event') == 'SubagentStop' and not data.get('seen'):
+            unseen.append((path, data))
+    for path, data in unseen:
+        data['seen'] = True
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    if not unseen:
+        if check_on:
+            keep_result(directory, agent, {'event': 'SubagentStop', 'missing': True, 'seen': True}, safe)
+        return False
+    return unseen[-1][1].get('refused') is True
+
+
+def results_for_return(directory, agent, safe, validate):
+    """(every kept result for `agent`, in the order kept, as it was found; the paths to remove once the return is
+    written). A result that cannot be read is `unrecorded (<why>)`; a placeholder is NO_RESULT."""
+    entries, paths = [], []
+    for path in _kept_paths(directory, agent, safe):
+        paths.append(path)
+        data, problem = _read_result(path)
+        if problem is None:
+            found = validate(data, load_schema(), ref='#/$defs/checkResult')
+            problem = '; '.join(found) if found else None
+        if problem:
+            entries.append(BAD_RESULT % _short(problem))
+        elif data.get('missing'):
+            entries.append(NO_RESULT)
+        else:
+            entries.append(dict((key, value) for key, value in data.items() if key not in OWN_KEYS))
+    return entries, paths
+
+
+def remove_paths(directory, paths):
+    """Remove each path that sits directly in `directory`."""
+    for path in paths:
+        if Path(path).parent == Path(directory):
+            try:
+                Path(path).unlink()
+            except OSError:
+                pass
 
 
 def _unreadable(name, problem):

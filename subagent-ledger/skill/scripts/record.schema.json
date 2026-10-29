@@ -702,6 +702,21 @@
           "$ref": "#/$defs/stampedOrUnrecorded",
           "description": "Copied from the pending triage file with its stamp: that the planning skill's triage was attempted and failed, with the reason."
         },
+        "check_results": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "$ref": "#/$defs/unrecorded"
+              }
+            ]
+          },
+          "description": "On a call's one return, where a check ran at its stops or hand-backs: each kept check result, in the order the checks ran, refused ones included, copied as the check left it (pending.schema.json, checkResult); or unrecorded (no check result when the return was written) for a stop that left none. Not selectable: the field setting cannot drop it. Absent where no check ran."
+        },
         "model_check": {
           "$ref": "#/$defs/anyValue",
           "description": "Written beside model where the harness and the transcript disagree."

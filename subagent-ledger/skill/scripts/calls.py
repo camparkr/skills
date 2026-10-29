@@ -59,7 +59,12 @@ records, its returns with no dispatch, and the error lines naming a call that ha
 harness's searches, fetches and MCP reads (subagent-tools.json `outside_tools`, less the tools of a
 server config.json's `mcp_not_calls` lists) the same way, as `outside_by_caller`, against the ledger's
 search, fetch and mcp records; where the harness's transcript form for them is not known, that count reads
-`unrecorded (<why>)`. `difference` sums the two. It prints
+`unrecorded (<why>)`. `difference` sums the two. `faults` counts, by kind, each return that does not match its source: one
+carrying an unrecorded check result; one whose last check result names a text whose SHA-256 differs from its answer's;
+one naming an event its route never sends, or SubagentStop with no SubagentStop witness for its agent; on a call whose
+subagent transcript (beside a transcript given) shows a delivered hand-back, an answer other than the last one
+delivered; and a refused member's return whose counters differ from its whole transcript's. `{}` states none; any
+fault exits 4. It prints
 counts only, never an id or a tool input. A transcript it cannot read gives its caller's count as
 `unrecorded (<why>)`, and the difference as `unrecorded (<n> transcripts could not be read)`, never a
 number made over a count it did not make; where a readable caller still shows a difference, that
@@ -90,6 +95,7 @@ folder of the working folder. The reader makes no model call, and writes nothing
 
 import argparse
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -1053,6 +1059,97 @@ def count_check(harness, paths, rows, errors, session, folder, since=None, until
 
 
 # ---------------------------------------------------------------------------
+# The count check's faults: a return that does not match its source
+# ---------------------------------------------------------------------------
+
+FAULT_UNRECORDED = 'a return carries an unrecorded check result'
+FAULT_LAST_TEXT = "a return's last check result names a text whose SHA-256 differs from its answer's"
+FAULT_EVENT = 'a return names an event the harness never sent'
+FAULT_HANDBACK = 'a return on a call with a delivered hand-back has another answer'
+FAULT_TOKENS = "a refused member's return counts tokens other than its transcript's"
+RETURN_EVENTS = ('SubagentStop', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse')
+
+
+def _answer_sha(record):
+    found = record.get('answer_fingerprint')
+    return found.get('sha256') if isinstance(found, dict) else None
+
+
+def _event_of(record):
+    payload = record.get('harness_payload')
+    return payload.get('hook_event_name') if isinstance(payload, dict) else None
+
+
+def _lane(paths, session, agent):
+    """The subagent's own transcript beside a parent transcript given: <folder>/<session>/subagents/agent-<id>.jsonl."""
+    for path in paths:
+        candidate = Path(path).parent / session / 'subagents' / ('agent-%s.jsonl' % agent)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def handback_tools(harness):
+    """{tool: the input key of its message} for the harness's hand-back tools, from subagent-tools.json."""
+    try:
+        entry = json.loads(TOOLS_FILE.read_text(encoding='utf-8'))['harnesses'].get(harness) or {}
+    except (OSError, ValueError, KeyError):
+        return {}
+    return dict((item['tool'], item['answer_key']) for item in entry.get('handback') or []
+                if isinstance(item, dict) and isinstance(item.get('tool'), str)
+                and isinstance(item.get('answer_key'), str))
+
+
+def return_faults(records, session, paths, handbacks):
+    """{fault: count} over the session's call records, for each fault found; {} when none.
+
+    A return carrying `unrecorded` for a check result; a return whose last check result names a text other than its
+    answer; a return naming an event its route never sends, or SubagentStop with no SubagentStop witness for its agent;
+    on a call whose subagent transcript shows a delivered hand-back, an answer other than the last one delivered; and a
+    refused member's return whose counters differ from its transcript's. It reads the subagent transcripts beside the
+    transcripts given, and no other file.
+    """
+    import transcripts
+    faults = {}
+
+    def fault(name):
+        faults[name] = faults.get(name, 0) + 1
+    dispatches = dict((r.get('call_id'), r) for r in records if r.get('record') == 'dispatch')
+    stopped = set(r.get('agent_id') for r in records if r.get('record') == 'witness'
+                  and r.get('event') == 'SubagentStop')
+    for back in (r for r in records if r.get('record') == 'return' and r.get('route', 'subagent') == 'subagent'):
+        results = back.get('check_results') if isinstance(back.get('check_results'), list) else []
+        if any(isinstance(item, str) and is_unrecorded(item) for item in results):
+            fault(FAULT_UNRECORDED)
+        answer = _answer_sha(back)
+        last = results[-1] if results else None
+        if isinstance(last, dict) and isinstance(last.get('sha256'), str) and answer and last['sha256'] != answer:
+            fault(FAULT_LAST_TEXT)
+        event, agent = _event_of(back), back.get('agent_id')
+        sent = dispatches.get(back.get('call_id')) or {}
+        given = (sent.get('harness_payload') or {}).get('tool_input') if isinstance(
+            sent.get('harness_payload'), dict) else None
+        background = isinstance(given, dict) and given.get('run_in_background') is True
+        if event is not None and (event not in RETURN_EVENTS or (event == 'SubagentStop' and agent not in stopped)
+                                  or (event == 'PostToolUse' and background
+                                      and (sent.get('harness_payload') or {}).get('tool_name') in ('Agent', 'Task'))):
+            fault(FAULT_EVENT)
+        lane = _lane(paths, session, agent) if isinstance(agent, str) and not is_unrecorded(agent) else None
+        if lane is None or (sent.get('harness_payload') or {}).get('tool_name') not in ('Agent', 'Task'):
+            continue
+        delivered = transcripts.delivered_handbacks(lane, handbacks)
+        if delivered and answer and hashlib.sha256(delivered[-1].encode('utf-8')).hexdigest() != answer:
+            fault(FAULT_HANDBACK)
+        if any(isinstance(item, dict) and item.get('refused') is True for item in results) and isinstance(
+                back.get('tokens'), dict):
+            whole = transcripts.read(lane).get('tokens')
+            if isinstance(whole, dict) and any(whole.get(k) != back['tokens'].get(k)
+                                               for k in ('input', 'cache_write', 'cache_read', 'output')):
+                fault(FAULT_TOKENS)
+    return faults
+
+
+# ---------------------------------------------------------------------------
 # The command
 # ---------------------------------------------------------------------------
 
@@ -1136,6 +1233,8 @@ def main(argv=None):
         except CannotRun as exc:
             print('calls: cannot run: %s' % exc, file=sys.stderr)
             return 2
+        if isinstance(check, dict):
+            check['faults'] = return_faults(records, session, args.transcript, handback_tools(args.harness))
         out['count_check'] = check
         out['absences'].extend(more)
         out['received_messages'] = received_messages(args.transcript, folder, parse_time(args.since),
@@ -1143,6 +1242,8 @@ def main(argv=None):
     out = grouped(out)
     if args.count_check:
         if code == 0 and isinstance(check, dict) and isinstance(check['difference'], int) and check['difference']:
+            code = 4
+        elif code == 0 and isinstance(check, dict) and check.get('faults'):
             code = 4
         elif code == 0 and isinstance(check, dict) and isinstance(check['difference'], str):
             code = 3

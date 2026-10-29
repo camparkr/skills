@@ -27,6 +27,7 @@ generated: { by: process:okf-projectdocs }
 * [test_label_line.py](test_label_line.py) - Controls for the label line: the writer's `label`, its schema, and the reader's join.
 * [test_ledger.py](test_ledger.py) - Tests for the subagent ledger's writer, `skill/scripts/ledger.py`, and its record schema.
 * [test_outside_calls.py](test_outside_calls.py) - Tests for searches, fetches and MCP reads, recorded on the routes `search`, `fetch` and `mcp`.
+* [test_return_record.py](test_return_record.py) - Controls for the return record: kept check results on the call's one return, the hand-back's message as the
 * [test_stop_and_message.py](test_stop_and_message.py) - Two fixes to Claude Code's capture: a subagent its caller stops with `TaskStop`, and a `SendMessage` addressed to
 * [test_triage_command.py](test_triage_command.py) - Tests for the ledger folder's `triage_command` and for `effort_assigned`.
 * [test_wider_matching.py](test_wider_matching.py) - Controls C-11-1 to C-11-4: the shell route reads through wrappers, compound commands, here-documents and runner

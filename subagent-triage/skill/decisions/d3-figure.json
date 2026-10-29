@@ -1,0 +1,77 @@
+{
+  "description": "Which eligible persona takes a part, and whether it is adequate. Exact eligibility first, then a Choice over the eligible personas, then a Noul on the chosen persona's adequacy. The adequacy line is 0.5, provisional, with no measured basis, until calibration replaces it.",
+  "id": "d3-figure",
+  "question": "Which eligible persona takes this part, and is it adequate?",
+  "definition_version": 0,
+  "provisional": true,
+  "basis": "The adequacy line of 0.5 is a starting value with no measured basis. Calibration on a labelled set replaces it.",
+  "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice", "noul"]},
+  "decision_point_classification": "mixed",
+  "subject": "the part, with the kind the act decision read for it",
+  "exact_facts": {
+    "eligibility": [
+      "the persona is on the roster the settings name, and its file carries a ratified declaration",
+      "the persona is not the user",
+      "where the part names a capability, the persona is recorded against that capability in the register the settings name",
+      "an unknown persona name is refused, never matched to a near name",
+      "where the part names no capability, every persona that meets the first two rules is eligible"
+    ],
+    "facts_for_the_choice": [
+      "each candidate's group and declared goal",
+      "the part's kind, and the group the settings pair with that kind",
+      "the dispatching session's own persona and group",
+      "the task's stage, read by the stage read"
+    ],
+    "withheld_for_control": ["the task's stage"]
+  },
+  "composition": {
+    "choice": {
+      "type": "choice",
+      "over": "the eligible personas",
+      "instructions": "This is one part of a piece of delegated work, given as `part`, with the kind of act it asks for and the task's stage. Each option is a persona with its group and its declared goal. Which persona's declared goal covers this part best? Judge the goal as declared, not the persona's name.",
+      "criterion_template": "{persona}, in {group}: {goal}"
+    },
+    "adequacy": {
+      "type": "noul",
+      "asked_of": "the persona the Choice ranks first",
+      "instructions": "This is one part of a piece of delegated work, given as `part`, and one persona's declared goal and group. Can this persona do this part within its declared goal, without the part asking for work its goal does not cover?",
+      "line": 0.5,
+      "line_version": 0
+    }
+  },
+  "line_rule": "A persona is adequate when the adequacy Noul's probability of yes is at or above the line.",
+  "outcomes": [
+    {
+      "when": "no persona is eligible",
+      "answer": "none adequate, with the eligibility rule that emptied the set",
+      "route": "no persona is chosen; the part goes back to the parent",
+      "lane": "reasoned"
+    },
+    {
+      "when": "the adequacy Noul is at or above the line",
+      "answer": "the persona the Choice ranks first",
+      "route": "the dispatch goes to this persona unless the parent overrides",
+      "lane": "delivered",
+      "delegated_authority": "the parent, which an override withdraws"
+    },
+    {
+      "when": "the adequacy Noul is below the line",
+      "answer": "the persona the Choice ranks first, marked below the line",
+      "route": "the dispatch goes to this persona unless the parent overrides. The brief's body says no persona was found adequate, with the adequacy probability and the line. The dispatch record marks the part below the line, with that probability, the line and its version",
+      "lane": "reasoned"
+    },
+    {
+      "when": "the request fails or times out",
+      "answer": "unrecorded (<reason>)",
+      "route": "the parent chooses the persona; the record says why",
+      "lane": "reasoned"
+    }
+  ],
+  "override": {
+    "records": ["this decision's persona", "its adequacy probability", "the parent's own persona", "the persona chosen instead", "the reason", "the time"]
+  },
+  "calibration": {
+    "measure": "agreement with labels naming an acceptable set of personas, on the held-out half; whether withholding the stage moves a choice",
+    "minimum_held_out": "10 parts, with every persona the set claims to cover appearing as an acceptable answer in both halves"
+  }
+}

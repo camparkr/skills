@@ -231,6 +231,7 @@
         "caller_time_limit",
         "stopped_by_caller",
         "empty_answer",
+        "refused_by_check",
         "other"
       ]
     },

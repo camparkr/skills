@@ -271,6 +271,12 @@ def receiving_session(given, response=None):
         if isinstance(value, str) and value:
             return value
     return 'unrecorded (the payload names no receiving session)'
+# What the wrapper ran before the capture at a dispatch: its check's time and result, kept on the dispatch record's
+# harness_payload as `wrapper`. Set by wrapper.py in the same process; empty when the capture runs alone.
+WRAPPER_NOTE = {}
+REFUSED_AGENT = 'unrecorded (no agent: the dispatch was refused before it ran)'
+REFUSED_RUN = 'unrecorded (the dispatch was refused before it ran)'
+REFUSED_CLASS = 'refused_by_check'
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
 
@@ -462,6 +468,8 @@ def pre_agent(payload, folder, held):
                                          triage_source='the pending triage file %s' % taken.name)
     if not_a_brief:
         fields['harness_payload'] = dict(fields['harness_payload'], kinds_read_from=not_a_brief)
+    if WRAPPER_NOTE:
+        fields['harness_payload'] = dict(fields['harness_payload'], wrapper=dict(WRAPPER_NOTE))
     fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
                                            payload.get('transcript_path'), fields['act_kind'],
                                            brief if source else prompt)
@@ -475,6 +483,42 @@ def pre_agent(payload, folder, held):
     if taken is not None and getattr(written, 'ok', False):
         with pending_lock(folder, held.session):
             pending.remove(pending_dir(folder, held.session), taken)
+
+
+def refused_dispatch(payload, folder, text):
+    """The return of a dispatch the wrapper's PreToolUse check refused: `failed`, class refused_by_check, the
+    refusal's text, written at that PreToolUse after its dispatch record; no pending file is left. Never raises."""
+    held = Held('PreToolUse', payload)
+    try:
+        folder = ledger.ledger_folder(folder)
+        given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+        with pending_lock(folder, held.session):
+            sent = read_pending(folder, held.session, held.call_id)
+            fields = common(payload, folder, route='subagent')
+            fields.update({
+                'call_id': held.call_id, 'agent_id': REFUSED_AGENT, 'outcome': 'failed',
+                'outcome_reason': {'class': REFUSED_CLASS, 'text': str(text)[:ledger.REASON_LIMIT]},
+                'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT, 'model': REFUSED_RUN, 'tokens': REFUSED_RUN,
+                'effort': REFUSED_RUN, 'isolation': REFUSED_RUN, 'answer_source': REFUSED_RUN,
+                'harness_payload': without_texts(payload, given.get('prompt'), ON_DISPATCH_BRIEF),
+            })
+            if sent and sent.get('dispatched_at'):
+                fields['dispatched_at'] = sent['dispatched_at']
+            ledger.ret(ledger=folder, **fields)
+            clear_pending(folder, held.session, [held.call_id])
+    except Exception as exc:  # the capture's own fault: recorded, never raised to the hook
+        held.error(folder, 'payload', 'the refused dispatch could not be written: %s: %s' % (type(exc).__name__, exc),
+                   record='return')
+
+
+def handback_witness(payload, folder):
+    """The witness line at a hand-back the wrapper's check refused: no call record is written there. Never raises."""
+    held = Held('PreToolUse', payload)
+    try:
+        ledger.witness(ledger=ledger.ledger_folder(folder), event='PreToolUse', session=held.session,
+                       agent_id=held.agent_id, call_id=held.call_id, at=ledger.now())
+    except Exception as exc:
+        held.error(folder, 'payload', 'the hand-back witness could not be written: %s' % exc, record='witness')
 
 
 def session_start(payload, folder, held):

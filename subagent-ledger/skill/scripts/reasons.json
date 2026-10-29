@@ -1,5 +1,5 @@
 {
-  "description": "Why a call was not served. Each harness's patterns are tried in order against the text the far end or the harness returned, then the patterns under \"default\". The first match gives the class; no match gives \"other\". Patterns are Python regular expressions, matched without regard to case. credential_shapes are the forms of credential the writer replaces with [withheld] wherever they appear in a record.",
+  "description": "Why a call was not served. Each harness's patterns are tried in order against the text the far end or the harness returned, then the patterns under \"default\". The first match gives the class; no match gives \"other\". refused_by_check has no pattern: the wrapper sets it on a dispatch its PreToolUse check refused, and no text is ever matched to it. Patterns are Python regular expressions, matched without regard to case. credential_shapes are the forms of credential the writer replaces with [withheld] wherever they appear in a record.",
   "classes": [
     "not_signed_in",
     "missing_key",
@@ -11,6 +11,7 @@
     "caller_time_limit",
     "stopped_by_caller",
     "empty_answer",
+    "refused_by_check",
     "other"
   ],
   "patterns": {

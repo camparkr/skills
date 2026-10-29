@@ -156,7 +156,7 @@ class NoCheckOn(World):
         self.foreground_call(capture, alone, 'toolu_t_0001', 'a5000000000000001')
         self.foreground_call(self.wrapped, wrapped, 'toolu_t_0001', 'a5000000000000001')
         first, second = self.records(alone), self.records(wrapped)
-        self.assertEqual(len(first), 4)
+        self.assertEqual(len(first), 3)  # dispatch, the stop's witness line, return
         self.assertEqual([steady(r) for r in first], [steady(r) for r in second])
 
     def test_sc09_with_no_check_on_nothing_is_refused_and_nothing_printed(self):
@@ -308,6 +308,32 @@ class RefusedDispatch(World):
         classes = json.loads((SCRIPTS / 'reasons.json').read_text(encoding='utf-8'))['classes']
         self.assertIn('refused_by_check', classes)
 
+
+
+# ---------------------------------------------------------------------------
+# R-33: the hook's time limit, set explicitly above the capture's longest wait (written after wrapper.py)
+# ---------------------------------------------------------------------------
+
+class HookEntries(World):
+
+    def entries(self, folder):
+        return subprocess.run([sys.executable, str(WRAPPER), '--hook-entries', '--ledger', str(folder)],
+                              capture_output=True, text=True, timeout=60)
+
+    def test_r33_each_entry_carries_a_limit_above_the_bounded_wait(self):
+        folder = self.ledger(checks={'stop': 'pass'}, background_wait_seconds=50)
+        done = self.entries(folder)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        hooks = json.loads(done.stdout)['hooks']
+        limits = [entry['hooks'][0]['timeout'] for entries in hooks.values() for entry in entries]
+        self.assertEqual(sorted(hooks), ['PostToolUse', 'PostToolUseFailure', 'PreToolUse', 'SessionStart',
+                                         'SubagentStart', 'SubagentStop'])
+        self.assertEqual(set(limits), {50 + 2 + 30})
+
+    def test_r33_empty_an_unbounded_wait_has_no_limit_to_sit_above_and_is_refused(self):
+        done = self.entries(self.ledger())
+        self.assertEqual(done.returncode, 2)
+        self.assertIn('background_wait_seconds', done.stderr)
 
 if __name__ == '__main__':
     unittest.main()

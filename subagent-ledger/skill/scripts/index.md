@@ -20,6 +20,7 @@ generated: { by: process:okf-projectdocs }
 * [ledger.py](ledger.py) - The subagent ledger's one writer: every line in a ledger folder is written here.
 * [pending.py](pending.py) - The pending triage file: its reader and remover, and the join a resumption reads.
 * [transcripts.py](transcripts.py) - Read a Claude Code transcript: the model that ran, its four counters, its folder and its tool calls.
+* [wrapper.py](wrapper.py) - One hook entry per event: run the check the ledger folder's config.json names for it, then the capture, in one
 
 ## Documents
 
@@ -32,6 +33,7 @@ generated: { by: process:okf-projectdocs }
 * [ledger.component.md](ledger.component.md) - The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files, with a fingerprint of each, and appends the line under a lock. The lock works on macOS, Linux and Windows.
 * [pending.component.md](pending.component.md) - Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session's pending folder. Also joins a resumption to the dispatch it continues.
 * [transcripts.component.md](transcripts.component.md) - Reads a transcript for the model that ran, its four token counters and what the run touched outside its folder.
+* [wrapper.component.md](wrapper.component.md) - One hook entry per event: runs the check the ledger folder names for it, then the capture, in one process. A check that errors or overruns refuses nothing; only a check's own decision refuses a call.
 
 ## Subdirectories
 

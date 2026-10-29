@@ -34,3 +34,4 @@ generated: { by: process:okf-projectdocs }
 * [test_window.py](test_window.py) - Tests for the reader's window: --since and --until bound the count check and the received messages.
 * [test_windows_lock.py](test_windows_lock.py) - Controls for the ledger's file lock where Python has no fcntl, as on Windows, for setup.sh's check of it, and for
 * [test_windows_paths.py](test_windows_paths.py) - Controls for Windows-style paths, run on macOS or Linux: what a run touched outside its folder, judged with
+* [test_wrapper.py](test_wrapper.py) - Controls for the wrapper: one hook entry per event that runs a configured check, then the capture, in one process.

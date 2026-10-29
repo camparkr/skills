@@ -249,12 +249,17 @@ class HandbackCheck(World):
         self.assertEqual([(r['record'], r['event'], r['call_id']) for r in rows],
                          [('witness', 'PreToolUse', 'toolu_hb_0001')])
 
-    def test_r33_empty_a_passing_hand_back_writes_no_line_and_its_delivery_is_marked(self):
+    def test_r33_empty_a_passing_hand_back_writes_its_witness_line_and_its_delivery_is_marked(self):
+        # Since the rework of 28 October 2026 (R-19), every checked hand-back writes a witness line carrying its
+        # result, before its report can reach the parent; it writes no call record.
         folder = self.ledger(checks={'handback': 'pass'})
         agent = 'a5000000000000302'
         self.assertIsNone(self.deny(self.wrapped('PreToolUse', self.handback_payload('PreToolUse', agent), folder)))
         self.wrapped('PostToolUse', self.handback_payload('PostToolUse', agent), folder)
-        self.assertEqual(self.records(folder), [])
+        rows = self.records(folder)
+        self.assertEqual([(r['record'], r['event'], r['call_id']) for r in rows],
+                         [('witness', 'PreToolUse', 'toolu_hb_0001')])
+        self.assertEqual(rows[0]['check_results'][0]['reason'], 'clean')
         kept = [json.loads(p.read_text(encoding='utf-8'))
                 for p in (folder / '.pending' / SESSION).glob('check-*.json')]
         self.assertEqual(len(kept), 1)

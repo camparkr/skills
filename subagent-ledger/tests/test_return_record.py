@@ -430,7 +430,9 @@ class CountCheckFaults(World):
             'a return on a call with a delivered hand-back has another answer'), 1, out)
         self.assertEqual(code, 4)
 
-    def test_tc16_a_refused_members_tokens_short_of_its_transcript_are_a_fault(self):
+    def test_tc16_a_members_tokens_short_of_its_transcript_are_a_fault(self):
+        # Since the rework of 28 October 2026 (TC-16), any member's one return counts every turn, not only a
+        # refused member's.
         agent = 'a4000000000000007'
         self.clean_call('toolu_c_0007', agent, kept=[kept_result('SubagentStop', refused=True, n=1)])
         self.keep(agent, 2, kept_result('SubagentStop', text=CLOSING, n=2))
@@ -441,7 +443,7 @@ class CountCheckFaults(World):
         self.rewrite(change)
         code, out = self.check()
         self.assertEqual(out['count_check']['faults'].get(
-            "a refused member's return counts tokens other than its transcript's"), 1, out)
+            "a member's return counts tokens other than its transcript's"), 1, out)
         self.assertEqual(code, 4)
 
 

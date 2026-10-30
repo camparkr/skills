@@ -84,8 +84,16 @@ class WorktreeCheckTests(unittest.TestCase):
             self.fail('no JSON on stdout (exit %s): %s %s' % (done.returncode, done.stdout, done.stderr))
         return done.returncode, out
 
-    def test_an_unchanged_write_set_passes_on_the_remote_default_branch(self):
+    def test_an_unchanged_write_set_passes_on_the_default_base_local_head(self):
         code, out = self.check(self.brief('src/a.py', 'docs/'))
+        self.assertEqual(code, 0, out)
+        self.assertFalse(out['refuse'])
+        self.assertEqual(out['base']['setting'], 'head')
+        self.assertEqual(out['base']['ref'], 'HEAD')
+        self.assertEqual(out['differences'], [])
+
+    def test_an_unchanged_write_set_passes_on_the_remote_default_branch(self):
+        code, out = self.check(self.brief('src/a.py', 'docs/'), base='default')
         self.assertEqual(code, 0, out)
         self.assertFalse(out['refuse'])
         self.assertEqual(out['base']['ref'], 'origin/HEAD')
@@ -96,17 +104,18 @@ class WorktreeCheckTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertFalse(out['refuse'])
 
-    def test_tc12_likeness_a_file_committed_locally_and_not_pushed_is_refused_on_the_default_base(self):
+    def test_tc12_likeness_a_file_committed_locally_and_not_pushed_is_refused_on_the_remote_default_branch(self):
         (self.main / 'src' / 'a.py').write_text('a = 2\n', encoding='utf-8')
         git(self.main, 'commit', '-q', '-am', 'local only')
-        code, out = self.check(self.brief('src/a.py'))
+        code, out = self.check(self.brief('src/a.py'), base='default')
         self.assertEqual(code, 1, out)
         self.assertTrue(out['refuse'])
         self.assertIn('src/a.py', out['reason'])
         self.assertIn('origin/HEAD', out['reason'])
-        # Control: with the worktree branching from local HEAD, the same file passes.
-        code, out = self.check(self.brief('src/a.py'), base='head')
+        # Control: on the default base, local HEAD, the same file passes.
+        code, out = self.check(self.brief('src/a.py'))
         self.assertEqual(code, 0, out)
+        self.assertEqual(out['base']['ref'], 'HEAD')
 
     def test_tc12_likeness_a_file_changed_and_not_committed_is_refused_with_the_reason(self):
         (self.main / 'src' / 'a.py').write_text('a = 3\n', encoding='utf-8')
@@ -161,11 +170,22 @@ class WorktreeCheckTests(unittest.TestCase):
         (lone / 'a.py').write_text('a = 1\n', encoding='utf-8')
         git(lone, 'add', '.')
         git(lone, 'commit', '-q', '-m', 'lone')
-        code, out = self.check(self.brief('a.py'), repository=lone)
+        code, out = self.check(self.brief('a.py'), repository=lone, base='default')
         self.assertEqual(code, 1, out)
         self.assertIn('cannot be read', out['reason'])
-        code, out = self.check(self.brief('a.py'), repository=lone, base='head')
+        self.assertIn('origin/HEAD', out['reason'])
+        # Control: the default base, local HEAD, reads in a repository with no remote.
+        code, out = self.check(self.brief('a.py'), repository=lone)
         self.assertEqual(code, 0, out)
+
+    def test_an_unreadable_local_head_is_refused_without_the_hint_to_pass_it(self):
+        empty = self.tmp / 'empty'
+        empty.mkdir()
+        git(empty, 'init', '-q', '-b', 'main')
+        code, out = self.check(self.brief('a.py'), repository=empty)
+        self.assertEqual(code, 1, out)
+        self.assertIn('branch from, HEAD, cannot be read', out['reason'])
+        self.assertNotIn('pass --base head', out['reason'])
 
 
 if __name__ == '__main__':

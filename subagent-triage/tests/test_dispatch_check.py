@@ -95,8 +95,11 @@ class DispatchCheckTests(unittest.TestCase):
     def records(self, rows, kind):
         return [row for row in rows if row.get('record') == kind]
 
-    def left(self):
-        return sorted(p.name for p in self.pending.glob('*.json')) if self.pending.is_dir() else []
+    def left(self, prefixes=('triage-', 'planner-')):
+        """The pending files left: by default the triage and planner's files. A call let through also leaves the
+        capture's own pending file for its return, which the return removes."""
+        names = sorted(p.name for p in self.pending.glob('*.json')) if self.pending.is_dir() else []
+        return [name for name in names if prefixes is None or name.startswith(prefixes)]
 
     def assert_let_through(self, said, rows):
         self.assertIsNone(said)
@@ -128,7 +131,7 @@ class DispatchCheckTests(unittest.TestCase):
         self.assertEqual(returned['outcome'], 'failed')
         self.assertEqual(returned['outcome_reason']['class'], 'refused_by_check')
         self.assertIn('triage-m1-1.json', returned['outcome_reason']['text'])
-        self.assertEqual(self.left(), [])
+        self.assertEqual(self.left(prefixes=None), [])
 
     def test_tc17_likeness_a_triaged_dispatch_is_let_through_its_file_read_before_the_capture_removes_it(self):
         self.triage_file()

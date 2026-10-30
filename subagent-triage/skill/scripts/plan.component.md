@@ -13,7 +13,7 @@ x-component:
   gcs: {reads: [], writes: []}
   external-apis:
     api.typesafe.ai:
-      - https://api.typesafe.ai/v1/systemone  # URL literal in decide.py:110
+      - https://api.typesafe.ai/v1/systemone  # URL literal in decide.py:117
   pubsub: {}
   depends-on: []
   overlaps-with: []

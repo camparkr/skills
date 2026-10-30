@@ -8,6 +8,7 @@
                       [--file-root <folder>] [--user <name> ...]
                       [--task <id>] [--build-root <folder> ...] [--ratified-root <folder> ...]
                       [--task-key task_id] [--status-key status]
+                      [--kind-groups <file>] [--kind-groups-key pairs]
 
 The act decision (decisions/d1-act.json). Each of the eight kinds in the ledger skill's kinds.json is asked as a
 Noul, one request each, with the definition's instructions and the kind's test as its criterion. Their lines are
@@ -37,6 +38,12 @@ says to pass the unaided level.
 Each Jev request is recorded as its own dispatch and return through the ledger skill's ledger.py, in the ledger
 folder --ledger names, under --session. The part's text goes to Jev only; no record holds it. A retry on HTTP 429 or
 5xx is a request of its own with its own pair.
+
+The group the part's kind is paired with (`kind_paired_grouping`) is read, once the act decision reads one kind, from
+the table --kind-groups names: a JSON or YAML file whose object at --kind-groups-key (a dotted path, `pairs` by
+default) maps each kind to its group. It is a fact for the pending file, never the record's own grouping. With no
+table given, a table that cannot be read or holds no object at the key, a kind the table lacks, or no kind read, the
+value reads `unrecorded (<reason>)` and the triage goes on: the value is never guessed.
 
 The pending triage file is <pending-ledger>/.pending/<session>/triage-<member>-<attempt>.json, in the ledger's
 pending.schema.json shape, each value stamped from the clock when it is decided. --pending-ledger defaults to
@@ -257,6 +264,27 @@ def git_commit(path):
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout.strip() or None
+
+
+def kind_paired_group(path, key, kind):
+    """The group the table at `path` pairs with `kind`, or `unrecorded (<reason>)`. Never raises, never guesses."""
+    if not kind:
+        return 'unrecorded (the act decision read no kind)'
+    if not path:
+        return 'unrecorded (no kind-to-group table was given)'
+    try:
+        data = read_structured(path)
+    except (OSError, ValueError, CannotRun) as exc:
+        return 'unrecorded (the kind-to-group table %s could not be read: %s)' % (path, exc)
+    except Exception as exc:
+        return 'unrecorded (the kind-to-group table %s could not be read: %s: %s)' % (path, type(exc).__name__, exc)
+    pairs = dig(data, key)
+    if not isinstance(pairs, dict):
+        return 'unrecorded (the kind-to-group table %s holds no pairs at %r)' % (path, key)
+    group = pairs.get(kind)
+    if not isinstance(group, str) or not group.strip():
+        return 'unrecorded (the kind-to-group table %s pairs no group with %s)' % (path, kind)
+    return group
 
 
 def stamp():
@@ -801,6 +829,8 @@ def parse(argv):
     parser.add_argument('--ratified-key', default='declaration-ratified')
     parser.add_argument('--file-root')
     parser.add_argument('--user', action='append')
+    parser.add_argument('--kind-groups')
+    parser.add_argument('--kind-groups-key', default='pairs')
     import stage
     stage.add_arguments(parser)
     return parser.parse_args(argv)
@@ -885,6 +915,8 @@ def main(argv=None):
                                                  'line_version': persona['line_version']})
     else:
         persona = None
+    paired = kind_paired_group(args.kind_groups, args.kind_groups_key, act['kind'])
+    pending['kind_paired_grouping'] = stamped(paired)
     effort, effort_record = effort_decision(jev, d4, part, body, act['kind'], persona and persona['persona'],
                                             args.effort_unaided, subject, quote,
                                             '%s at %s' % (d4['engine']['name'], d4['engine']['model']),
@@ -904,7 +936,7 @@ def main(argv=None):
     print(json.dumps({'delegation': str(delegation.resolve()), 'session': args.session, 'member': args.member,
                       'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'stage': reading,
                       'act': act,
-                      'persona': persona, 'effort': effort, 'decision_records': records,
+                      'persona': persona, 'kind_paired_grouping': paired, 'effort': effort, 'decision_records': records,
                       'jev_calls': jev.calls, 'pending_file': str(path)}, indent=1, ensure_ascii=False))
     return 3 if failures else 0
 

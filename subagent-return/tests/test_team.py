@@ -15,6 +15,7 @@ They were committed before the checks, the gate and the disposition script exist
 Run from the skill's folder:  python3 -m unittest discover -s tests
 """
 
+import re
 import shutil
 import tempfile
 import unittest
@@ -22,6 +23,31 @@ from pathlib import Path
 
 import world
 from world import BAD_FRONT, GOOD_FRONT, report
+import results
+
+
+def build_team(case, prefix):
+    """SI-5's team of four, in a world of its own under `case.tmp`: each member dispatched in the background, its work
+    done, its hand-back and its stop."""
+    case.tmp = Path(tempfile.mkdtemp(prefix=prefix))
+    w = case.w = world.World(case.tmp)
+    w.start()
+    case.claimer = w.member('claimer', ['docs/'])
+    case.scribe = w.member('scribe', ['docs/'])
+    case.stray = w.member('stray', ['docs/'])
+    case.clean = w.member('clean', ['docs/'])
+    case.decisions = {}
+    for m in (case.claimer, case.scribe, case.stray, case.clean):
+        case.decisions[m.name] = [w.dispatch(m)]
+    case.scribe.write('docs/scribe.md', BAD_FRONT)
+    case.stray.write('src/stray.py', 'print(4)\n')
+    case.stray.write('docs/stray.md', GOOD_FRONT)
+    case.clean.write('docs/clean.md', GOOD_FRONT)
+    messages = {'claimer': report('docs/existing.md'), 'scribe': report('docs/scribe.md'),
+                'stray': report('docs/stray.md'), 'clean': report('docs/clean.md')}
+    for m in (case.claimer, case.scribe, case.stray, case.clean):
+        case.decisions[m.name].append(w.handback(m, messages[m.name]))
+        case.decisions[m.name].append(w.stop(m))
 
 
 class Team(unittest.TestCase):
@@ -29,25 +55,7 @@ class Team(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = Path(tempfile.mkdtemp(prefix='return-team-'))
-        w = cls.w = world.World(cls.tmp)
-        w.start()
-        cls.claimer = w.member('claimer', ['docs/'])
-        cls.scribe = w.member('scribe', ['docs/'])
-        cls.stray = w.member('stray', ['docs/'])
-        cls.clean = w.member('clean', ['docs/'])
-        cls.decisions = {}
-        for m in (cls.claimer, cls.scribe, cls.stray, cls.clean):
-            cls.decisions[m.name] = [w.dispatch(m)]
-        cls.scribe.write('docs/scribe.md', BAD_FRONT)
-        cls.stray.write('src/stray.py', 'print(4)\n')
-        cls.stray.write('docs/stray.md', GOOD_FRONT)
-        cls.clean.write('docs/clean.md', GOOD_FRONT)
-        messages = {'claimer': report('docs/existing.md'), 'scribe': report('docs/scribe.md'),
-                    'stray': report('docs/stray.md'), 'clean': report('docs/clean.md')}
-        for m in (cls.claimer, cls.scribe, cls.stray, cls.clean):
-            cls.decisions[m.name].append(w.handback(m, messages[m.name]))
-            cls.decisions[m.name].append(w.stop(m))
+        build_team(cls, 'return-team-')
 
     @classmethod
     def tearDownClass(cls):
@@ -105,9 +113,10 @@ class Team(unittest.TestCase):
         settled = []
         for m in (self.claimer, self.scribe, self.stray):
             back = w.returns(m)[0]
-            ids = [c['id'] for run in w.runs(back) for c in run['checks'] if c['result'] == 'fail']
-            command = 'python3 "%s" --call %s %s --kind accepted --reason "seen and accepted" --decided-by parent' % (
-                world.DISPOSITION, m.call_id, ' '.join('--result %s' % i for i in ids))
+            ids = w.fail_ids(back)
+            command = ('python3 "%s" --call %s %s --kind accepted --reason "seen and accepted" --decided-by parent '
+                       '%s' % (world.DISPOSITION, m.call_id, ' '.join('--result %s' % i for i in ids),
+                               w.ledger_option()))
             decision, done = w.disposition_call(command)
             self.assertIsNone(w.denied(decision), 'the disposition call runs while the parent is held')
             self.assertEqual(done.returncode, 0, done.stderr)
@@ -122,6 +131,140 @@ class Team(unittest.TestCase):
         self.assertEqual(sorted(r['call_id'] for r in lines), sorted(m.call_id for m in (
             self.claimer, self.scribe, self.stray)))
         self.assertEqual(list(w.pending().glob('disposition-*.json')), [], 'no pending file outlives its record')
+
+
+class OneFaultOneFail(unittest.TestCase):
+    """Dry run 11: one planted fault stood as two `fail`s, one from the hand-back's run and one from the stop's, and
+    each disposition had to name both. Now the stop's run keeps the hand-back's id for the same fault (same call,
+    member, attempt, check and finding): each faulty member of the team leaves one standing `fail`, the refusal names
+    one id per fault, and one disposition per fault, run as the refusal prints it, releases the gate. The likeness is
+    in Changed below: a finding that changes between the hand-back and the stop takes an id of its own."""
+
+    FAULTS = {'claimer': 1, 'scribe': 2, 'stray': 4}
+
+    def setUp(self):
+        build_team(self, 'return-one-fail-')
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+
+    def faulty(self):
+        return (self.claimer, self.scribe, self.stray)
+
+    def held(self):
+        return self.w.denied(self.w.parent('Write', {'file_path': str(self.w.repo / 'merge.md'), 'content': 'x'})[1])
+
+    def test_si5_each_faulty_member_leaves_exactly_one_standing_fail_carried_on_both_lines(self):
+        w = self.w
+        standing = results.standing(w.records())
+        self.assertEqual(sorted(item.call_id for item in standing), sorted(m.call_id for m in self.faulty()))
+        for m in self.faulty():
+            with self.subTest(member=m.name):
+                check = self.FAULTS[m.name]
+                handback = w.results(w.witnesses(m, 'PreToolUse')[-1])[check]
+                stop = w.results(w.witnesses(m, 'SubagentStop')[-1])[check]
+                self.assertEqual((handback['result'], stop['result']), ('fail', 'fail'))
+                self.assertEqual(stop['id'], handback['id'], 'the same fault keeps its id at the stop')
+                self.assertEqual(w.fail_ids(w.returns(m)[0]), [handback['id']])
+                ids = [c['id'] for run in w.runs(w.returns(m)[0]) for c in run['checks']]
+                other = [c['id'] for c in w.runs(w.returns(m)[0])[-1]['checks'] if c['check'] != check]
+                self.assertNotIn(handback['id'], other, 'the stop\'s other results are its own')
+                self.assertEqual(len(set(ids)), len(ids) - 1, 'one id is shared, by the one fault, and no other')
+
+    def test_si5_the_refusal_names_one_id_per_fault_and_prints_one_command_per_member(self):
+        w = self.w
+        reason = self.held()
+        self.assertIn('3 failing results stand', reason)
+        named = re.findall(r'^  (\S+), check (\d): fail', reason, re.M)
+        self.assertEqual(len(named), 3, reason)
+        for m in self.faulty():
+            with self.subTest(member=m.name):
+                self.assertIn((w.fail_ids(w.returns(m)[0])[0], str(self.FAULTS[m.name])), named)
+        printed = w.printed_commands(reason)
+        self.assertEqual(len(printed), 3)
+        self.assertEqual([c.count('--result ') for c in printed], [1, 1, 1])
+        _code, out = w.count_check()
+        self.assertEqual(out['count_check']['faults'].get('a fail no disposition settles'), 3, out)
+
+    def test_si5_one_disposition_per_fault_run_as_printed_releases_the_gate(self):
+        w = self.w
+        for count in (3, 2, 1):
+            reason = self.held()
+            self.assertIn('%d failing result%s stand' % (count, '' if count == 1 else 's'), reason)
+            printed = w.printed_commands(reason)
+            self.assertEqual(len(printed), count)
+            decision, done = w.disposition_call(world.fill(printed[0]), cwd=w.outside)
+            self.assertIsNone(w.denied(decision))
+            self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIsNone(self.held(), 'three faults, three dispositions: the parent runs on')
+        lines = [r for r in w.records() if r.get('record') == 'disposition']
+        self.assertEqual([len(r['result_ids']) for r in lines], [1, 1, 1])
+        _code, out = w.count_check()
+        faults = out['count_check']['faults']
+        for name in ('a fail no disposition settles', 'a disposition names a result its call does not carry',
+                     "a witness line's check run differs from its call's return"):
+            self.assertNotIn(name, faults, out)
+
+
+class Changed(unittest.TestCase):
+    """A fault the stop finds that the hand-back did not, or whose finding changed since, takes an id of its own."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='return-changed-'))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.w = world.World(self.tmp)
+        self.w.start()
+
+    def held(self):
+        return self.w.denied(self.w.parent('Write', {'file_path': str(self.w.repo / 'merge.md'), 'content': 'x'})[1])
+
+    def test_a_finding_that_changes_between_the_hand_back_and_the_stop_is_a_second_fail(self):
+        w = self.w
+        m = w.member('scribe', ['docs/'])
+        w.dispatch(m)
+        m.write('docs/one.md', BAD_FRONT)
+        w.handback(m, report('docs/one.md'))
+        m.write('docs/two.md', BAD_FRONT)
+        w.stop(m)
+        handback = w.results(w.witnesses(m, 'PreToolUse')[-1])[2]
+        stop = w.results(w.witnesses(m, 'SubagentStop')[-1])[2]
+        self.assertEqual((handback['result'], stop['result']), ('fail', 'fail'))
+        self.assertNotEqual(handback['reason'], stop['reason'], 'the finding changed')
+        self.assertNotEqual(stop['id'], handback['id'])
+        self.assertEqual(w.fail_ids(w.returns(m)[0]), [handback['id'], stop['id']])
+        reason = self.held()
+        self.assertIn('2 failing results stand', reason)
+        self.assertIn(handback['id'], reason)
+        self.assertIn(stop['id'], reason)
+        command = ('python3 "%s" --call %s --result %s --kind accepted --reason "the first only" --decided-by parent '
+                   '%s' % (world.DISPOSITION, m.call_id, handback['id'], w.ledger_option()))
+        _decision, done = w.disposition_call(command, cwd=w.outside)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        reason = self.held()
+        self.assertTrue(reason, 'the changed finding still stands')
+        self.assertIn('1 failing result stands', reason)
+        self.assertIn(stop['id'], reason)
+        self.assertNotIn(handback['id'], reason)
+        printed = w.printed_commands(reason)
+        self.assertEqual(len(printed), 1)
+        _decision, done = w.disposition_call(world.fill(printed[0]), cwd=w.outside)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIsNone(self.held())
+
+    def test_a_fault_found_only_at_the_stop_takes_the_stops_own_id(self):
+        w = self.w
+        m = w.member('late', ['docs/'])
+        w.dispatch(m)
+        m.write('docs/late.md', GOOD_FRONT)
+        w.handback(m, report('docs/late.md'))
+        m.write('src/late.py', 'print(5)\n')
+        w.stop(m)
+        handback = w.runs(w.witnesses(m, 'PreToolUse')[-1])[0]
+        stop = w.results(w.witnesses(m, 'SubagentStop')[-1])
+        self.assertNotIn('fail', [c['result'] for c in handback['checks']])
+        self.assertEqual(stop[4]['result'], 'fail')
+        self.assertNotIn(stop[4]['id'], [c['id'] for c in handback['checks']])
+        self.assertEqual(stop[4]['id'].split('-')[0], stop[1]['id'].split('-')[0], 'the stop run\'s own id')
+        self.assertEqual(w.fail_ids(w.returns(m)[0]), [stop[4]['id']])
+        self.assertIn('1 failing result stands', self.held())
 
 
 class Routes(unittest.TestCase):

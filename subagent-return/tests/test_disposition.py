@@ -67,7 +67,7 @@ class Script(unittest.TestCase):
         w.handback(self.m, 'No section here.')
         w.stop(self.m)
         back = w.returns(self.m)[0]
-        self.ids = [c['id'] for run in w.runs(back) for c in run['checks'] if c['result'] == 'fail']
+        self.ids = w.fail_ids(back)
 
     def run_script(self, *extra, ids=None, kind='accepted', by='parent'):
         args = ['--call', self.m.call_id, '--kind', kind, '--reason', 'read and decided', '--decided-by', by]
@@ -136,11 +136,12 @@ class Script(unittest.TestCase):
         self.assertIn('no check result', done.stderr)
 
     def test_empty_no_session_id_cannot_run(self):
-        env = dict(self.w.env(), SUBAGENT_LEDGER_DIR=str(self.w.ledger))
+        env = self.w.parent_env()
         env.pop('CLAUDE_CODE_SESSION_ID')
         done = world.subprocess.run([world.sys.executable, str(world.DISPOSITION), '--call', self.m.call_id,
                                      '--result', self.ids[0], '--kind', 'accepted', '--reason', 'r', '--decided-by',
-                                     'parent'], capture_output=True, text=True, env=env, cwd=str(self.w.repo))
+                                     'parent', '--ledger', str(self.w.ledger)], capture_output=True, text=True,
+                                    env=env, cwd=str(self.w.repo))
         self.assertEqual(done.returncode, 2)
 
     def test_two_dispositions_before_one_shell_call_each_get_a_file_and_a_line(self):
@@ -187,9 +188,10 @@ class Repaired(unittest.TestCase):
         m.write('docs/fixme.md', world.BAD_FRONT)
         w.handback(m, report('docs/fixme.md'))
         w.stop(m)
-        ids = [c['id'] for run in w.runs(w.returns(m)[0]) for c in run['checks'] if c['result'] == 'fail']
+        ids = w.fail_ids(w.returns(m)[0])
         command = ('python3 "%s" --call %s %s --kind repaired --reason "I fix the front matter" --decided-by parent '
-                   '--path docs/fixme.md' % (world.DISPOSITION, m.call_id, ' '.join('--result %s' % i for i in ids)))
+                   '--path docs/fixme.md %s' % (world.DISPOSITION, m.call_id, ' '.join('--result %s' % i for i in ids),
+                                                w.ledger_option()))
         _decision, done = w.disposition_call(command)
         self.assertEqual(done.returncode, 0, done.stderr)
         _code, out = w.count_check()

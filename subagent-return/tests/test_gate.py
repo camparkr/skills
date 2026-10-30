@@ -32,16 +32,16 @@ class Held(unittest.TestCase):
         w.handback(self.m, 'Done, but no section.')
         w.stop(self.m)
         back = w.returns(self.m)[0]
-        self.fail_ids = [c['id'] for run in w.runs(back) for c in run['checks'] if c['result'] == 'fail']
+        self.fail_ids = w.fail_ids(back)
         self.assertTrue(self.fail_ids)
 
     def write(self):
         return self.w.parent('Write', {'file_path': str(self.w.repo / 'w.md'), 'content': 'w'})[1]
 
     def command(self, kind='accepted', ids=None, extra=''):
-        return 'python3 "%s" --call %s %s --kind %s --reason "checked by hand" --decided-by parent%s' % (
+        return 'python3 "%s" --call %s %s --kind %s --reason "checked by hand" --decided-by parent %s%s' % (
             world.DISPOSITION, self.m.call_id, ' '.join('--result %s' % i for i in (ids or self.fail_ids)), kind,
-            extra)
+            self.w.ledger_option(), extra)
 
     def test_tc23_empty_with_the_gate_off_the_parents_write_runs(self):
         self.w.configure(checks=('stop', 'handback', 'context'))
@@ -156,6 +156,85 @@ class Held(unittest.TestCase):
         payload = self.m.base('PreToolUse')
         payload.update(tool_name='Write', tool_input={'file_path': 'z'}, tool_use_id='tm1')
         self.assertIsNone(w.denied(w.hook('PreToolUse', payload)[1]))
+
+
+class PrintedCommand(unittest.TestCase):
+    """Dry run 11, H11.6: the disposition command the gate's refusal and the parent's context print is run exactly as
+    printed, its placeholders filled, from a working folder outside any git repository, with no SUBAGENT_LEDGER_DIR in
+    the parent's environment. It names the ledger with --ledger, so its record lands in the ledger the hooks name and
+    the stop lifts. The likeness is the same command with its --ledger taken out: the script cannot find the ledger,
+    and the stop stands, as H11.6 found."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='return-printed-'))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        w = self.w = world.World(self.tmp)
+        w.start()
+        self.m = w.member('faulty', ['docs/'])
+        w.dispatch(self.m)
+        w.handback(self.m, 'Done, but no section.')
+        w.stop(self.m)
+        self.fail_ids = w.fail_ids(w.returns(self.m)[0])
+        self.assertTrue(self.fail_ids)
+
+    def write(self):
+        return self.w.parent('Write', {'file_path': str(self.w.repo / 'w.md'), 'content': 'w'})[1]
+
+    def outside(self):
+        """The parent's working folder: outside any git repository, in an environment with no SUBAGENT_LEDGER_DIR."""
+        folder = self.w.outside
+        found = world.subprocess.run(['git', '-C', str(folder), 'rev-parse', '--show-toplevel'], capture_output=True,
+                                     text=True, env=self.w.parent_env(), timeout=60)
+        self.assertNotEqual(found.returncode, 0, 'the folder sits inside a repository: %s' % found.stdout)
+        self.assertNotIn('SUBAGENT_LEDGER_DIR', self.w.parent_env())
+        return folder
+
+    def refusal_command(self):
+        printed = self.w.printed_commands(self.w.denied(self.write()))
+        self.assertEqual(len(printed), 1, printed)
+        return printed[0]
+
+    def context_command(self):
+        payload = {'session_id': world.SESSION, 'transcript_path': str(self.w.parent_transcript),
+                   'cwd': str(self.w.repo), 'hook_event_name': 'UserPromptSubmit',
+                   'prompt': '<task-notification>Agent %s completed.</task-notification>' % self.m.agent}
+        _code, decision, _err = self.w.hook('UserPromptSubmit', payload)
+        context = ((decision or {}).get('hookSpecificOutput') or {}).get('additionalContext')
+        printed = self.w.printed_commands(context)
+        self.assertEqual(len(printed), 1, context)
+        return printed[0]
+
+    def lifts(self, printed):
+        w = self.w
+        self.assertTrue(printed.endswith(' --ledger "%s"' % w.ledger), printed)
+        folder = self.outside()
+        decision, done = w.disposition_call(world.fill(printed), cwd=folder)
+        self.assertIsNone(w.denied(decision), 'the printed command is in the grammar the gate lets through')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        lines = [r for r in w.records() if r.get('record') == 'disposition']
+        self.assertEqual([(r['call_id'], r['result_ids']) for r in lines], [(self.m.call_id, self.fail_ids)])
+        self.assertEqual(list(w.pending().glob('disposition-*.json')), [], 'no pending file outlives its record')
+        self.assertFalse((folder / '.subagent-ledger').exists(), 'nothing is written beside the parent')
+        self.assertIsNone(w.denied(self.write()), 'the stop is lifted')
+
+    def test_h11_6_the_refusals_command_run_as_printed_from_outside_any_repository_lifts_the_stop(self):
+        self.lifts(self.refusal_command())
+
+    def test_h11_6_the_contexts_command_run_as_printed_from_outside_any_repository_lifts_the_stop(self):
+        self.lifts(self.context_command())
+
+    def test_h11_6_likeness_the_same_command_without_its_ledger_leaves_the_stop_standing(self):
+        w = self.w
+        filled = world.fill(self.refusal_command())
+        bare = filled.replace(' --ledger "%s"' % w.ledger, '')
+        self.assertNotEqual(bare, filled)
+        folder = self.outside()
+        decision, done = w.disposition_call(bare, cwd=folder)
+        self.assertIsNone(w.denied(decision))
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertIn('the ledger holds no check result', done.stderr)
+        self.assertEqual([r for r in w.records() if r.get('record') == 'disposition'], [])
+        self.assertTrue(w.denied(self.write()), 'the stop stands')
 
 
 class Passing(unittest.TestCase):

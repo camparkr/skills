@@ -6,7 +6,8 @@ Results sit on the ledger in two places, written by the capture: the witness lin
 the call's one return, as `check_results`. Each kept run there carries `key` (agent id, call id, member, attempt),
 `report`, `sha256` and `checks`, one result per check, each with its `id`, unique in its call. A run the check could
 not finish carries no `checks`, and its `result` reads `not_checkable (...)`. A result may sit on a witness line and
-again on the return; it is one result, known by its call and its id.
+again on the return; it is one result, known by its call and its id. A stop's run that finds the hand-back's fault
+again carries the hand-back's id for it (return_check.stable_ids()), so that fault too is one result.
 
 A disposition record (`record: disposition`) settles the results it names, by id, on the call it names. A `fail` stands
 until a disposition on its own call names its id. Nothing here reads a pending file. Standard library only.

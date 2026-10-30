@@ -16,15 +16,18 @@ check_frontmatter.py, check_ledger.py and check_write_set.py, and prints one obj
 It refuses nothing, ever: the results are recorded, and each `fail` carries a recommended repair. `key` holds the
 agent id, the dispatch's call id, the member and the attempt. `report` names the text check 1 read, `hand-back
 message` or `final message`, and `sha256` that text's SHA-256. Each result carries an id unique in its call: this
-run's own random part, then the check's number. A check that raises reads `not_checkable (check error: <reason>)`,
-and the others still run. The wrapper keeps the object for the call's witness line and its return.
+run's own random part, then the check's number. One fault is one `fail`: at a stop, a `fail` the latest hand-back run
+of the same call, member and attempt found on the same check with the same finding keeps that run's id (stable_ids()),
+so the gate counts it once and one disposition settles it on both lines. A fault found only at the stop, or one whose
+finding changed, takes this run's id. A check that raises reads `not_checkable (check error: <reason>)`, and the
+others still run. The wrapper keeps the object for the call's witness line and its return.
 
 With --context, it prints {"refuse": false, "reason": "", "context": "<text>"}: the results the ledger holds for the
 calls the payload names, for the wrapper to hand the parent as additionalContext. At an Agent or Task call's
 PostToolUse (a foreground call, `completed`) that is the call's own results; at the parent's UserPromptSubmit, the
 results of each agent the prompt names, such as a background member's hand-back notification. Each failing result is
-given with its id and its recommended repair, and the command that records a disposition. Where the payload names no
-call with results, `context` is absent.
+given with its id and its recommended repair, and the command that records a disposition, naming with --ledger the
+ledger folder this step read. Where the payload names no call with results, `context` is absent.
 
 With --merge-plan, it reads the ledger and the member's worktree and prints which of its paths may come home without
 asking: a writer's worktree is merged, path by path, only when its return records every check `pass` or
@@ -53,15 +56,57 @@ import check_authorship  # noqa: E402
 import check_frontmatter  # noqa: E402
 import check_ledger  # noqa: E402
 import check_write_set  # noqa: E402
+import disposition  # noqa: E402
 import results  # noqa: E402
 
 CHECKS = (check_authorship, check_frontmatter, check_ledger, check_write_set)
 PASSED = (cc.PASS, cc.NOT_APPLICABLE)
-DISPOSITION = HERE / 'disposition.py'
 
 
-def run_id():
-    return secrets.token_hex(4)
+def run_id(taken=()):
+    """This run's own random part: one no id of the call already starts with."""
+    while True:
+        found = secrets.token_hex(4)
+        if not any(i.startswith(found + '-') for i in taken):
+            return found
+
+
+def finding(item):
+    """What a result found: everything it carries but its id."""
+    return dict((k, v) for k, v in item.items() if k != 'id')
+
+
+def handback_run(call, key):
+    """The latest hand-back run on the ledger for this stop's call, member and attempt, or None.
+
+    A hand-back's run sits on its witness line (`event` PreToolUse) before the stop's check runs, since the wrapper
+    writes that line at the hand-back's PreToolUse. Runs are matched by the key results.Run reads, so a run with no
+    call id named is matched by its agent, as the gate matches it. A run that could not finish carries no results and
+    is passed over. Where the hand-back's witness line was never written, the stop's results take ids of their own."""
+    if call.event != 'SubagentStop' or not call.records:
+        return None
+    mine = results.Run({'key': key}, {'record': 'witness', 'agent_id': call.agent_id})
+    found = None
+    for run in results.runs(call.records):
+        if run.record.get('record') == 'witness' and run.record.get('event') == 'PreToolUse' and run.checks \
+                and (run.call_id, run.member, run.attempt) == (mine.call_id, mine.member, mine.attempt):
+            found = run
+    return found
+
+
+def stable_ids(call, key, found, run):
+    """Give each of this run's results its id. A `fail` the stop finds that the latest hand-back run of the same call,
+    member and attempt found as well, on the same check with the same finding, keeps the hand-back's id: one fault is
+    one `fail`, and a disposition naming that id settles it on both lines. Any other result takes this run's id."""
+    before = handback_run(call, key)
+    earlier = dict((c.get('check'), c) for c in before.checks) if before is not None else {}
+    for item in found:
+        prior = earlier.get(item['check'])
+        if item.get('result') == cc.FAIL and prior is not None and prior.get('result') == cc.FAIL \
+                and isinstance(prior.get('id'), str) and finding(prior) == finding(item):
+            item['id'] = prior['id']
+        else:
+            item['id'] = '%s-%d' % (run, item['check'])
 
 
 def check(payload, folder):
@@ -84,9 +129,12 @@ def check(payload, folder):
         except Exception as exc:
             item = cc.result(module.CHECK, module.NAME, cc.NOT_CHECKABLE, reason='check error: %s: %s' % (
                 type(exc).__name__, cc.one_line(exc)))
-        item['id'] = '%s-%d' % (run, item['check'])
         found.append(item)
-    out.update(key=call.key(), report=call.report_name, sha256=call.report_digest(), checks=found)
+    key = call.key()
+    mine = results.Run({'key': key}, {'record': 'witness', 'agent_id': call.agent_id})
+    run = run_id(results.results_of(call.records or [], mine.call_id))
+    stable_ids(call, key, found, run)
+    out.update(key=key, report=call.report_name, sha256=call.report_digest(), checks=found)
     if not call.report_applies:
         out['report_reached_parent'] = False
     return out
@@ -96,13 +144,12 @@ def check(payload, folder):
 # The context handed to the parent
 # ---------------------------------------------------------------------------------------------------------------
 
-def disposition_command(call_id, ids):
-    return ('python3 "%s" --call %s %s --kind <accepted|repaired|sent-back|re-dispatched|discarded> '
-            '--reason "<why>" --decided-by <parent|user>' % (DISPOSITION, call_id,
-                                                              ' '.join('--result %s' % i for i in ids)))
+def disposition_command(call_id, ids, folder):
+    """The disposition command for `call_id`'s standing fails, naming the ledger folder this step read."""
+    return disposition.command_for(call_id, ids, folder)
 
 
-def summary(records, call_id):
+def summary(records, call_id, folder):
     """Lines describing one call's results: the latest run's four results, then every fail with its repair."""
     found = [run for run in results.runs(records) if run.call_id == call_id]
     if not found:
@@ -126,7 +173,7 @@ def summary(records, call_id):
             open_ids.append(item.id)
     if open_ids:
         lines.append('  A fail stops your tool calls, save reads and questions, until you record a decision: %s'
-                     % disposition_command(call_id, open_ids))
+                     % disposition_command(call_id, open_ids, folder))
     return lines
 
 
@@ -156,7 +203,7 @@ def context(payload, folder):
                 calls.append(run.call_id)
     lines = []
     for call_id in calls:
-        lines += summary(records, call_id)
+        lines += summary(records, call_id, folder)
     if lines:
         out['context'] = '\n'.join(lines)
     return out

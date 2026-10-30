@@ -10,7 +10,8 @@ refused, so a member can always hand back. It reads the session's ledger file, n
 While a `fail` of the session stands that no disposition record settles, a member's own dispatch included, it refuses
 each of the parent's tool calls, printing {"refuse": true, "reason": ...}. The reason names the refused call, each
 failing result with its call, member, attempt, check and id, the recommended repair it carries, and the command that
-records a disposition. It lets through only:
+records a disposition, naming with --ledger the ledger folder the gate read (disposition.command_for()). It lets
+through only:
 
   * Read, Grep and Glob, so the parent can inspect the output;
   * TaskStop;
@@ -38,7 +39,7 @@ LET_THROUGH = ('Read', 'Grep', 'Glob', 'TaskStop', 'AskUserQuestion')
 SHELL = 'Bash'
 
 
-def reason(tool, call, standing):
+def reason(tool, call, standing, folder):
     lines = ['The return check holds this %s call%s: %d failing result%s stand%s with no disposition.' % (
         tool, ' (%s)' % call if call else '', len(standing), '' if len(standing) == 1 else 's',
         's' if len(standing) == 1 else '')]
@@ -52,10 +53,8 @@ def reason(tool, call, standing):
         for item in items:
             lines.append('  %s, check %s: %s. Recommended repair: %s' % (
                 item.id, item.result.get('check'), results.shown(item.result), item.result.get('repair')))
-        lines.append('  To record your decision: python3 "%s" --call %s %s --kind <accepted|repaired|sent-back|'
-                     're-dispatched|discarded> --reason "<why>" --decided-by <parent|user>'
-                     % (Path(disposition.__file__).resolve(), call_id,
-                        ' '.join('--result %s' % item.id for item in items)))
+        lines.append('  To record your decision: %s' % disposition.command_for(
+            call_id, [item.id for item in items], folder))
     lines.append('Read, Grep, Glob, TaskStop and AskUserQuestion still run.')
     return '\n'.join(lines)
 
@@ -80,7 +79,8 @@ def decide(payload, folder):
         parsed, _why = disposition.parse_command(given.get('command'), payload.get('cwd'))
         if parsed is not None:
             return {'refuse': False, 'reason': '', 'standing': len(standing)}
-    return {'refuse': True, 'reason': reason(tool, payload.get('tool_use_id'), standing), 'standing': len(standing)}
+    return {'refuse': True, 'reason': reason(tool, payload.get('tool_use_id'), standing, folder),
+            'standing': len(standing)}
 
 
 def main(argv=None):

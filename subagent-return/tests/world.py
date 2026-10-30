@@ -18,6 +18,7 @@ stand-in in `fixtures/validator.py`.
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -68,6 +69,13 @@ def git(root, *args):
 def report(*claims, prose='The work is done.'):
     """A report ending with an output section listing `claims`, or `none` where there are none."""
     return '%s\n\n## Output\n%s\n' % (prose, '\n'.join(claims) if claims else 'none')
+
+
+def fill(command, kind='accepted', reason='seen and decided', by='parent'):
+    """A printed disposition command with its placeholders filled as the parent fills them, and nothing else
+    changed."""
+    return (command.replace('<accepted|repaired|sent-back|re-dispatched|discarded>', kind)
+            .replace('"<why>"', '"%s"' % reason).replace('<parent|user>', by))
 
 
 class Member(object):
@@ -351,23 +359,30 @@ class World(object):
         found = self.runs(record)[n]
         return dict((c['check'], c) for c in found['checks'])
 
+    def parent_env(self):
+        """The parent's shell environment: the session id, and no SUBAGENT_LEDGER_DIR. The wrapper sets that variable
+        for its own checks only, so the parent's command names the ledger with --ledger, as the printed command
+        does."""
+        return self.env()
+
     def disposition(self, *args, cwd=None):
-        """Run the disposition script as the parent's shell would. Returns the finished process."""
-        return subprocess.run([sys.executable, str(DISPOSITION)] + list(args), capture_output=True, text=True,
-                              env=dict(self.env(), SUBAGENT_LEDGER_DIR=str(self.ledger)), cwd=str(cwd or self.repo),
+        """Run the disposition script as the parent's shell would, naming this world's ledger with --ledger. Returns
+        the finished process."""
+        return subprocess.run([sys.executable, str(DISPOSITION)] + list(args) + ['--ledger', str(self.ledger)],
+                              capture_output=True, text=True, env=self.parent_env(), cwd=str(cwd or self.repo),
                               timeout=60)
 
-    def disposition_call(self, command):
-        """The parent's Bash call running `command`: its PreToolUse (the gate), the command itself when let
-        through, then its PostToolUse, where the capture writes the disposition line. Returns the PreToolUse
-        decision and the finished process, or None where refused."""
+    def disposition_call(self, command, cwd=None):
+        """The parent's Bash call running `command` in `cwd` (the main checkout by default): its PreToolUse (the
+        gate), the command itself when let through, then its PostToolUse, where the capture writes the disposition
+        line. Returns the PreToolUse decision and the finished process, or None where refused."""
         payload = self.parent_payload('Bash', {'command': command})
+        payload['cwd'] = str(cwd or self.repo)
         _code, decision, _err = self.hook('PreToolUse', payload)
         if self.denied(decision):
             return decision, None
-        done = subprocess.run(command, shell=True, capture_output=True, text=True,
-                              env=dict(self.env(), SUBAGENT_LEDGER_DIR=str(self.ledger)), cwd=str(self.repo),
-                              timeout=60)
+        done = subprocess.run(command, shell=True, capture_output=True, text=True, env=self.parent_env(),
+                              cwd=str(cwd or self.repo), timeout=60)
         if done.returncode == 0:
             post = dict(payload, hook_event_name='PostToolUse',
                         tool_response={'stdout': done.stdout, 'stderr': done.stderr, 'interrupted': False})
@@ -376,6 +391,19 @@ class World(object):
             self.hook('PostToolUseFailure', dict(payload, hook_event_name='PostToolUseFailure',
                                                  error='Exit code %d\n%s' % (done.returncode, done.stderr)))
         return decision, done
+
+    def ledger_option(self):
+        """The --ledger option a hand-built disposition command carries, as the printed one does."""
+        return '--ledger "%s"' % self.ledger
+
+    def fail_ids(self, record):
+        """The ids of the record's `fail` results, each once, in order."""
+        return list(dict.fromkeys(c['id'] for run in self.runs(record) for c in run['checks']
+                                  if c['result'] == 'fail'))
+
+    def printed_commands(self, text):
+        """The disposition commands a refusal or a context text prints, in order, each to the end of its line."""
+        return re.findall(r'(python3 "[^"\n]*disposition\.py" --call [^\n]*)', text or '')
 
     def count_check(self):
         done = subprocess.run([sys.executable, str(CALLS), '--session', SESSION, '--ledger', str(self.ledger),

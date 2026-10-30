@@ -120,6 +120,17 @@ def parse_command(command, cwd=None, script=None):
         return None, str(exc)
 
 
+def command_for(call_id, ids, folder):
+    """The command the gate's refusal and the parent's context print for recording a disposition on `call_id`'s
+    results `ids`. It names the ledger folder the gate or the check read, by its absolute path in double quotes, so the
+    parent's shell needs neither SUBAGENT_LEDGER_DIR nor a working folder inside the ledger's repository: the wrapper
+    sets that variable only for its own checks, never for the parent."""
+    return ('python3 "%s" --call %s %s --kind <accepted|repaired|sent-back|re-dispatched|discarded> '
+            '--reason "<why>" --decided-by <parent|user> --ledger "%s"'
+            % (Path(__file__).resolve(), call_id, ' '.join('--result %s' % i for i in ids),
+               os.path.abspath(str(folder))))
+
+
 def ledger_side():
     """call_context, imported only where the ledger is written: parse_command() stays light for the gate."""
     import call_context

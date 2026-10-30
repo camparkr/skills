@@ -6,6 +6,8 @@
                       [--rows-key rows] [--name-key name] [--group-key group] [--file-key file]
                       [--goal-key declaration.goal] [--ratified-key declaration-ratified]
                       [--file-root <folder>] [--user <name> ...]
+                      [--task <id>] [--build-root <folder> ...] [--ratified-root <folder> ...]
+                      [--task-key task_id] [--status-key status]
 
 The act decision (decisions/d1-act.json). Each of the eight kinds in the ledger skill's kinds.json is asked as a
 Noul, one request each, with the definition's instructions and the kind's test as its criterion. Their lines are
@@ -17,13 +19,17 @@ exact: a persona is a row of the roster whose file exists and whose frontmatter 
 ratified key, and whose name is not one given by --user. The roster is a YAML or JSON file; the --*-key options name
 where its rows and their fields are, so the script reads any roster without knowing its workspace. With no eligible
 persona, the answer is `none adequate` with the rule that emptied the set, and Jev is not asked. Otherwise one Choice
-over the eligible personas, each criterion `<persona>, in <group>: <goal>`, then the adequacy Noul on the persona it
-ranks first, against the definition's line.
+over the eligible personas, each criterion `<persona>, in <group>: <goal>`, with the part, its kind and the task's
+stage as state, then the adequacy Noul on the persona it ranks first, against the definition's line.
+
+The task's stage is read by stage.py, from the task --task names and the folders --build-root and --ratified-root
+name, before any decision is asked. It is a fact of the persona decision (its state, its exact evidence and the pending
+file's persona facts) and of the effort decision.
 
 The effort decision (decisions/d4-effort.json), asked after the other two whatever they read. The parent's unaided
 level, --effort-unaided, is stamped from the clock before Jev is asked anything. One Choice over the levels the Agent
 tool offers (low, medium, high, xhigh, max), with the part and these exact facts as state: the kind (or `none`), the
-persona (or `none`), the stage (`unrecorded (stage read not built)`), the delegation's length in words, how many of
+persona (or `none`), the stage as stage.py read it, the delegation's length in words, how many of
 the absolute paths it names outside its write set are files and their total size in bytes, and the number of paths
 in its `## Write set` (or `none`). Where the request fails, the level reads `unrecorded (<reason>)` and the output
 says to pass the unaided level.
@@ -90,12 +96,10 @@ NO_SPEND = 'unrecorded (Jev has no spend ledger)'
 NO_ISOLATION = 'unrecorded (a Jev request runs no tools)'
 NO_EFFORT = 'unrecorded (Jev takes no effort level)'
 NO_REQUEST = 'unrecorded (no request was sent)'
-NO_STAGE = 'unrecorded (the stage read is not built)'
 UNCHECKED = 'unchecked: returned by Jev and not checked against anything else'
 CHOSEN_BY = 'the planning skill'
 LEVELS = ('low', 'medium', 'high', 'xhigh', 'max')  # the levels the Agent tool offers
 EFFORT_DECISION = 'd4-effort'
-EFFORT_STAGE = 'unrecorded (stage read not built)'
 ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`\'"(<\[])|^)(~?/[^\s`\'"<>()\[\]{}]+|[A-Za-z]:[\\/][^\s`\'"<>()\[\]{}]+)',
                            re.MULTILINE)
 
@@ -502,11 +506,12 @@ def act_decision(jev, definition, kinds, part, subject, quote, decided_by):
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by)
 
 
-def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subject, quote, decided_by):
+def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subject, quote, decided_by, stage):
     composition = definition['composition']
     line = composition['adequacy']['line']
     line_version = composition['adequacy']['line_version']
-    exact = {'eligible': [p['name'] for p in eligible], 'excluded': excluded, 'roster_rows': rows, 'kind': kind}
+    exact = {'eligible': [p['name'] for p in eligible], 'excluded': excluded, 'roster_rows': rows, 'kind': kind,
+             'stage': stage}
     section = {'eligible': exact['eligible'], 'excluded': excluded, 'line': line, 'line_version': line_version,
                'choice': None, 'persona': None, 'adequacy': None, 'below_line': None}
     if not eligible:
@@ -516,7 +521,7 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
         basis = {'requests': 'none: no persona is eligible', 'line': line, 'line_version': line_version}
         return section, record(definition, subject, quote, answer, basis, outcome(definition, 'no persona'),
                                decided_by, exact=exact)
-    state = {'part': part, 'kind': kind, 'stage': NO_STAGE}
+    state = {'part': part, 'kind': kind, 'stage': stage}
     template = composition['choice']['criterion_template']
     criteria = dict((p['name'], template.format(persona=p['name'], group=p['group'], goal=p['goal'])) for p in eligible)
     question = {'type': 'choice', 'instructions': composition['choice']['instructions'], 'criteria': criteria}
@@ -550,11 +555,11 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
 
 
-def effort_decision(jev, definition, part, body, kind, persona, unaided, subject, quote, decided_by):
+def effort_decision(jev, definition, part, body, kind, persona, unaided, subject, quote, decided_by, stage):
     """The printed effort section and its decision record. Asked whatever the act and persona decisions read."""
     named, resolving, size = named_inputs(body)
     _, write_set = split_write_set(body)
-    facts = {'kind': kind or NONE_LABEL, 'persona': persona or NONE_LABEL, 'stage': EFFORT_STAGE,
+    facts = {'kind': kind or NONE_LABEL, 'persona': persona or NONE_LABEL, 'stage': stage,
              'words': len(body.split()), 'input_files_resolving': len(resolving), 'input_bytes': size,
              'write_set_paths': len(write_set) if write_set else NONE_LABEL}
     composition = definition['composition']['choice']
@@ -663,6 +668,8 @@ def parse(argv):
     parser.add_argument('--ratified-key', default='declaration-ratified')
     parser.add_argument('--file-root')
     parser.add_argument('--user', action='append')
+    import stage
+    stage.add_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -714,6 +721,11 @@ def main(argv=None):
 
     # The unaided level is stamped before Jev is asked anything, so its stamp precedes the effort decision's.
     pending = {'effort_unaided': stamped(args.effort_unaided)}
+    import stage
+    try:
+        reading = stage.from_arguments(args)
+    except CannotRun as exc:
+        return fail(2, str(exc))
     act, act_record = act_decision(jev, d1, kinds, part, subject, quote, decided_by)
     records = [act_record]
     failures = []
@@ -723,7 +735,8 @@ def main(argv=None):
         pending['kind'] = stamped(act['kind'])
         persona, persona_record = persona_decision(jev, d3, part, act['kind'], eligible, excluded, rows,
                                                    '%s, read as %s' % (subject, act['kind']), quote,
-                                                   '%s at %s' % (d3['engine']['name'], d3['engine']['model']))
+                                                   '%s at %s' % (d3['engine']['name'], d3['engine']['model']),
+                                                   reading['stage'])
         records.append(persona_record)
         if persona.get('failure'):
             failures.append('persona decision: %s' % persona['failure'])
@@ -732,7 +745,7 @@ def main(argv=None):
             pending['persona_facts'] = stamped({'persona': persona['persona'], 'group': persona['group'],
                                                 'goal': persona['goal'], 'eligible': persona['eligible'],
                                                 'choice': persona['choice']['probabilities'],
-                                                'adequacy': persona['adequacy']})
+                                                'adequacy': persona['adequacy'], 'stage': reading['stage']})
             pending['chosen_by'] = stamped(CHOSEN_BY)
             if persona['below_line']:
                 pending['below_line'] = stamped({'probability': persona['adequacy'], 'line': persona['line'],
@@ -741,7 +754,8 @@ def main(argv=None):
         persona = None
     effort, effort_record = effort_decision(jev, d4, part, body, act['kind'], persona and persona['persona'],
                                             args.effort_unaided, subject, quote,
-                                            '%s at %s' % (d4['engine']['name'], d4['engine']['model']))
+                                            '%s at %s' % (d4['engine']['name'], d4['engine']['model']),
+                                            reading['stage'])
     records.append(effort_record)
     if effort.get('failure'):
         failures.append('effort decision: %s' % effort['failure'])
@@ -755,7 +769,8 @@ def main(argv=None):
     path.write_text(json.dumps(pending, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
 
     print(json.dumps({'delegation': str(delegation.resolve()), 'session': args.session, 'member': args.member,
-                      'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'act': act,
+                      'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'stage': reading,
+                      'act': act,
                       'persona': persona, 'effort': effort, 'decision_records': records,
                       'jev_calls': jev.calls, 'pending_file': str(path)}, indent=1, ensure_ascii=False))
     return 3 if failures else 0

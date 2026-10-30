@@ -173,8 +173,10 @@ pass instead, your reason and the time. Pass the level you recorded.
 **No persona.** A dispatch you send with no persona goes out as an override, with your reason. Record it before you
 send it; the dispatch check then lets it through.
 
-<!-- BUILD: the command that records a dispatch with no persona as an override, with its reason, once decide.py
-takes it. -->
+```bash
+python3 <skill>/scripts/decide.py override --decision no-persona --ledger <ledger folder> --session <session id> --member <member id> --attempt <n> --reason "<why>"
+python3 <skill>/scripts/decide.py override --decision no-persona --pending <pending triage file> --reason "<why>"
+```
 
 Never edit the pending file by hand.
 

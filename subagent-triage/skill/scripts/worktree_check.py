@@ -7,10 +7,11 @@ Run before every writer's dispatch, in every session. The write set is read from
 reader of its `## Write set` section; a brief whose write set is `none`, or that has none, is a read-only member's,
 and is not checked.
 
-A worktree branches from a commit and carries no uncommitted or untracked file. Which commit is --base: `default`, the
-remote's default branch (origin/HEAD), which a worktree branches from unless the harness is set otherwise; or `head`,
-the local HEAD, where the harness is set to branch worktrees from it (Claude Code's `worktree.baseRef: "head"`). The
-default is `default`. A base that cannot be read refuses the dispatch.
+A worktree branches from a commit and carries no uncommitted or untracked file. Which commit is --base: `head`, the
+local HEAD, where the harness branches worktrees from it (Claude Code's `worktree.baseRef: "head"`), as the
+specification and the capture's baseline read a writer's changes; or `default`, the remote's default branch
+(origin/HEAD), where the harness branches worktrees from that. The default is `head`. A base that cannot be read
+refuses the dispatch.
 
 For each write-set path, every file it names in the main checkout (tracked, or untracked and not ignored; a file named
 exactly is read even where ignored) and every file it names at the base commit is compared by its git blob id. A
@@ -158,8 +159,8 @@ def check(brief_path, repository, setting):
     ref, commit = base_commit(repo, setting)
     result['base'] = {'setting': setting, 'ref': ref, 'commit': commit}
     if commit is None:
-        raise Refused('the commit the worktree will branch from, %s, cannot be read in %s. Where the harness branches '
-                      'worktrees from local HEAD, pass --base head' % (ref, repo))
+        hint = '. Where the harness branches worktrees from local HEAD, pass --base head' if setting == 'default' else ''
+        raise Refused('the commit the worktree will branch from, %s, cannot be read in %s%s' % (ref, repo, hint))
     paths, at_base = [], {}
     for entry in write_set:
         at_base.update(base_files(repo, commit, entry))
@@ -194,7 +195,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Refuse a writer whose worktree would not hold its write set.')
     parser.add_argument('--brief', required=True)
     parser.add_argument('--repository')
-    parser.add_argument('--base', choices=sorted(BASES), default='default')
+    parser.add_argument('--base', choices=sorted(BASES), default='head')
     try:
         args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     except SystemExit:

@@ -228,9 +228,9 @@ python3 <skill>/scripts/worktree_check.py --brief <brief path> [--repository <fo
 ```
 
 Give `--base head` where your harness branches worktrees from the local `HEAD`, as Claude Code does with
-`worktree.baseRef: "head"`. The default, `default`, is the remote's default branch. Exit 1 refuses the dispatch,
-naming each file that differs. Commit those files by path and run it again, or split a write set that spans two
-repositories. A read-only member is not checked.
+`worktree.baseRef: "head"`. The default is `head`, and `default` names the remote's default branch. Exit 1 refuses
+the dispatch, naming each file that differs. Commit those files by path and run it again, or split a write set that
+spans two repositories. A read-only member is not checked.
 
 ## 8. Dispatch
 

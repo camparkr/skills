@@ -506,7 +506,13 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(entry['decision'], 'd3-figure')
         self.assertEqual(entry['decision_persona'], 'builder')
         self.assertEqual(entry['adequacy_probability'], 0.9)
+        # R-4's "the parent's figure" is the parent's own persona (ruled 30 October 2026), not the persona it would
+        # have chosen: it is recorded as given, need not be on the roster, and stands apart from the persona chosen.
         self.assertEqual(entry['parent_persona'], 'lead')
+        d3, = [r for r in data['decision_records']['value'] if r['question'] == 'd3-figure']
+        roster = d3['exact_evidence']['eligible'] + list(d3['exact_evidence']['excluded'])
+        self.assertNotIn(entry['parent_persona'], roster)
+        self.assertNotEqual(entry['parent_persona'], entry['persona_chosen'])
         self.assertEqual(entry['persona_chosen'], 'cataloguer')
         self.assertEqual(entry['reason'], 'the part is a catalogue entry')
         self.assertRegex(entry['at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d')

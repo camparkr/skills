@@ -38,7 +38,8 @@ RECORD_FIELDS = {'question', 'definition_version', 'subject', 'quote', 'answer',
                  'decision_point_classification', 'exact_evidence', 'lane', 'delegated_authority', 'evidence_state',
                  'decided_by', 'final_disposition'}
 LEVELS = ['low', 'medium', 'high', 'xhigh', 'max']
-STAGE = 'unrecorded (stage read not built)'
+STAGE = 'unrecorded (no task id was given)'
+STAGE_TREE = FIXTURES / 'stage'
 KEYS = ['--rows-key', 'rows', '--name-key', 'name', '--group-key', 'group', '--file-key', 'file',
         '--goal-key', 'meta.declaration.goal', '--ratified-key', 'meta.declaration-ratified', '--user', 'the-user']
 
@@ -142,11 +143,11 @@ class DecideTests(unittest.TestCase):
             self.fail('no JSON on stdout (exit %s): %s %s' % (done.returncode, done.stdout, done.stderr))
         return done.returncode, out
 
-    def run_decide(self, roster, part='part-build.md', member='m1', attempt='1', unaided='medium'):
+    def run_decide(self, roster, part='part-build.md', member='m1', attempt='1', unaided='medium', extra=()):
         delegation = part if os.path.isabs(str(part)) else FIXTURES / part
         return self.run_script(['--delegation', str(delegation), '--roster', str(FIXTURES / roster),
                                 '--ledger', str(self.ledger), '--session', SESSION, '--member', member,
-                                '--attempt', attempt, '--effort-unaided', unaided] + KEYS)
+                                '--attempt', attempt, '--effort-unaided', unaided] + KEYS + list(extra))
 
     def pending_path(self, member='m1', attempt='1'):
         return self.ledger / '.pending' / SESSION / ('triage-%s-%s.json' % (member, attempt))
@@ -345,6 +346,39 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(state['input_bytes'], 0)
         self.assertEqual(state['write_set_paths'], 'none')
         self.assertEqual(out['effort']['level'], 'medium')
+
+    # -- The stage read joins the facts -------------------------------------------------------------------------------
+
+    def persona_state(self):
+        found = [body['state'] for body in self.jev.seen
+                 if list(body['questions'].values())[0]['type'] == 'choice'
+                 and sorted(list(body['questions'].values())[0]['criteria']) == ['builder', 'cataloguer']]
+        self.assertEqual(len(found), 1)
+        return found[0]
+
+    def test_the_stage_read_replaces_the_placeholder_in_the_effort_and_persona_facts(self):
+        stage = ['--task', 'beta', '--build-root', str(STAGE_TREE / 'build-specs'),
+                 '--ratified-root', str(STAGE_TREE / 'specs'), '--task-key', 'meta.task_id',
+                 '--status-key', 'meta.status']
+        code, out = self.run_decide('roster-two.yaml', member='m9', extra=stage)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['stage']['stage'], 'ratified specification')
+        self.assertEqual(self.effort_state()['stage'], 'ratified specification')
+        self.assertEqual(self.d4(out)['exact_evidence']['stage'], 'ratified specification')
+        self.assertEqual(self.persona_state()['stage'], 'ratified specification')
+        d3 = [r for r in out['decision_records'] if r['question'] == 'd3-figure'][0]
+        self.assertEqual(d3['exact_evidence']['stage'], 'ratified specification')
+        data = self.pending(member='m9')
+        self.assertEqual(data['persona_facts']['value']['stage'], 'ratified specification')
+        self.check_schema(data)
+
+    def test_a_task_with_no_specification_gives_the_stage_read_s_unrecorded_value(self):
+        stage = ['--task', 'zeta', '--ratified-root', str(STAGE_TREE / 'specs'), '--task-key', 'meta.task_id',
+                 '--status-key', 'meta.status']
+        code, out = self.run_decide('roster-two.yaml', member='m10', extra=stage)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.effort_state()['stage'], 'unrecorded (no specification found for zeta)')
+        self.assertEqual(self.persona_state()['stage'], 'unrecorded (no specification found for zeta)')
 
     # -- The override ------------------------------------------------------------------------------------------------
 

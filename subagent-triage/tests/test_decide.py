@@ -347,6 +347,29 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(state['write_set_paths'], 'none')
         self.assertEqual(out['effort']['level'], 'medium')
 
+    # U5 gap: a part the act decision reads as none is never dispatched, so a pending file for it was listed at the
+    # ledger's close as never dispatched. No pending file is written for such a part, and the output says so. The
+    # likeness is a part whose act request failed: its kind is also unset, but its pending file is still written,
+    # holding the failure (test_a_failed_request_is_recorded_and_the_pending_file_still_written).
+
+    def test_a_part_that_reads_as_none_writes_no_pending_file_and_the_output_says_so(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-plain.md', member='m6n')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out['act']['answer'].startswith('none ('), out['act']['answer'])
+        self.assertFalse(self.pending_path(member='m6n').exists(), 'a part read as none leaves no pending file')
+        self.assertFalse((self.ledger / '.pending' / SESSION).exists()
+                         and list((self.ledger / '.pending' / SESSION).glob('triage-*.json')))
+        self.assertIsNone(out['pending_file'])
+        self.assertIn('none', out['no_pending_file'])
+        self.assertEqual([r['question'] for r in out['decision_records']], ['d1-act', 'd4-effort'])
+
+    def test_likeness_a_part_read_as_one_kind_still_writes_its_pending_file(self):
+        code, out = self.run_decide('roster-two.yaml', member='m6k')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['pending_file'], str(self.pending_path(member='m6k')))
+        self.assertNotIn('no_pending_file', out)
+        self.pending(member='m6k')
+
     # -- The stage read joins the facts -------------------------------------------------------------------------------
 
     def persona_state(self):

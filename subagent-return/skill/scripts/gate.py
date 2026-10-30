@@ -18,6 +18,10 @@ through only:
   * AskUserQuestion, so the parent can ask the user; and
   * the Bash call that runs the disposition script in its closed grammar (disposition.parse_command()).
 
+A Bash call that names the disposition script (its file name, disposition.py) but breaks that grammar is refused with
+the grammar's fault first, the reason disposition.parse_command() gives, then the ordinary refusal. Any other refused
+call gets the ordinary refusal alone.
+
 Otherwise it prints {"refuse": false, "reason": ""}. A result that is `not_checkable`, `unrecorded` or `ledger_absent`
 stops nothing. The gate is a check like any other the wrapper runs: where it raises, exits non-zero or overruns the
 wrapper's bound, the wrapper refuses nothing and records the gate's result as `not_checkable`.
@@ -37,10 +41,20 @@ import results  # noqa: E402
 
 LET_THROUGH = ('Read', 'Grep', 'Glob', 'TaskStop', 'AskUserQuestion')
 SHELL = 'Bash'
+SCRIPT_NAME = 'disposition.py'
 
 
-def reason(tool, call, standing, folder):
-    lines = ['The return check holds this %s call%s: %d failing result%s stand%s with no disposition.' % (
+def names_the_script(command):
+    """Whether a Bash command is an attempt at the disposition script: it names the script's file name."""
+    return isinstance(command, str) and SCRIPT_NAME in command
+
+
+def reason(tool, call, standing, folder, fault=None):
+    lines = []
+    if fault:
+        lines.append('This Bash call runs the disposition script outside its grammar, so it is refused: %s. '
+                     'Run the printed command below with only its placeholders filled.' % fault)
+    lines += ['The return check holds this %s call%s: %d failing result%s stand%s with no disposition.' % (
         tool, ' (%s)' % call if call else '', len(standing), '' if len(standing) == 1 else 's',
         's' if len(standing) == 1 else '')]
     by_call = {}
@@ -74,12 +88,15 @@ def decide(payload, folder):
     tool = payload.get('tool_name')
     if tool in LET_THROUGH:
         return {'refuse': False, 'reason': '', 'standing': len(standing)}
+    fault = None
     if tool == SHELL:
         given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
-        parsed, _why = disposition.parse_command(given.get('command'), payload.get('cwd'))
+        parsed, why = disposition.parse_command(given.get('command'), payload.get('cwd'))
         if parsed is not None:
             return {'refuse': False, 'reason': '', 'standing': len(standing)}
-    return {'refuse': True, 'reason': reason(tool, payload.get('tool_use_id'), standing, folder),
+        if names_the_script(given.get('command')):
+            fault = why
+    return {'refuse': True, 'reason': reason(tool, payload.get('tool_use_id'), standing, folder, fault),
             'standing': len(standing)}
 
 

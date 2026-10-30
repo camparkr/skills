@@ -237,6 +237,62 @@ class PrintedCommand(unittest.TestCase):
         self.assertTrue(w.denied(self.write()), 'the stop stands')
 
 
+class GrammarFault(unittest.TestCase):
+    """Dry run 12, r12-bg-gate2: the parent ran the disposition script with its own reason, which held a `;`. The
+    grammar rejected it, and the gate refused it with the ordinary refusal, which never said the command broke the
+    grammar; the parent took every Bash call to be held and stopped. A Bash call naming the disposition script that
+    the grammar rejects is now refused with the grammar's fault first. A Bash call naming no disposition script gets
+    the ordinary refusal, unchanged."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='return-r12-'))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        w = self.w = world.World(self.tmp)
+        w.start()
+        self.m = w.member('faulty', ['docs/'])
+        w.dispatch(self.m)
+        w.handback(self.m, 'Done, but no section.')
+        w.stop(self.m)
+        self.fail_ids = w.fail_ids(w.returns(self.m)[0])
+        self.assertTrue(self.fail_ids)
+
+    def printed(self):
+        reason = self.w.denied(self.w.parent('Write', {'file_path': str(self.w.repo / 'w.md'), 'content': 'w'})[1])
+        found = self.w.printed_commands(reason)
+        self.assertEqual(len(found), 1, reason)
+        return found[0]
+
+    def test_r12_a_disposition_command_with_a_semicolon_in_its_reason_is_refused_naming_the_semicolon(self):
+        command = world.fill(self.printed(), kind='sent-back', reason='not acceptable as-is; needs repair')
+        decision, done = self.w.disposition_call(command, cwd=self.w.outside)
+        reason = self.w.denied(decision)
+        self.assertTrue(reason)
+        self.assertIsNone(done)
+        first = reason.split('\n')[0]
+        self.assertIn('disposition script', first)
+        self.assertIn("';'", first)
+        self.assertIn('this Bash call', reason)
+        self.assertEqual(len(self.w.printed_commands(reason)), 1, 'the ordinary refusal and its command follow')
+        self.assertEqual([r for r in self.w.records() if r.get('record') == 'disposition'], [])
+
+    def test_r12_likeness_the_same_command_corrected_is_let_through_and_lifts_the_stop(self):
+        command = world.fill(self.printed(), kind='sent-back', reason='not acceptable as-is, needs repair')
+        decision, done = self.w.disposition_call(command, cwd=self.w.outside)
+        self.assertIsNone(self.w.denied(decision))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        lines = [r for r in self.w.records() if r.get('record') == 'disposition']
+        self.assertEqual([(r['call_id'], r['result_ids']) for r in lines], [(self.m.call_id, self.fail_ids)])
+        self.assertIsNone(self.w.denied(self.w.parent('Bash', {'command': 'ls'})[1]), 'the stop is lifted')
+
+    def test_r12_likeness_an_unrelated_bash_call_gets_the_ordinary_refusal_with_no_grammar_line(self):
+        decision = self.w.parent('Bash', {'command': 'echo one; echo two'})[1]
+        reason = self.w.denied(decision)
+        self.assertTrue(reason)
+        self.assertTrue(reason.startswith('The return check holds this Bash call'), reason)
+        self.assertNotIn('disposition script', reason)
+        self.assertNotIn('grammar', reason)
+
+
 class Passing(unittest.TestCase):
 
     def test_tc23_a_session_in_which_every_check_passes_refuses_nothing_and_asks_nothing(self):

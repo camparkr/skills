@@ -230,9 +230,10 @@ class CloseTests(unittest.TestCase):
 
     def test_tc14_the_next_plan_of_the_pattern_leaves_out_the_hop_close_marked_not_cited(self):
         plan = self.team_of_three()
+        self.say(at(4, 30), tool='Agent', given={'prompt': 'Weigh toolu_m1 and toolu_m2 into one report.'})
         self.say(at(8), 'I will now update the changelog for the release.')
         code, out = self.close(plan)
-        self.assertIs(self.hop(out, 'm3')['cited'], False)
+        self.assertEqual([hop['cited'] for hop in out['hops']], [True, True, False])
         for member in ('a', 'b', 'c'):
             (self.team / ('%s-1.md' % member)).write_text('A brief.\n', encoding='utf-8')
         proposal = {'task': '2026-01-16-report', 'synthesiser': 'c', 'parallel': [['a', 'b'], ['c']], 'members': [

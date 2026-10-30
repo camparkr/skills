@@ -224,11 +224,11 @@ A worktree branches from a commit and carries no uncommitted or untracked file. 
 that its worktree will hold the write set as the main checkout has it:
 
 ```bash
-python3 <skill>/scripts/worktree_check.py --brief <brief path> [--repository <folder>] [--base default|head]
+python3 <skill>/scripts/worktree_check.py --brief <brief path> [--repository <folder>] [--base head|remote]
 ```
 
 Give `--base head` where your harness branches worktrees from the local `HEAD`, as Claude Code does with
-`worktree.baseRef: "head"`. The default is `head`, and `default` names the remote's default branch. Exit 1 refuses
+`worktree.baseRef: "head"`. The default is `head`, and `remote` names the remote's default branch. Exit 1 refuses
 the dispatch, naming each file that differs. Commit those files by path and run it again, or split a write set that
 spans two repositories. A read-only member is not checked.
 

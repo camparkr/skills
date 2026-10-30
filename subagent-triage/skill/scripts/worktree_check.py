@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refuse a writer's dispatch whose worktree would not hold its write set as the main checkout has it.
 
-    python3 worktree_check.py --brief <path> [--repository <folder>] [--base default|head]
+    python3 worktree_check.py --brief <path> [--repository <folder>] [--base head|remote]
 
 Run before every writer's dispatch, in every session. The write set is read from the brief by the ledger capture's own
 reader of its `## Write set` section; a brief whose write set is `none`, or that has none, is a read-only member's,
@@ -9,7 +9,7 @@ and is not checked.
 
 A worktree branches from a commit and carries no uncommitted or untracked file. Which commit is --base: `head`, the
 local HEAD, where the harness branches worktrees from it (Claude Code's `worktree.baseRef: "head"`), as the
-specification and the capture's baseline read a writer's changes; or `default`, the remote's default branch
+specification and the capture's baseline read a writer's changes; or `remote`, the remote's default branch
 (origin/HEAD), where the harness branches worktrees from that. The default is `head`. A base that cannot be read
 refuses the dispatch.
 
@@ -39,7 +39,7 @@ if str(HERE) not in sys.path:
 import brief as briefs  # noqa: E402
 import decide  # noqa: E402
 
-BASES = {'default': 'origin/HEAD', 'head': 'HEAD'}
+BASES = {'head': 'HEAD', 'remote': 'origin/HEAD'}
 ABSENT = 'absent'
 SHOWN = 20
 
@@ -159,7 +159,7 @@ def check(brief_path, repository, setting):
     ref, commit = base_commit(repo, setting)
     result['base'] = {'setting': setting, 'ref': ref, 'commit': commit}
     if commit is None:
-        hint = '. Where the harness branches worktrees from local HEAD, pass --base head' if setting == 'default' else ''
+        hint = '. Where the harness branches worktrees from local HEAD, pass --base head' if setting == 'remote' else ''
         raise Refused('the commit the worktree will branch from, %s, cannot be read in %s%s' % (ref, repo, hint))
     paths, at_base = [], {}
     for entry in write_set:

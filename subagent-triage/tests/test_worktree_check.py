@@ -93,9 +93,10 @@ class WorktreeCheckTests(unittest.TestCase):
         self.assertEqual(out['differences'], [])
 
     def test_an_unchanged_write_set_passes_on_the_remote_default_branch(self):
-        code, out = self.check(self.brief('src/a.py', 'docs/'), base='default')
+        code, out = self.check(self.brief('src/a.py', 'docs/'), base='remote')
         self.assertEqual(code, 0, out)
         self.assertFalse(out['refuse'])
+        self.assertEqual(out['base']['setting'], 'remote')
         self.assertEqual(out['base']['ref'], 'origin/HEAD')
         self.assertEqual(out['differences'], [])
 
@@ -107,7 +108,7 @@ class WorktreeCheckTests(unittest.TestCase):
     def test_tc12_likeness_a_file_committed_locally_and_not_pushed_is_refused_on_the_remote_default_branch(self):
         (self.main / 'src' / 'a.py').write_text('a = 2\n', encoding='utf-8')
         git(self.main, 'commit', '-q', '-am', 'local only')
-        code, out = self.check(self.brief('src/a.py'), base='default')
+        code, out = self.check(self.brief('src/a.py'), base='remote')
         self.assertEqual(code, 1, out)
         self.assertTrue(out['refuse'])
         self.assertIn('src/a.py', out['reason'])
@@ -170,13 +171,24 @@ class WorktreeCheckTests(unittest.TestCase):
         (lone / 'a.py').write_text('a = 1\n', encoding='utf-8')
         git(lone, 'add', '.')
         git(lone, 'commit', '-q', '-m', 'lone')
-        code, out = self.check(self.brief('a.py'), repository=lone, base='default')
+        code, out = self.check(self.brief('a.py'), repository=lone, base='remote')
         self.assertEqual(code, 1, out)
         self.assertIn('cannot be read', out['reason'])
         self.assertIn('origin/HEAD', out['reason'])
+        self.assertIn('pass --base head', out['reason'])
         # Control: the default base, local HEAD, reads in a repository with no remote.
         code, out = self.check(self.brief('a.py'), repository=lone)
         self.assertEqual(code, 0, out)
+
+    def test_the_old_name_default_is_refused_as_an_argument(self):
+        # --base default named the remote's branch, not the default, so it is renamed remote and the old name goes.
+        code, out = self.check(self.brief('src/a.py'), base='default')
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out, {'error': 'the arguments could not be read'})
+        # Control: the new name reads the same base the old one did.
+        code, out = self.check(self.brief('src/a.py'), base='remote')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['base']['ref'], 'origin/HEAD')
 
     def test_an_unreadable_local_head_is_refused_without_the_hint_to_pass_it(self):
         empty = self.tmp / 'empty'

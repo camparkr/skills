@@ -593,5 +593,69 @@ class DecideTests(unittest.TestCase):
         self.assertIn('d1-act', out['error'])
 
 
+    # -- The group the part's kind is paired with (R-10) -------------------------------------------------------------
+
+    def test_r10_the_kind_s_paired_group_is_read_from_the_table_given(self):
+        code, out = self.run_decide('roster-two.yaml', member='m20',
+                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json')])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['kind_paired_grouping'], 'makers')
+        data = self.pending(member='m20')
+        self.assertEqual(data['kind_paired_grouping']['value'], 'makers')
+        self.assertRegex(data['kind_paired_grouping']['stamped_at'], r'^\d{4}-\d\d-\d\dT')
+        self.check_schema(data)
+
+    def test_r10_a_named_key_finds_the_pairs(self):
+        table = self.tmp / 'nested.json'
+        table.write_text(json.dumps({'outer': {'groups': {'build': 'makers'}}}), encoding='utf-8')
+        code, out = self.run_decide('roster-two.yaml', member='m21',
+                                    extra=['--kind-groups', str(table), '--kind-groups-key', 'outer.groups'])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.pending(member='m21')['kind_paired_grouping']['value'], 'makers')
+
+    def test_r10_with_no_table_the_value_is_unrecorded_and_the_triage_goes_on(self):
+        code, out = self.run_decide('roster-two.yaml', member='m22')
+        self.assertEqual(code, 0, out)
+        data = self.pending(member='m22')
+        self.assertEqual(data['kind_paired_grouping']['value'], 'unrecorded (no kind-to-group table was given)')
+        self.assertEqual(data['triage_persona']['value'], 'builder')
+        self.check_schema(data)
+
+    def test_r10_a_kind_the_table_lacks_is_unrecorded_never_guessed(self):
+        code, out = self.run_decide('roster-two.yaml', member='m23',
+                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups-no-build.json')])
+        self.assertEqual(code, 0, out)
+        value = self.pending(member='m23')['kind_paired_grouping']['value']
+        self.assertRegex(value, r'^unrecorded \(.+\)$')
+        self.assertIn('pairs no group with build', value)
+        self.assertNotIn('readers', value)
+        self.assertEqual(out['persona']['persona'], 'builder')
+
+    def test_r10_an_unreadable_table_is_unrecorded_and_the_triage_goes_on(self):
+        code, out = self.run_decide('roster-two.yaml', member='m24',
+                                    extra=['--kind-groups', str(self.tmp / 'missing.json')])
+        self.assertEqual(code, 0, out)
+        value = self.pending(member='m24')['kind_paired_grouping']['value']
+        self.assertTrue(value.startswith('unrecorded (the kind-to-group table'), value)
+        self.assertEqual(out['effort']['level'], 'medium')
+
+    def test_r10_a_table_whose_key_holds_no_pairs_is_unrecorded(self):
+        code, out = self.run_decide('roster-two.yaml', member='m25',
+                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json'),
+                                           '--kind-groups-key', 'absent'])
+        self.assertEqual(code, 0, out)
+        value = self.pending(member='m25')['kind_paired_grouping']['value']
+        self.assertIn('absent', value)
+        self.assertTrue(value.startswith('unrecorded ('), value)
+
+    def test_r10_with_no_kind_read_the_value_says_so(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-plain.md', member='m26',
+                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json')])
+        self.assertEqual(code, 0, out)
+        self.assertIsNone(out['act']['kind'])
+        value = self.pending(member='m26')['kind_paired_grouping']['value']
+        self.assertEqual(value, 'unrecorded (the act decision read no kind)')
+        self.check_schema(self.pending(member='m26'))
+
 if __name__ == '__main__':
     unittest.main()

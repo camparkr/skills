@@ -1,0 +1,7 @@
+{
+  "description": "A stand-in table pairing each kind with a group, for decide.py's tests. It names no real group.",
+  "pairs": {
+    "build": "makers",
+    "inquiry": "readers"
+  }
+}

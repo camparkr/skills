@@ -78,6 +78,12 @@ class StageTests(unittest.TestCase):
     def test_an_amendment_is_not_counted(self):
         self.assertEqual(self.read('iota')['stage'], 'unrecorded (no specification found for iota)')
 
+    def test_an_architectural_amendment_matching_the_pattern_is_not_counted(self):
+        # `*-architectural-spec*.md` matches `...-architectural-spec-amendment.md`; an amendment never counts.
+        out = self.read('mu')
+        self.assertEqual(out['stage'], 'unrecorded (no specification found for mu)')
+        self.assertEqual(out['found'], {'build': [], 'ratified': []})
+
     def test_a_file_whose_front_matter_cannot_be_read_is_named_and_not_counted(self):
         out = self.read('lambda')
         self.assertEqual(out['stage'], 'unrecorded (no specification found for lambda)')

@@ -429,5 +429,104 @@ class DecideTests(unittest.TestCase):
         self.assertNotIn('overrides', json.loads(good.read_text(encoding='utf-8')))
 
 
+    # -- The persona override (D-3) ----------------------------------------------------------------------------------
+
+    def override_persona(self, path, persona='cataloguer', parent='lead', reason='the part is a catalogue entry'):
+        return self.run_script(['override', '--pending', str(path), '--decision', 'd3-figure', '--persona', persona,
+                                '--parent-persona', parent, '--reason', reason])
+
+    def test_tc3_a_persona_override_records_its_six_values_from_the_file_s_own_record(self):
+        code, out = self.run_decide('roster-two.yaml', member='m11')
+        self.assertEqual(code, 0, out)
+        path = self.pending_path(member='m11')
+        before = json.loads(path.read_text(encoding='utf-8'))
+        code, out = self.override_persona(path)
+        self.assertEqual(code, 0, out)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        entry = data['overrides']['value'][-1]
+        self.assertEqual(entry['decision'], 'd3-figure')
+        self.assertEqual(entry['decision_persona'], 'builder')
+        self.assertEqual(entry['adequacy_probability'], 0.9)
+        self.assertEqual(entry['parent_persona'], 'lead')
+        self.assertEqual(entry['persona_chosen'], 'cataloguer')
+        self.assertEqual(entry['reason'], 'the part is a catalogue entry')
+        self.assertRegex(entry['at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d')
+        self.assertEqual(out['override'], entry)
+        # The persona chosen and who chose it change with the override; the decision's own record does not.
+        self.assertEqual(data['triage_persona']['value'], 'cataloguer')
+        self.assertEqual(data['chosen_by']['value'], 'the dispatching agent')
+        for key in before:
+            if key not in ('triage_persona', 'chosen_by'):
+                self.assertEqual(data[key], before[key], key)
+        self.check_schema(data)
+
+    def test_tc3_a_below_line_persona_is_named_without_its_mark(self):
+        code, out = self.run_decide('roster-likeness.yaml', member='m12')
+        self.assertEqual(code, 0, out)
+        code, out = self.override_persona(self.pending_path(member='m12'), persona='drafter')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['override']['decision_persona'], 'cataloguer')
+        self.assertEqual(out['override']['adequacy_probability'], 0.1)
+
+    def test_tc3_likeness_an_override_with_no_reason_is_refused(self):
+        code, out = self.run_decide('roster-two.yaml', member='m13')
+        self.assertEqual(code, 0, out)
+        path = self.pending_path(member='m13')
+        before = path.read_text(encoding='utf-8')
+        code, out = self.override_persona(path, reason='  ')
+        self.assertEqual(code, 1, out)
+        self.assertIn('reason', out['error'])
+        self.assertEqual(path.read_text(encoding='utf-8'), before)
+
+    def test_tc3_likeness_an_override_with_no_decision_probability_is_refused(self):
+        path = self.tmp / 'triage-no-probability.json'
+        record = {'question': 'd3-figure', 'answer': 'unrecorded (Jev failed: HTTP 500)',
+                  'uncertainty_basis': {'choice': None, 'line': 0.5, 'line_version': 0},
+                  'exact_evidence': {'eligible': ['cataloguer', 'builder'], 'excluded': {}}}
+        path.write_text(json.dumps({'decision_records': {'value': [record], 'stamped_at': '2026-10-29T00:00:00.000Z'}}),
+                        encoding='utf-8')
+        code, out = self.override_persona(path)
+        self.assertEqual(code, 1, out)
+        self.assertIn('no adequacy probability', out['error'])
+        self.assertNotIn('overrides', json.loads(path.read_text(encoding='utf-8')))
+
+    def test_an_unknown_persona_is_refused_never_matched(self):
+        code, out = self.run_decide('roster-two.yaml', member='m14')
+        self.assertEqual(code, 0, out)
+        path = self.pending_path(member='m14')
+        code, out = self.override_persona(path, persona='catalog')
+        self.assertEqual(code, 1, out)
+        self.assertIn('unknown persona', out['error'])
+        self.assertNotIn('overrides', json.loads(path.read_text(encoding='utf-8')))
+
+    def test_the_decision_s_own_persona_is_no_override(self):
+        code, out = self.run_decide('roster-two.yaml', member='m15')
+        self.assertEqual(code, 0, out)
+        code, out = self.override_persona(self.pending_path(member='m15'), persona='builder')
+        self.assertEqual(code, 1, out)
+        self.assertIn('the decision\'s own persona', out['error'])
+
+    def test_a_persona_override_needs_the_parent_s_persona_and_a_persona_record(self):
+        code, out = self.run_decide('roster-two.yaml', member='m16')
+        self.assertEqual(code, 0, out)
+        code, out = self.override_persona(self.pending_path(member='m16'), parent='')
+        self.assertEqual(code, 1, out)
+        path = self.tmp / 'triage-no-d3.json'
+        records = {'value': [{'question': 'd1-act', 'answer': 'build'}], 'stamped_at': '2026-10-29T00:00:00.000Z'}
+        path.write_text(json.dumps({'decision_records': records}), encoding='utf-8')
+        code, out = self.override_persona(path)
+        self.assertEqual(code, 1, out)
+        self.assertIn('no d3-figure record', out['error'])
+
+    def test_an_override_of_the_act_decision_is_refused(self):
+        code, out = self.run_decide('roster-two.yaml', member='m17')
+        self.assertEqual(code, 0, out)
+        code, out = self.run_script(['override', '--pending', str(self.pending_path(member='m17')), '--decision',
+                                     'd1-act', '--level', 'high', '--reason', 'r'])
+        self.assertEqual(code, 1, out)
+        self.assertIn('d3-figure', out['error'])
+        self.assertIn('d1-act', out['error'])
+
+
 if __name__ == '__main__':
     unittest.main()

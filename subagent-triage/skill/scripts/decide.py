@@ -68,6 +68,22 @@ file unchanged, a file with no d3-figure record, a record with no adequacy proba
 to override), a persona the roster does not list (the record's eligible and excluded names: an unknown name is
 refused, never matched), the decision's own persona, an empty parent persona and an empty reason.
 
+The override, when the parent sends the part with no persona at all (R-11: such a dispatch goes out as an override
+with its reason):
+
+    python3 decide.py override --decision no-persona --ledger <folder> --session <id> --member <id> [--attempt 1]
+                               --reason <text>
+    python3 decide.py override --decision no-persona --pending <file> --reason <text>
+
+It appends to the `overrides` list the decision (`no-persona`), the persona decision's persona where the file holds a
+d3-figure record that named one (`decision_persona`, else `unrecorded (...)` saying why), the reason and the time. It
+removes `triage_persona`, since no persona goes out, and sets `chosen_by` to the dispatching agent, restamped; any
+decision record is left as it was. Where no triage ran, the first form writes the member's pending triage file,
+<ledger>/.pending/<session>/triage-<member>-<attempt>.json, holding the override alone; the dispatch's brief names
+that member and attempt as any brief does. The second form takes a pending file that exists. The dispatch check lets
+the dispatch through and says why. It refuses, with exit 1 and nothing written, an empty reason, a named pending file
+that does not exist, and a call that names neither the file nor the member's ledger, session and id.
+
 The key is JEV_API_KEY; --key-from-zsh fills it, when it is not set, from what zsh sets it to on starting. The
 endpoint is SUBAGENT_TRIAGE_JEV_URL where set, for a stand-in, else Jev's own.
 """
@@ -116,6 +132,7 @@ OVERRIDE_CHOSEN_BY = 'the dispatching agent'
 LEVELS = ('low', 'medium', 'high', 'xhigh', 'max')  # the levels the Agent tool offers
 EFFORT_DECISION = 'd4-effort'
 PERSONA_DECISION = 'd3-figure'
+NO_PERSONA = 'no-persona'  # R-11: the parent's dispatch with no persona, recorded as an override
 BELOW_LINE = ', below the line'
 ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`\'"(<\[])|^)(~?/[^\s`\'"<>()\[\]{}]+|[A-Za-z]:[\\/][^\s`\'"<>()\[\]{}]+)',
                            re.MULTILINE)
@@ -634,11 +651,50 @@ def persona_override(args, record):
             'at': stamp()}, None
 
 
+def no_persona_override(args, record):
+    """The override entry for a dispatch with no persona. `record` is the file's d3-figure record, or None."""
+    if record is None:
+        persona = 'unrecorded (the pending file holds no %s record)' % PERSONA_DECISION
+    else:
+        answer = record.get('answer')
+        basis = record.get('uncertainty_basis') if isinstance(record.get('uncertainty_basis'), dict) else {}
+        named = isinstance(answer, str) and answer and isinstance(basis.get('adequacy'), (int, float)) \
+            and not isinstance(basis.get('adequacy'), bool)
+        persona = (answer[:-len(BELOW_LINE)] if answer.endswith(BELOW_LINE) else answer) if named else \
+            'unrecorded (the %s record named no persona: %s)' % (PERSONA_DECISION, answer)
+    return {'decision': NO_PERSONA, 'decision_persona': persona, 'reason': args.reason, 'at': stamp()}, None
+
+
+def no_persona_path(args):
+    """(the pending file to write, whether it may be created, or the refusal)."""
+    if args.pending:
+        path = Path(args.pending)
+        if not path.is_file():
+            return None, False, 'the pending file %s does not exist: name the member with --ledger, --session and ' \
+                                '--member instead, and the file is written' % path
+        return path, False, None
+    if not (args.ledger and args.session and args.member):
+        return None, False, 'an override of %s names --pending <file>, or the member\'s --ledger, --session and ' \
+                            '--member' % NO_PERSONA
+    try:
+        ledger_scripts()
+        import ledger
+    except CannotRun as exc:
+        return None, False, str(exc)
+    folder = Path(args.ledger) / '.pending' / ledger.pending_name(args.session)
+    name = '%s.json' % ledger.pending_name('triage-%s-%s' % (args.member, args.attempt))
+    return folder / name, True, None
+
+
 def override(argv):
     parser = argparse.ArgumentParser(prog='decide.py override',
                                      description='Record a level or persona the parent passes instead of the '
-                                                 'decision\'s.')
-    parser.add_argument('--pending', required=True)
+                                                 'decision\'s, or a dispatch with no persona.')
+    parser.add_argument('--pending')
+    parser.add_argument('--ledger')
+    parser.add_argument('--session')
+    parser.add_argument('--member')
+    parser.add_argument('--attempt', default='1')
     parser.add_argument('--decision', required=True)
     parser.add_argument('--level')
     parser.add_argument('--persona')
@@ -648,27 +704,43 @@ def override(argv):
         args = parser.parse_args(argv)
     except SystemExit:
         return fail(1, 'the arguments could not be read')
-    if args.decision not in (PERSONA_DECISION, EFFORT_DECISION):
-        return fail(1, 'only %s and %s take an override here, not %s' % (PERSONA_DECISION, EFFORT_DECISION,
-                                                                          args.decision))
+    if args.decision not in (PERSONA_DECISION, EFFORT_DECISION, NO_PERSONA):
+        return fail(1, 'only %s, %s and %s take an override here, not %s' % (PERSONA_DECISION, EFFORT_DECISION,
+                                                                              NO_PERSONA, args.decision))
     if args.decision == EFFORT_DECISION and args.level not in LEVELS:
         return fail(1, 'unknown level %r: the levels are %s' % (args.level, ', '.join(LEVELS)))
     if args.decision == PERSONA_DECISION and not args.persona:
         return fail(1, 'an override of %s names the persona chosen instead, with --persona' % PERSONA_DECISION)
     if not args.reason.strip():
         return fail(1, 'the reason is empty')
-    path = Path(args.pending)
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError) as exc:
-        return fail(1, 'the pending file could not be read: %s' % exc)
-    held = data.get('decision_records') if isinstance(data, dict) else None
+    if args.decision == NO_PERSONA:
+        path, creatable, refusal = no_persona_path(args)
+        if refusal:
+            return fail(1, refusal)
+    elif not args.pending:
+        return fail(1, 'an override of %s names its pending file, with --pending' % args.decision)
+    else:
+        path, creatable = Path(args.pending), False
+    if creatable and not path.exists():
+        data = {}
+    else:
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError) as exc:
+            return fail(1, 'the pending file could not be read: %s' % exc)
+        if not isinstance(data, dict):
+            return fail(1, 'the pending file holds no JSON object: %s' % path)
+    held = data.get('decision_records')
     records = held.get('value') if isinstance(held, dict) else None
-    found = [r for r in records or [] if isinstance(r, dict) and r.get('question') == args.decision]
-    if not found:
+    question = PERSONA_DECISION if args.decision == NO_PERSONA else args.decision
+    found = [r for r in records or [] if isinstance(r, dict) and r.get('question') == question]
+    if args.decision == NO_PERSONA:
+        entry, refusal = no_persona_override(args, found[-1] if found else None)
+    elif not found:
         return fail(1, 'the pending file holds no %s record: %s' % (args.decision, path))
-    make = effort_override if args.decision == EFFORT_DECISION else persona_override
-    entry, refusal = make(args, found[-1])
+    else:
+        make = effort_override if args.decision == EFFORT_DECISION else persona_override
+        entry, refusal = make(args, found[-1])
     if refusal:
         return fail(1, refusal)
     kept = data.get('overrides')
@@ -678,6 +750,10 @@ def override(argv):
     if args.decision == PERSONA_DECISION:
         data['triage_persona'] = stamped(args.persona)
         data['chosen_by'] = stamped(OVERRIDE_CHOSEN_BY)
+    elif args.decision == NO_PERSONA:
+        data.pop('triage_persona', None)
+        data['chosen_by'] = stamped(OVERRIDE_CHOSEN_BY)
+    path.parent.mkdir(parents=True, exist_ok=True)
     written = path.with_name(path.name + '.writing')
     written.write_text(json.dumps(data, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
     os.replace(str(written), str(path))

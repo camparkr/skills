@@ -39,7 +39,8 @@ report gives each hop the output it was judged by, so a miss of the 20-word valu
     whose dispatch never happened. None is removed;
   * `faults`: a dispatch the plan does not list; an override lacking any value it records (for the persona
     decision: the decision's persona, its adequacy probability, the parent's persona, the persona chosen, the reason
-    and the time; for the effort decision: the decision's level, the level passed, the reason and the time); a
+    and the time; for the effort decision: the decision's level, the level passed, the reason and the time; for a
+    dispatch with no persona: the reason and the time); a
     passed effort (`effort_assigned`) other than the one to pass (the last effort override's level, else the effort
     decision's level, else, where it gave none, the unaided level); and an unaided level stamped after the decision
     records.
@@ -73,7 +74,8 @@ FILE_TOOLS = {'Write': ('file_path', 'content'), 'Edit': ('file_path', 'new_stri
 DISPATCH_TOOLS = ('Agent', 'Task')
 PERSONA, EFFORT = 'd3-figure', 'd4-effort'
 NEEDS = {PERSONA: ('decision_persona', 'adequacy_probability', 'parent_persona', 'persona_chosen', 'reason', 'at'),
-         EFFORT: ('decision_level', 'level_passed', 'reason', 'at')}
+         EFFORT: ('decision_level', 'level_passed', 'reason', 'at'),
+         decide.NO_PERSONA: ('reason', 'at')}
 NO_PARENT = 'unrecorded (no parent named)'
 SHOWN = 300
 

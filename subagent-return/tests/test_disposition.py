@@ -54,6 +54,33 @@ class Grammar(unittest.TestCase):
                 self.assertIsNone(disposition.parse_command(command, str(world.SKILL))[0])
 
 
+class PrintedSession(unittest.TestCase):
+    """The command printed for the parent names the session as a literal --session, in the grammar. A session id the
+    grammar could not hold, or none, is left out, so the printed command stays in the grammar and the environment
+    variable is the fallback."""
+
+    SESSION = '1a1a1a1a-2b2b-4c3c-8d4d-5e5e5e5e5e5e'
+
+    def filled(self, session):
+        return world.fill(disposition.command_for('toolu_a_1', ['r1-1'], '/tmp/ledger', session))
+
+    def test_the_printed_command_names_the_session_and_reads_back_in_the_grammar(self):
+        command = self.filled(self.SESSION)
+        self.assertIn(' --session %s ' % self.SESSION, command)
+        parsed, why = disposition.parse_command(command, str(world.SKILL))
+        self.assertIsNotNone(parsed, why)
+        self.assertEqual(parsed.session, self.SESSION)
+
+    def test_likeness_a_session_id_the_grammar_cannot_hold_or_none_is_left_out(self):
+        for session in (None, '', 'a;b', 'a$b', 'a b', 'a"b', "a'b", '-x', 'a\nb'):
+            with self.subTest(session=session):
+                command = self.filled(session)
+                self.assertNotIn('--session', command)
+                parsed, why = disposition.parse_command(command, str(world.SKILL))
+                self.assertIsNotNone(parsed, why)
+                self.assertIsNone(parsed.session)
+
+
 class Script(unittest.TestCase):
 
     def setUp(self):

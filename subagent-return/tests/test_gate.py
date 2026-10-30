@@ -236,6 +236,52 @@ class PrintedCommand(unittest.TestCase):
         self.assertEqual([r for r in w.records() if r.get('record') == 'disposition'], [])
         self.assertTrue(w.denied(self.write()), 'the stop stands')
 
+    # U5 gap: the printed command carried no --session, and the grammar forbids `$`, so where the parent's shell
+    # lacked CLAUDE_CODE_SESSION_ID the parent had to type the id. The gate and the context step have the id from the
+    # hook payload, and the printed command now names it as a literal `--session <id>`. Run as printed from a shell
+    # with no CLAUDE_CODE_SESSION_ID, it lifts the stop. The likeness is the same command with its --session taken
+    # out: the script cannot name the session, and the stop stands. The environment variable stays the fallback.
+
+    def session_option(self):
+        return ' --session %s' % world.SESSION
+
+    def lifts_without_the_variable(self, printed):
+        w = self.w
+        self.assertIn(self.session_option(), printed)
+        decision, done = w.disposition_call(world.fill(printed), cwd=self.outside(),
+                                            env=w.parent_env_without_session())
+        self.assertIsNone(w.denied(decision), 'the printed command is in the grammar the gate lets through')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        lines = [r for r in w.records() if r.get('record') == 'disposition']
+        self.assertEqual([(r['call_id'], r['result_ids']) for r in lines], [(self.m.call_id, self.fail_ids)])
+        self.assertIsNone(w.denied(self.write()), 'the stop is lifted')
+
+    def test_the_refusals_command_names_the_session_and_lifts_the_stop_with_no_session_variable(self):
+        self.lifts_without_the_variable(self.refusal_command())
+
+    def test_the_contexts_command_names_the_session_and_lifts_the_stop_with_no_session_variable(self):
+        self.lifts_without_the_variable(self.context_command())
+
+    def test_likeness_the_same_command_without_its_session_and_with_no_variable_leaves_the_stop_standing(self):
+        w = self.w
+        filled = world.fill(self.refusal_command())
+        bare = filled.replace(self.session_option(), '')
+        self.assertNotEqual(bare, filled)
+        decision, done = w.disposition_call(bare, cwd=self.outside(), env=w.parent_env_without_session())
+        self.assertIsNone(w.denied(decision))
+        self.assertEqual(done.returncode, 2, done.stderr)
+        self.assertIn('no session id', done.stderr)
+        self.assertEqual([r for r in w.records() if r.get('record') == 'disposition'], [])
+        self.assertTrue(w.denied(self.write()), 'the stop stands')
+
+    def test_the_variable_stays_the_fallback_where_the_command_names_no_session(self):
+        w = self.w
+        bare = world.fill(self.refusal_command()).replace(self.session_option(), '')
+        decision, done = w.disposition_call(bare, cwd=self.outside())
+        self.assertIsNone(w.denied(decision))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIsNone(w.denied(self.write()), 'the stop is lifted')
+
 
 class GrammarFault(unittest.TestCase):
     """Dry run 12, r12-bg-gate2: the parent ran the disposition script with its own reason, which held a `;`. The

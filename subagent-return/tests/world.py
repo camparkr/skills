@@ -372,17 +372,24 @@ class World(object):
                               capture_output=True, text=True, env=self.parent_env(), cwd=str(cwd or self.repo),
                               timeout=60)
 
-    def disposition_call(self, command, cwd=None):
-        """The parent's Bash call running `command` in `cwd` (the main checkout by default): its PreToolUse (the
-        gate), the command itself when let through, then its PostToolUse, where the capture writes the disposition
-        line. Returns the PreToolUse decision and the finished process, or None where refused."""
+    def parent_env_without_session(self):
+        """The parent's shell environment where the shell lacks CLAUDE_CODE_SESSION_ID, as a skill's shell may."""
+        env = self.parent_env()
+        env.pop('CLAUDE_CODE_SESSION_ID', None)
+        return env
+
+    def disposition_call(self, command, cwd=None, env=None):
+        """The parent's Bash call running `command` in `cwd` (the main checkout by default), in the parent's shell
+        environment or `env`: its PreToolUse (the gate), the command itself when let through, then its PostToolUse,
+        where the capture writes the disposition line. Returns the PreToolUse decision and the finished process, or
+        None where refused."""
         payload = self.parent_payload('Bash', {'command': command})
         payload['cwd'] = str(cwd or self.repo)
         _code, decision, _err = self.hook('PreToolUse', payload)
         if self.denied(decision):
             return decision, None
-        done = subprocess.run(command, shell=True, capture_output=True, text=True, env=self.parent_env(),
-                              cwd=str(cwd or self.repo), timeout=60)
+        done = subprocess.run(command, shell=True, capture_output=True, text=True,
+                              env=self.parent_env() if env is None else env, cwd=str(cwd or self.repo), timeout=60)
         if done.returncode == 0:
             post = dict(payload, hook_event_name='PostToolUse',
                         tool_response={'stdout': done.stdout, 'stderr': done.stderr, 'interrupted': False})

@@ -1,19 +1,26 @@
 # The instruction a brief carries
 
 Every member's brief carries the instruction below, so the member knows what each of the return check's four checks
-looks for before it starts. Put it in the brief's body, after the task and the write set. Copy it word for word, and
-fill only its two placeholders from the settings:
+looks for before it starts. Put it last in the brief's body, after the task and the write set. Copy it word for word,
+and fill only its two placeholders from the settings in the ledger folder's `config.json`, under `return_check`:
 
-- `<validator>`: the front-matter validator check 2 runs, as the settings name it; and
-- `<kinds>`: the kinds of Markdown file check 2 reads, as the settings name them.
+- `<validator>`: the `validator` command, in backticks, such as `` `python3 /opt/tools/validate_front_matter.py` ``;
+  and
+- `<kinds>`: the word `Markdown`, followed in brackets by each `markdown` pattern in backticks, such as
+  ``Markdown (`docs/*.md`, `notes/*.md`)``. With no `markdown` patterns set, the word `Markdown` alone.
 
-A reworded instruction is a different contract, and the checks read only what the member did.
+A reworded instruction is a different contract, and the checks read only what the member did. A brief cannot be
+written to this instruction with no `validator` set, since `<validator>` would stay unfilled.
 
 The brief also carries the member key and the attempt in its front matter, and its path is the first path the prompt
 names. Those are fields of the brief, not instructions to the member. The `subagent-triage` skill's
 `references/brief-format.md` is their home, and says which check each one keeps from failing. The `subagent-triage`
 skill writes the fields and this instruction into every brief it writes. A parent writing a brief by hand adds them
 itself.
+
+That skill's brief writer reads the instruction from this file: the first fenced block after the heading 'The
+instruction'. It refuses the block unless it quotes, in backticks, the parser's heading `## Output` and its word
+`none`. Keep the heading, the fences and both quotes when you change the text.
 
 ## The instruction
 
@@ -35,8 +42,8 @@ touch, whether or not you list it as output.
 your report counts as a claim.
 
 1. Write a line that reads exactly `## Output`, with nothing else on it.
-2. Under it, write each output file's path, one a line. Give each path relative to your working folder, or in full.
-   You may open a line with `- ` and wrap the path in backticks.
+2. Under it, write each output file's path, one a line. Give each path relative to the repository's root, as your
+   write set does, or in full. You may open a line with `- ` and wrap the path in backticks.
 3. If you wrote no output file, write the single word `none` on the line, and nothing else.
 4. Make the section the last thing in your report. Put no heading, code fence or other text after it, and no code
    fence inside it.

@@ -3,7 +3,8 @@
 A member ends its report with an output section. The section lists the files the member claims as its output, and
 nothing else in the report is a claim. Check 1 reads the section and nothing else. This file states the grammar the
 parser applies. The parser is `skill/scripts/output_section.py`; where it and this file differ, one of them is wrong,
-and the difference is reported.
+and the difference is reported. The parser also runs alone: given a report on standard input, as in
+`python3 output_section.py < report.txt`, it prints the section's state and its claims.
 
 ## Which text is read
 
@@ -15,6 +16,10 @@ The parser reads the text the parent receives, and never the member's closing te
 - **At a stop with no delivered hand-back**, the text is the member's final message.
 
 Closing text is never a claim, whatever it holds. A section in closing text after a delivered hand-back is not read.
+
+A member that hands back by a tool, and stops before it has handed back, has no report at that stop: its final
+message never reaches the parent. Check 1 reads `not_applicable (no report at this stop)` there, and its result still
+names the final message and that text's SHA-256.
 
 ## Where the section is
 
@@ -37,6 +42,9 @@ one of:
 - **the single word `none`**, in lower case, with the same optional marker and backticks. `None` or `NONE` is read
   as a path.
 
+A line holding only an empty pair of backticks, after any marker, is read as blank. A path listed twice is one
+claim.
+
 A path named anywhere else in the report, as evidence or for any other reason, is not a claim. No semantic question
 is asked of the report.
 
@@ -56,14 +64,32 @@ For a call whose brief carries the member key:
 | holds `none` beside a path | `fail (output section malformed)` |
 | lists one or more paths | each path is judged as a claimed file; check 1 passes only when every one is the member's |
 
-A claimed file is the member's when all of these hold:
+A read-only member owns no output file, so a read-only member that claims any path fails check 1 as
+`fail (a read-only member claims output)`, before any file is looked for.
+
+For a writer, a claimed file is the member's when all of these hold:
 
 - it exists;
 - it changed after the dispatch time of this member's attempt; and
-- for a writer, its worktree's changes against the baseline include it, committed or not, however it was written.
+- its worktree's changes against the baseline include it, committed or not, however it was written.
 
-A read-only member owns no output file, so a read-only member that claims one fails check 1. The baseline and the
-dispatch time sit on the member's dispatch record.
+The baseline and the dispatch time sit on the member's dispatch record. Each claim that fails is named in the
+result's reason, under the first rule it breaks:
+
+| The claimed file | Check 1's reason names it under |
+|---|---|
+| does not exist | `claimed file does not exist: <paths>` |
+| exists, and has not changed since the dispatch time | `claimed file not changed since the dispatch: <paths>` |
+| changed since then, and is not among the worktree's changes | `claimed file not among the worktree's changes: <paths>` |
+
+Where claims fail under two rules, the reason gives both, separated by a semicolon.
+
+Check 1 cannot judge the claims, and reads `not_checkable (<reason>)`, where:
+
+- the report's text cannot be read;
+- no dispatch record carries this member and attempt, so there is no dispatch time or baseline to read against;
+- the dispatch record carries no readable dispatch time; or
+- git cannot read the worktree against its baseline.
 
 ## Examples
 
@@ -117,8 +143,9 @@ appendix.md
 | `## Outputs` then `a.md` | `fail (no output section)`: the heading is not exact |
 | `## Output` and nothing after it | `fail (output section malformed)` |
 | `## Output` then `none` then `a.md` | `fail (output section malformed)` |
-| `## Output` then `missing.md`, a file that does not exist | `fail`, naming `missing.md` |
-| `## Output` then a file the member did not change | `fail`, naming the file |
+| `## Output` then `missing.md`, a file that does not exist | `fail (claimed file does not exist: missing.md)` |
+| `## Output` then `old.md`, a file the member did not change | `fail (claimed file not changed since the dispatch: old.md)` |
+| `## Output` then `a.md`, from a read-only member | `fail (a read-only member claims output)` |
 
 **Closing text after a hand-back.** A member hands back a report ending `## Output` then `a.md`, which it wrote. Its
 closing text then ends `## Output` then `none`. Check 1 reads the hand-back's message and passes. The closing text

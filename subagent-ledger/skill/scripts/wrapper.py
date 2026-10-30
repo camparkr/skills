@@ -36,7 +36,9 @@ What each part does:
   * At PostToolUse on a hand-back tool the kept result is marked delivered, with the SHA-256 of the message
     delivered. With a hand-back check on and no result kept for that call, one is kept saying so, so its return reads
     `unrecorded (no check result when the return was written)`.
-  * At a dispatch, the check's time and result go on the dispatch record's harness_payload as `wrapper`. Where it
+  * At a dispatch, the check's time, result, decision and own reason go on the dispatch record's harness_payload as
+    `wrapper`: `check_seconds`, `result`, `refused` and `reason`, the reason the check gave for letting the call
+    through or refusing it (null where the check gave none, as one that errors or overruns does). Where it
     refused, the capture writes the dispatch record and then one `failed` return, class refused_by_check, with the
     refusal's text, both at this PreToolUse, and no pending file is left.
   * The capture runs on every path. The wrapper refuses only where a check that ran decided to: never because the
@@ -265,7 +267,7 @@ def handle(event, text, folder_named):
             refused, reason, own, result, seconds = run_check(command, text, folder, payload.get('session_id'),
                                                               check_bound(config))
             if which == 'dispatch':
-                capture.WRAPPER_NOTE.update(check_seconds=seconds, result=result, refused=refused)
+                capture.WRAPPER_NOTE.update(check_seconds=seconds, result=result, refused=refused, reason=reason)
             else:
                 kept = dict(own)
                 kept.update(event=event, at=now(), refused=refused, reason=reason, result=result,

@@ -54,6 +54,20 @@ It appends to the pending file's `overrides` list the decision's level (read fro
 the level passed instead, the reason and the time, and restamps the list. It refuses, with exit 1 and the file
 unchanged, a file with no d4-effort record, an unknown level, an empty reason or another decision.
 
+The override, when the parent sends the part to a persona other than the persona decision's:
+
+    python3 decide.py override --pending <file> --decision d3-figure --persona <name> --parent-persona <name>
+                               --reason <text>
+
+It appends to the `overrides` list the six values an override of the persona records, the first two read from the
+file's own d3-figure record: the decision's persona (`decision_persona`, its answer less any below-the-line mark),
+its adequacy probability (`adequacy_probability`), the parent's own persona (`parent_persona`), the persona chosen
+instead (`persona_chosen`), the reason and the time. It sets `triage_persona` to the persona chosen and `chosen_by`
+to the dispatching agent, each restamped; the decision's record is left as it was. It refuses, with exit 1 and the
+file unchanged, a file with no d3-figure record, a record with no adequacy probability (the decision chose no persona
+to override), a persona the roster does not list (the record's eligible and excluded names: an unknown name is
+refused, never matched), the decision's own persona, an empty parent persona and an empty reason.
+
 The key is JEV_API_KEY; --key-from-zsh fills it, when it is not set, from what zsh sets it to on starting. The
 endpoint is SUBAGENT_TRIAGE_JEV_URL where set, for a stand-in, else Jev's own.
 """
@@ -98,8 +112,11 @@ NO_EFFORT = 'unrecorded (Jev takes no effort level)'
 NO_REQUEST = 'unrecorded (no request was sent)'
 UNCHECKED = 'unchecked: returned by Jev and not checked against anything else'
 CHOSEN_BY = 'the planning skill'
+OVERRIDE_CHOSEN_BY = 'the dispatching agent'
 LEVELS = ('low', 'medium', 'high', 'xhigh', 'max')  # the levels the Agent tool offers
 EFFORT_DECISION = 'd4-effort'
+PERSONA_DECISION = 'd3-figure'
+BELOW_LINE = ', below the line'
 ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`\'"(<\[])|^)(~?/[^\s`\'"<>()\[\]{}]+|[A-Za-z]:[\\/][^\s`\'"<>()\[\]{}]+)',
                            re.MULTILINE)
 
@@ -544,7 +561,7 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
                                decided_by, exact=exact)
     below = adequacy < line
     if below:
-        answer = '%s, below the line' % first['name']
+        answer = first['name'] + BELOW_LINE
         lane_from = outcome(definition, 'the adequacy Noul is below')
     else:
         answer = first['name']
@@ -588,21 +605,56 @@ def effort_decision(jev, definition, part, body, kind, persona, unaided, subject
 # The override
 # ---------------------------------------------------------------------------
 
+def effort_override(args, record):
+    """The override entry for the effort decision; its level is checked before the file is read."""
+    return {'decision': args.decision, 'decision_level': record.get('answer'), 'level_passed': args.level,
+            'reason': args.reason, 'at': stamp()}, None
+
+
+def persona_override(args, record):
+    """The override entry for the persona decision, or the reason it is refused."""
+    basis = record.get('uncertainty_basis') if isinstance(record.get('uncertainty_basis'), dict) else {}
+    probability = basis.get('adequacy')
+    if isinstance(probability, bool) or not isinstance(probability, (int, float)):
+        return None, ('the %s record carries no adequacy probability: the decision chose no persona to override '
+                      '(its answer: %s)' % (args.decision, record.get('answer')))
+    exact = record.get('exact_evidence') if isinstance(record.get('exact_evidence'), dict) else {}
+    excluded = exact.get('excluded') if isinstance(exact.get('excluded'), dict) else {}
+    roster = list(exact.get('eligible') or []) + list(excluded)
+    if args.persona not in roster:
+        return None, 'unknown persona %r: the roster lists %s' % (args.persona, ', '.join(roster) or 'no persona')
+    answer = record.get('answer')
+    persona = answer[:-len(BELOW_LINE)] if isinstance(answer, str) and answer.endswith(BELOW_LINE) else answer
+    if args.persona == persona:
+        return None, '%s is the decision\'s own persona: there is nothing to override' % args.persona
+    if not (args.parent_persona or '').strip():
+        return None, 'the parent\'s own persona is empty'
+    return {'decision': args.decision, 'decision_persona': persona, 'adequacy_probability': probability,
+            'parent_persona': args.parent_persona, 'persona_chosen': args.persona, 'reason': args.reason,
+            'at': stamp()}, None
+
+
 def override(argv):
     parser = argparse.ArgumentParser(prog='decide.py override',
-                                     description='Record a level the parent passes instead of the decision\'s.')
+                                     description='Record a level or persona the parent passes instead of the '
+                                                 'decision\'s.')
     parser.add_argument('--pending', required=True)
     parser.add_argument('--decision', required=True)
-    parser.add_argument('--level', required=True)
+    parser.add_argument('--level')
+    parser.add_argument('--persona')
+    parser.add_argument('--parent-persona')
     parser.add_argument('--reason', required=True)
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         return fail(1, 'the arguments could not be read')
-    if args.decision != EFFORT_DECISION:
-        return fail(1, 'only %s takes an override here, not %s' % (EFFORT_DECISION, args.decision))
-    if args.level not in LEVELS:
+    if args.decision not in (PERSONA_DECISION, EFFORT_DECISION):
+        return fail(1, 'only %s and %s take an override here, not %s' % (PERSONA_DECISION, EFFORT_DECISION,
+                                                                          args.decision))
+    if args.decision == EFFORT_DECISION and args.level not in LEVELS:
         return fail(1, 'unknown level %r: the levels are %s' % (args.level, ', '.join(LEVELS)))
+    if args.decision == PERSONA_DECISION and not args.persona:
+        return fail(1, 'an override of %s names the persona chosen instead, with --persona' % PERSONA_DECISION)
     if not args.reason.strip():
         return fail(1, 'the reason is empty')
     path = Path(args.pending)
@@ -615,12 +667,17 @@ def override(argv):
     found = [r for r in records or [] if isinstance(r, dict) and r.get('question') == args.decision]
     if not found:
         return fail(1, 'the pending file holds no %s record: %s' % (args.decision, path))
-    entry = {'decision': args.decision, 'decision_level': found[-1].get('answer'), 'level_passed': args.level,
-             'reason': args.reason, 'at': stamp()}
+    make = effort_override if args.decision == EFFORT_DECISION else persona_override
+    entry, refusal = make(args, found[-1])
+    if refusal:
+        return fail(1, refusal)
     kept = data.get('overrides')
     entries = list(kept['value']) if isinstance(kept, dict) and isinstance(kept.get('value'), list) else []
     entries.append(entry)
     data['overrides'] = stamped(entries)
+    if args.decision == PERSONA_DECISION:
+        data['triage_persona'] = stamped(args.persona)
+        data['chosen_by'] = stamped(OVERRIDE_CHOSEN_BY)
     written = path.with_name(path.name + '.writing')
     written.write_text(json.dumps(data, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
     os.replace(str(written), str(path))

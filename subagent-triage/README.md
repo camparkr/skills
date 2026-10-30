@@ -43,6 +43,8 @@ For each member, the dispatch record carries:
 
 - the kind of act its part asks for, and how sure the reading was;
 - the persona chosen, the facts the choice rested on, whether it was found adequate and any override with its reason;
+- the group a kind-to-group table pairs with the kind read (`kind_paired_grouping`), where the parent names one
+  with `--kind-groups` and `--kind-groups-key`, or `unrecorded` with the reason;
 - the parent's own effort level, chosen before it saw the skill's, then the skill's level and any override; and
 - the member id and attempt, so a re-dispatch counts against the member it repeats.
 

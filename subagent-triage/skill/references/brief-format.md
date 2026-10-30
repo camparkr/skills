@@ -129,9 +129,9 @@ against. A worktree branches from a commit and carries no uncommitted or untrack
 
 - any write-set file the parent has changed and not committed is committed first, by path; and
 - the worktree check, `scripts/worktree_check.py`, compares each write-set file's state in the main checkout with its
-  state at the commit the worktree will branch from: the remote's default branch, or the local `HEAD` where the
-  harness branches worktrees from it. Where they differ, or a file is on one side only, the dispatch is refused with
-  the reason, naming each file, before it is sent.
+  state at the commit the worktree will branch from: by default `head`, the local `HEAD`, or with `--base remote`
+  the remote's default branch (`origin/HEAD`), where the harness branches worktrees from that. Where they differ,
+  or a file is on one side only, the dispatch is refused with the reason, naming each file, before it is sent.
 
 The check refuses too a write set whose paths lie in two repositories, one nested in the other. A file the write set
 names that exists on neither side is one still to be created, and passes. A read-only member is not checked.

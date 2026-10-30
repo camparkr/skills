@@ -69,9 +69,10 @@ stage is:
   ratified folder carries the task's id and the status `ratified`;
 - otherwise `unrecorded (no specification found for <task-id>)`.
 
-No other file counts, whatever it carries: a proposal, findings and test criteria are named otherwise. A file whose
-front matter cannot be read is listed under `unreadable`, and a root that names no folder under
-`roots.naming_no_folder`. Check both before you go on.
+No other file counts, whatever it carries: a proposal, findings and test criteria are named otherwise. An amendment,
+a file whose name matches `*-amendment*`, never counts, even where another pattern matches it, as
+`*-architectural-spec*.md` can. A file whose front matter cannot be read is listed under `unreadable`, and a root
+that names no folder under `roots.naming_no_folder`. Check both before you go on.
 
 The decisions in step 3 read the stage again, with the same options.
 
@@ -110,7 +111,7 @@ For each part, decide first the effort you would give it unaided, before you see
 text to a file and run:
 
 ```bash
-python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file> --ledger <ledger> --session <session id> --member <id> --attempt <n> --effort-unaided <level> --task <task id> --build-root <folder> --ratified-root <folder>
+python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file> --ledger <ledger> --session <session id> --member <id> --attempt <n> --effort-unaided <level> --task <task id> --build-root <folder> --ratified-root <folder> [--kind-groups <file>] [--kind-groups-key pairs]
 ```
 
 `--effort-unaided` is one of `low`, `medium`, `high`, `xhigh` or `max`. The script stamps it from the clock before it
@@ -130,6 +131,12 @@ under other names, say where with `--rows-key` (`rows` by default), `--name-key`
 reads a nested key. `--file-root` is the folder the rows' file paths are read from, by default the roster's own
 folder.
 
+**The kind-to-group table** is optional. Name it with `--kind-groups <file>`: a JSON or YAML file whose object at
+`--kind-groups-key` (a dotted path, `pairs` by default) maps each kind to its group. Once the act decision reads a
+kind, the script reads the group paired with it as `kind_paired_grouping`, a fact for the pending file and never the
+record's own grouping. With no table, a table that cannot be read or holds no object at the key, a kind the table
+lacks, or no kind read, the value reads `unrecorded (<reason>)` and the triage goes on.
+
 The script writes the member's pending triage file, `<ledger>/.pending/<session id>/triage-<member>-<attempt>.json`,
 and prints its path as `pending_file`. Read the output:
 
@@ -141,6 +148,8 @@ and prints its path as `pending_file`. Read the output:
   its line: the part still goes to the persona ranked first, its brief says no persona was found adequate and its
   record marks the part below the line. Where `persona.answer` reads `none adequate (...)`, no persona was eligible,
   and the part goes back to you. Where it reads `unrecorded (...)`, the request failed: choose the persona yourself.
+- **`kind_paired_grouping`** is the group the kind-to-group table pairs with the kind read, or `unrecorded (...)` with
+  the reason. It is a fact for the record; it decides nothing.
 - **`effort.pass`** is the level to pass. It is the effort decision's level, or your own unaided level where that
   decision returned none.
 

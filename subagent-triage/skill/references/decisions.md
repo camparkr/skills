@@ -92,7 +92,8 @@ The records stay as the engine answered.
 
 Beside the records, the pending triage file holds, each stamped from the clock as it is written: the parent's unaided
 effort, first of all; the kind read; the persona chosen, the facts the choice rested on and who chose it; the
-below-the-line mark, where it applies; any failure, with its reason; and any overrides. The ledger skill's
+below-the-line mark, where it applies; the group the kind-to-group table pairs with the kind read
+(`kind_paired_grouping`), or `unrecorded (<reason>)`; any failure, with its reason; and any overrides. The ledger skill's
 `pending.schema.json` defines the file.
 
 Each request a definition makes is itself a call, with its own dispatch and return records through the ledger's

@@ -6,8 +6,8 @@ tags: [index]
 ---
 
 # Contents
-*Written by hand while the folder holds no script. Once the scripts are built, okf-projectdocs takes this index over
-and generates it from the files beside it.*
+*Written by hand: this folder holds no script of its own, so okf-projectdocs does not generate this index. It
+generates the indexes of `skill/scripts/` and `tests/`.*
 
 ## Documents
 
@@ -16,3 +16,4 @@ and generates it from the files beside it.*
 ## Subdirectories
 
 * [skill/](skill/) - directory: 0 scripts, 1 documents. The steps from checking the ledger to closing the plan, the three decision definitions in `skill/decisions/`, and `skill/references/` holding the decision definitions' format, the brief and the plan file.
+* [tests/](tests/) - directory: 8 scripts, 0 documents. The tests of the scripts, with their fixtures.

@@ -19,6 +19,7 @@ generated: { by: process:okf-projectdocs }
 * [test_capture_claude_code.py](test_capture_claude_code.py) - Tests for Claude Code's capture, `skill/scripts/capture_claude_code.py`, and its transcript reader.
 * [test_capture_codex.py](test_capture_codex.py) - Tests for Codex's capture, `skill/scripts/capture_codex.py`, and the Codex half of `transcripts.py`.
 * [test_capture_opencode.py](test_capture_opencode.py) - Tests for OpenCode's capture: `skill/scripts/capture_opencode.py` and the plugin that feeds it,
+* [test_check_records.py](test_check_records.py) - Controls for what the ledger records of a check's results and of the parent's decisions on them.
 * [test_commands.py](test_commands.py) - Tests for the command splitter, `skill/scripts/commands.py`, through the capture that uses it.
 * [test_dispatch_record.py](test_dispatch_record.py) - Controls for the dispatch record's new values: the session-start witness, the brief read, the pending triage file,
 * [test_fingerprints_prune.py](test_fingerprints_prune.py) - Tests for the fingerprints on each record and for `calls.py --prune`, which removes a session's copies.

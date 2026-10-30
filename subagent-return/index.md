@@ -6,8 +6,8 @@ tags: [index]
 ---
 
 # Contents
-*Written by hand while the folder holds no script. Once the checks are built, okf-projectdocs takes this index over
-and generates it from the files beside it.*
+*Written by hand: this folder holds no script of its own, so okf-projectdocs does not generate this index. It
+generates the indexes of `skill/scripts/` and `tests/`.*
 
 ## Documents
 
@@ -16,3 +16,4 @@ and generates it from the files beside it.*
 ## Subdirectories
 
 * [skill/](skill/) - directory: 0 scripts, 1 documents. What the parent does before sending a member, and how it reads the results, with `skill/references/` holding the output section's grammar and the instruction every member's brief carries.
+* [tests/](tests/) - directory: 7 scripts, 0 documents. The tests of the checks, with their fixtures.

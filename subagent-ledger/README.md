@@ -315,7 +315,9 @@ chosen, so a missing field is never mistaken for an empty one.
   ended. At the bound the return is written with the counters as the transcript stood, and the record says the wait
   did not finish. With none, the harness's hook time-out is the only bound; a value that is not a positive number
   writes an error line and leaves the wait unbounded. `wrapper.py --hook-entries` needs it, since each hook's time
-  limit is set above this wait plus `check_seconds` and a 30-second margin. Example: `"background_wait_seconds": 600`.
+  limit is set above this wait plus `check_seconds` and a 30-second margin. With a `gate` check named, the limit
+  holds one more `check_seconds`, since one tool call may run the gate and then the dispatch check. Example:
+  `"background_wait_seconds": 600`.
 
 ## Contents of this folder
 

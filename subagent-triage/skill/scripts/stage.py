@@ -7,8 +7,9 @@
 A build specification exists for a task when a file named `*-build-spec.md`, anywhere under a build folder, carries
 that task's id at the task key of its front matter. A ratified specification exists when a file named
 `*-surviving-spec.md` or `*-architectural-spec*.md`, anywhere under a ratified folder, carries that task's id and
-`ratified` at the status key. No other file counts, whatever it carries: a proposal, findings, test criteria and an
-amendment are named otherwise.
+`ratified` at the status key. No other file counts, whatever it carries: a proposal, findings and test criteria are
+named otherwise, and an amendment, a file whose name matches `*-amendment*`, never counts, though
+`*-architectural-spec*.md` matches it.
 
 The stage is, in this order:
 
@@ -44,6 +45,7 @@ import decide  # noqa: E402
 
 BUILD_NAMES = ('*-build-spec.md',)
 RATIFIED_NAMES = ('*-surviving-spec.md', '*-architectural-spec*.md')
+NEVER_NAMES = ('*-amendment*',)  # an amendment never counts, whatever else its name matches
 RATIFIED = 'ratified'
 BUILD_STAGE = 'build specification'
 RATIFIED_STAGE = 'ratified specification'
@@ -77,12 +79,14 @@ def folders(roots):
 
 
 def named_files(folder, patterns):
-    """Every file under `folder`, to any depth and following no link, whose name matches one of `patterns`."""
+    """Every file under `folder`, to any depth and following no link, whose name matches one of `patterns` and is
+    not an amendment's."""
     out = []
     for top, subfolders, files in os.walk(str(folder), followlinks=False):
         subfolders[:] = sorted(name for name in subfolders if name not in SKIPPED_FOLDERS)
         for name in sorted(files):
-            if any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns):
+            if any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns) and \
+                    not any(fnmatch.fnmatchcase(name, pattern) for pattern in NEVER_NAMES):
                 out.append(Path(top) / name)
     return out
 

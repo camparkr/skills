@@ -309,6 +309,32 @@ class RefusedDispatch(World):
         self.assertEqual([r['record'] for r in sent], ['dispatch'])
         self.assertTrue(sent[0]['harness_payload']['wrapper']['result'].startswith('not_checkable (check error: '))
 
+    def test_the_dispatch_record_keeps_the_check_s_own_reason_for_letting_the_call_through(self):
+        folder = self.ledger(checks={'dispatch': 'pass'})
+        self.assertIsNone(self.deny(self.wrapped('PreToolUse', self.dispatch_payload('toolu_t_0404'), folder)))
+        sent, = self.records(folder)
+        note = sent['harness_payload']['wrapper']
+        self.assertEqual(note['reason'], 'clean')
+        self.assertIs(note['refused'], False)
+        self.assertEqual(note['result'], 'checked')
+
+    def test_the_dispatch_record_keeps_the_check_s_own_reason_for_refusing_the_call(self):
+        folder = self.ledger(checks={'dispatch': 'refuse'})
+        self.deny(self.wrapped('PreToolUse', self.dispatch_payload('toolu_t_0405'), folder))
+        sent = [r for r in self.records(folder) if r['record'] == 'dispatch']
+        self.assertEqual(len(sent), 1)
+        note = sent[0]['harness_payload']['wrapper']
+        self.assertEqual(note['reason'], 'held: no output section')
+        self.assertIs(note['refused'], True)
+
+    def test_empty_a_check_that_errors_gives_no_reason_and_says_so_in_its_result(self):
+        folder = self.ledger(checks={'dispatch': 'error'})
+        self.wrapped('PreToolUse', self.dispatch_payload('toolu_t_0406'), folder)
+        sent, = self.records(folder)
+        note = sent['harness_payload']['wrapper']
+        self.assertIsNone(note['reason'])
+        self.assertTrue(note['result'].startswith('not_checkable (check error: '))
+
     def test_sc10_the_reason_class_is_in_reasons_json(self):
         classes = json.loads((SCRIPTS / 'reasons.json').read_text(encoding='utf-8'))['classes']
         self.assertIn('refused_by_check', classes)

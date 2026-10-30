@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Wrapper'
-description: 'One hook entry per event: runs the check the ledger folder names for it, then the capture, in one process. A check that errors or overruns refuses nothing; only a check''s own decision refuses a call.'
+description: 'One hook entry per event: runs the check the ledger folder names for it, then the capture, in one process. A check that errors or overruns refuses nothing. Only a check''s own decision refuses a call.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Wrapper
 
-One hook entry per event: runs the check the ledger folder names for it, then the capture, in one process. A check that errors or overruns refuses nothing; only a check's own decision refuses a call.
+One hook entry per event: runs the check the ledger folder names for it, then the capture, in one process. A check that errors or overruns refuses nothing. Only a check's own decision refuses a call.

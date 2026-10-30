@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Pending'
-description: 'Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session''s pending folder. Also joins a resumption to the dispatch it continues.'
+description: 'Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session''s pending folder. In the same folder it keeps each check result until the call''s return carries it, and reads the parent''s decisions on failing checks, which become disposition lines. It also joins a resumption to the dispatch it continues.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -21,4 +21,4 @@ x-component:
 
 # Pending
 
-Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session's pending folder. Also joins a resumption to the dispatch it continues.
+Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session's pending folder. In the same folder it keeps each check result until the call's return carries it, and reads the parent's decisions on failing checks, which become disposition lines. It also joins a resumption to the dispatch it continues.

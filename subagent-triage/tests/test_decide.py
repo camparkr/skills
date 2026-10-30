@@ -429,6 +429,65 @@ class DecideTests(unittest.TestCase):
         self.assertNotIn('overrides', json.loads(good.read_text(encoding='utf-8')))
 
 
+    # -- The no-persona override (R-11, ruled 30 October 2026) --------------------------------------------------------
+
+    def override_no_persona(self, *where, reason='a search across the repository: it takes no persona'):
+        return self.run_script(['override', '--decision', 'no-persona'] + list(where) + ['--reason', reason])
+
+    def test_r11_a_dispatch_with_no_persona_and_no_triage_gets_a_pending_file_holding_its_override(self):
+        path = self.pending_path(member='m21', attempt='2')
+        self.assertFalse(path.exists())
+        code, out = self.override_no_persona('--ledger', str(self.ledger), '--session', SESSION, '--member', 'm21',
+                                             '--attempt', '2')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['pending_file'], str(path))
+        data = json.loads(path.read_text(encoding='utf-8'))
+        entry, = data['overrides']['value']
+        self.assertEqual(entry['decision'], 'no-persona')
+        self.assertEqual(entry['reason'], 'a search across the repository: it takes no persona')
+        self.assertRegex(entry['at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d')
+        self.assertEqual(entry['decision_persona'], 'unrecorded (the pending file holds no d3-figure record)')
+        self.assertEqual(out['override'], entry)
+        self.assertEqual(data['chosen_by']['value'], 'the dispatching agent')
+        self.assertNotIn('triage_persona', data)
+        self.check_schema(data)
+
+    def test_r11_a_no_persona_override_on_a_triaged_file_names_the_decision_s_persona_and_clears_it(self):
+        code, out = self.run_decide('roster-two.yaml', member='m22')
+        self.assertEqual(code, 0, out)
+        path = self.pending_path(member='m22')
+        before = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(before['triage_persona']['value'], 'builder')
+        code, out = self.override_no_persona('--pending', str(path))
+        self.assertEqual(code, 0, out)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        entry = data['overrides']['value'][-1]
+        self.assertEqual(entry['decision'], 'no-persona')
+        self.assertEqual(entry['decision_persona'], 'builder')
+        # No persona goes out, so none is named; the decision's own record is left as it was.
+        self.assertNotIn('triage_persona', data)
+        self.assertEqual(data['chosen_by']['value'], 'the dispatching agent')
+        for key in before:
+            if key not in ('triage_persona', 'chosen_by'):
+                self.assertEqual(data[key], before[key], key)
+        self.check_schema(data)
+
+    def test_r11_likeness_a_no_persona_override_with_no_reason_or_no_file_is_refused(self):
+        code, out = self.override_no_persona('--ledger', str(self.ledger), '--session', SESSION, '--member', 'm23',
+                                             reason='  ')
+        self.assertEqual(code, 1, out)
+        self.assertIn('reason', out['error'])
+        self.assertFalse(self.pending_path(member='m23').exists())
+        # A named pending file must exist: a wrong path is never created.
+        missing = self.tmp / 'triage-m24-1.json'
+        code, out = self.override_no_persona('--pending', str(missing))
+        self.assertEqual(code, 1, out)
+        self.assertFalse(missing.exists())
+        # With neither the file nor the member's ledger, session and id, there is nowhere to write it.
+        code, out = self.override_no_persona()
+        self.assertEqual(code, 1, out)
+        self.assertIn('--pending', out['error'])
+
     # -- The persona override (D-3) ----------------------------------------------------------------------------------
 
     def override_persona(self, path, persona='cataloguer', parent='lead', reason='the part is a catalogue entry'):

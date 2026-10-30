@@ -160,6 +160,45 @@ class DispatchCheckTests(unittest.TestCase):
         dispatch = self.assert_let_through(said, rows)
         self.assertEqual(dispatch['caller'], 'agent-member-1')
 
+    # -- R-11's no-persona override (ruled 30 October 2026) ------------------------------------------------------------
+
+    def override_no_persona(self, member='m1', attempt='1', reason='a read-only search: it takes no persona'):
+        decide = SCRIPT.parent / 'decide.py'
+        done = subprocess.run([sys.executable, str(decide), 'override', '--decision', 'no-persona', '--ledger',
+                               str(self.ledger), '--session', SESSION, '--member', member, '--attempt', attempt,
+                               '--reason', reason], capture_output=True, text=True, env=clean_env(), timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        return json.loads(done.stdout)
+
+    def test_r11_a_dispatch_with_no_persona_recorded_as_an_override_is_let_through_with_its_reason(self):
+        self.override_no_persona()
+        said, rows = self.dispatch('Read %s and do it.' % self.brief())
+        dispatch = self.assert_let_through(said, rows)
+        reason = dispatch['harness_payload']['wrapper']['reason']
+        self.assertIn('no persona', reason)
+        self.assertIn('a read-only search: it takes no persona', reason)
+        entry, = dispatch['overrides']['value']
+        self.assertEqual(entry['decision'], 'no-persona')
+        self.assertEqual(self.left(), [])
+
+    def test_r11_empty_an_untriaged_dispatch_s_refusal_prints_the_no_persona_override_command(self):
+        said, rows = self.dispatch('Read %s and do it.' % self.brief())
+        reason = said['hookSpecificOutput']['permissionDecisionReason']
+        self.assertIn('override --decision no-persona', reason)
+        self.assertIn('--member m1 --attempt 1', reason)
+        self.assertIn('--session %s' % SESSION, reason)
+
+    def test_r11_likeness_another_member_s_no_persona_override_does_not_let_this_one_through(self):
+        self.override_no_persona(member='m2')
+        said, rows = self.dispatch('Read %s and do it.' % self.brief())
+        self.assertEqual(said['hookSpecificOutput']['permissionDecision'], 'deny')
+
+    def test_the_check_s_reason_for_a_triaged_dispatch_is_on_the_record(self):
+        self.triage_file()
+        said, rows = self.dispatch('Read %s and do it.' % self.brief())
+        dispatch = self.assert_let_through(said, rows)
+        self.assertIn('triage-m1-1.json exists', dispatch['harness_payload']['wrapper']['reason'])
+
     # -- TC-5 and R-22: a first file that is not a brief --------------------------------------------------------------
 
     def test_tc5_a_persona_file_named_before_the_brief_is_read_as_untriaged_and_refused(self):

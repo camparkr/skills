@@ -362,6 +362,27 @@ class CloseTests(unittest.TestCase):
         self.assertIn('reason', fault['fault'])
         self.assertIn('adequacy_probability', fault['fault'])
 
+    def test_r11_a_no_persona_override_with_its_reason_and_time_is_no_fault(self):
+        plan = self.plan([('m1', 'build')], [['m1']])
+        override = {'decision': 'no-persona', 'decision_persona': 'unrecorded (the pending file holds no d3-figure '
+                    'record)', 'reason': 'a read-only search', 'at': at(0, 25)}
+        self.dispatch('toolu_m1', 'm1', unaided=None, overrides=[override])
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 0, out)
+        self.assertEqual([f for f in out['faults'] if f['call_id'] == 'toolu_m1'], [])
+
+    def test_r11_likeness_a_no_persona_override_with_no_reason_is_a_fault(self):
+        plan = self.plan([('m1', 'build')], [['m1']])
+        override = {'decision': 'no-persona', 'at': at(0, 25)}
+        self.dispatch('toolu_m1', 'm1', unaided=None, overrides=[override])
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 3, out)
+        fault, = [f for f in out['faults'] if f['call_id'] == 'toolu_m1']
+        self.assertIn('no-persona', fault['fault'])
+        self.assertIn('reason', fault['fault'])
+
     # -- TC-22: the effort passed -------------------------------------------------------------------------------------
 
     def test_tc22_likeness_a_passed_effort_differing_from_d4_s_with_no_override_is_a_fault(self):

@@ -676,9 +676,9 @@ class DecideTests(unittest.TestCase):
                                     extra=['--kind-groups', str(FIXTURES / 'kind-groups.json')])
         self.assertEqual(code, 0, out)
         self.assertIsNone(out['act']['kind'])
-        value = self.pending(member='m26')['kind_paired_grouping']['value']
-        self.assertEqual(value, 'unrecorded (the act decision read no kind)')
-        self.check_schema(self.pending(member='m26'))
+        # A part read as none writes no pending file (U5), so the value is read from the output.
+        self.assertFalse(self.pending_path(member='m26').exists())
+        self.assertEqual(out['kind_paired_grouping'], 'unrecorded (the act decision read no kind)')
 
 if __name__ == '__main__':
     unittest.main()

@@ -47,7 +47,9 @@ value reads `unrecorded (<reason>)` and the triage goes on: the value is never g
 
 The pending triage file is <pending-ledger>/.pending/<session>/triage-<member>-<attempt>.json, in the ledger's
 pending.schema.json shape, each value stamped from the clock when it is decided. --pending-ledger defaults to
---ledger.
+--ledger. Where the act decision reads the part as none, no pending file is written, since the part is not dispatched:
+the output's `pending_file` is null and `no_pending_file` says why. A part whose act request failed still has its file,
+holding the failure.
 
 Output: one JSON object on standard output. Exit codes: 0 answered; 1 refused on its input; 2 cannot run (the ledger
 scripts, kinds.json or a decision file not found, or the roster unreadable); 3 a decision's request to Jev failed (the
@@ -928,16 +930,25 @@ def main(argv=None):
     if failures:
         pending['triage_failure'] = stamped('; '.join(failures))
 
-    folder = Path(args.pending_ledger or args.ledger) / '.pending' / ledger.pending_name(args.session)
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / ('%s.json' % ledger.pending_name('triage-%s-%s' % (args.member, args.attempt)))
-    path.write_text(json.dumps(pending, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
+    # A part the act decision read as none is never dispatched: a pending file for it would be listed at the close as
+    # never dispatched. A part whose act request failed is not one of these; its file holds the failure.
+    read_none = act['kind'] is None and not act.get('failure')
+    path, skipped = None, None
+    if read_none:
+        skipped = 'none written: the act decision read the part as none, so it is not dispatched'
+    else:
+        folder = Path(args.pending_ledger or args.ledger) / '.pending' / ledger.pending_name(args.session)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / ('%s.json' % ledger.pending_name('triage-%s-%s' % (args.member, args.attempt)))
+        path.write_text(json.dumps(pending, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
 
-    print(json.dumps({'delegation': str(delegation.resolve()), 'session': args.session, 'member': args.member,
-                      'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'stage': reading,
-                      'act': act,
-                      'persona': persona, 'kind_paired_grouping': paired, 'effort': effort, 'decision_records': records,
-                      'jev_calls': jev.calls, 'pending_file': str(path)}, indent=1, ensure_ascii=False))
+    shown = {'delegation': str(delegation.resolve()), 'session': args.session, 'member': args.member,
+             'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'stage': reading, 'act': act,
+             'persona': persona, 'kind_paired_grouping': paired, 'effort': effort, 'decision_records': records,
+             'jev_calls': jev.calls, 'pending_file': str(path) if path else None}
+    if skipped:
+        shown['no_pending_file'] = skipped
+    print(json.dumps(shown, indent=1, ensure_ascii=False))
     return 3 if failures else 0
 
 

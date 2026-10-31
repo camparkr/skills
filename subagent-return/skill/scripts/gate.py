@@ -10,8 +10,8 @@ refused, so a member can always hand back. It reads the session's ledger file, n
 While a `fail` of the session stands that no disposition record settles, a member's own dispatch included, it refuses
 each of the parent's tool calls, printing {"refuse": true, "reason": ...}. The reason names the refused call, each
 failing result with its call, member, attempt, check and id, the recommended repair it carries, and the command that
-records a disposition, naming with --ledger the ledger folder the gate read (disposition.command_for()). It lets
-through only:
+records a disposition, naming with --ledger the ledger folder the gate read and with --session the payload's session
+(disposition.command_for()). It lets through only:
 
   * Read, Grep and Glob, so the parent can inspect the output;
   * TaskStop;
@@ -49,7 +49,7 @@ def names_the_script(command):
     return isinstance(command, str) and SCRIPT_NAME in command
 
 
-def reason(tool, call, standing, folder, fault=None):
+def reason(tool, call, standing, folder, fault=None, session=None):
     lines = []
     if fault:
         lines.append('This Bash call runs the disposition script outside its grammar, so it is refused: %s. '
@@ -68,7 +68,7 @@ def reason(tool, call, standing, folder, fault=None):
             lines.append('  %s, check %s: %s. Recommended repair: %s' % (
                 item.id, item.result.get('check'), results.shown(item.result), item.result.get('repair')))
         lines.append('  To record your decision: %s' % disposition.command_for(
-            call_id, [item.id for item in items], folder))
+            call_id, [item.id for item in items], folder, session))
     lines.append('Read, Grep, Glob, TaskStop and AskUserQuestion still run.')
     return '\n'.join(lines)
 
@@ -96,7 +96,7 @@ def decide(payload, folder):
             return {'refuse': False, 'reason': '', 'standing': len(standing)}
         if names_the_script(given.get('command')):
             fault = why
-    return {'refuse': True, 'reason': reason(tool, payload.get('tool_use_id'), standing, folder, fault),
+    return {'refuse': True, 'reason': reason(tool, payload.get('tool_use_id'), standing, folder, fault, session),
             'standing': len(standing)}
 
 

@@ -144,12 +144,13 @@ def check(payload, folder):
 # The context handed to the parent
 # ---------------------------------------------------------------------------------------------------------------
 
-def disposition_command(call_id, ids, folder):
-    """The disposition command for `call_id`'s standing fails, naming the ledger folder this step read."""
-    return disposition.command_for(call_id, ids, folder)
+def disposition_command(call_id, ids, folder, session=None):
+    """The disposition command for `call_id`'s standing fails, naming the ledger folder this step read and the
+    session from the hook payload."""
+    return disposition.command_for(call_id, ids, folder, session)
 
 
-def summary(records, call_id, folder):
+def summary(records, call_id, folder, session=None):
     """Lines describing one call's results: the latest run's four results, then every fail with its repair."""
     found = [run for run in results.runs(records) if run.call_id == call_id]
     if not found:
@@ -173,7 +174,7 @@ def summary(records, call_id, folder):
             open_ids.append(item.id)
     if open_ids:
         lines.append('  A fail stops your tool calls, save reads and questions, until you record a decision: %s'
-                     % disposition_command(call_id, open_ids, folder))
+                     % disposition_command(call_id, open_ids, folder, session))
     return lines
 
 
@@ -203,7 +204,7 @@ def context(payload, folder):
                 calls.append(run.call_id)
     lines = []
     for call_id in calls:
-        lines += summary(records, call_id, folder)
+        lines += summary(records, call_id, folder, session)
     if lines:
         out['context'] = '\n'.join(lines)
     return out

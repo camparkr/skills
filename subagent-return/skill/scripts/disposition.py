@@ -26,8 +26,8 @@ failed writer is recorded, and the script says its merge still needs the user's 
 Otherwise it writes the pending file `<ledger>/.pending/<session>/disposition-<call id>.json` (`-2`, `-3` ... where one
 already waits), under the capture's lock, and prints what it recorded. The capture turns the file into a disposition
 record at this Bash call's PostToolUse and removes it; the gate reads only that record. The session is --session, or
-$CLAUDE_CODE_SESSION_ID; the ledger folder is --ledger, or the ledger's own rule. Exit 0 written; 1 refused; 2 cannot
-run.
+$CLAUDE_CODE_SESSION_ID where the command names none (the printed command names it: command_for()); the ledger folder
+is --ledger, or the ledger's own rule. Exit 0 written; 1 refused; 2 cannot run.
 """
 
 import argparse
@@ -120,15 +120,28 @@ def parse_command(command, cwd=None, script=None):
         return None, str(exc)
 
 
-def command_for(call_id, ids, folder):
+def literal_session(session):
+    """`session` where the grammar holds it as one bare word, else None: no forbidden character, no quote or
+    backslash, no whitespace, and no leading `-` that would read as a flag."""
+    if not isinstance(session, str) or not session or session.startswith('-'):
+        return None
+    if any(c in FORBIDDEN or c in '"\'\\' or c.isspace() for c in session):
+        return None
+    return session
+
+
+def command_for(call_id, ids, folder, session=None):
     """The command the gate's refusal and the parent's context print for recording a disposition on `call_id`'s
     results `ids`. It names the ledger folder the gate or the check read, by its absolute path in double quotes, so the
     parent's shell needs neither SUBAGENT_LEDGER_DIR nor a working folder inside the ledger's repository: the wrapper
-    sets that variable only for its own checks, never for the parent."""
+    sets that variable only for its own checks, never for the parent. It names `session`, the id from the hook
+    payload, as a literal `--session <id>`, so the parent's shell needs no CLAUDE_CODE_SESSION_ID. A session id the
+    grammar cannot hold as one bare word, or none, is left out, and the script falls back to that variable."""
+    named = literal_session(session)
     return ('python3 "%s" --call %s %s --kind <accepted|repaired|sent-back|re-dispatched|discarded> '
-            '--reason "<why>" --decided-by <parent|user> --ledger "%s"'
+            '--reason "<why>" --decided-by <parent|user>%s --ledger "%s"'
             % (Path(__file__).resolve(), call_id, ' '.join('--result %s' % i for i in ids),
-               os.path.abspath(str(folder))))
+               ' --session %s' % named if named else '', os.path.abspath(str(folder))))
 
 
 def ledger_side():

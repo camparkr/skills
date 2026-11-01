@@ -2,7 +2,7 @@
   "description": "Which eligible persona takes a part, and whether it is adequate. Exact eligibility first, then a Choice over the eligible personas, then a Noul on the chosen persona's adequacy. The adequacy line is 0.5, provisional, with no measured basis, until calibration replaces it.",
   "id": "d3-figure",
   "question": "Which eligible persona takes this part, and is it adequate?",
-  "definition_version": 0,
+  "definition_version": 1,
   "provisional": true,
   "basis": "The adequacy line of 0.5 is a starting value with no measured basis. Calibration on a labelled set replaces it.",
   "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice", "noul"]},
@@ -28,7 +28,7 @@
     "choice": {
       "type": "choice",
       "over": "the eligible personas",
-      "instructions": "This is one part of a piece of delegated work, given as `part`, with the kind of act it asks for and the task's stage. Each option is a persona with its group and its declared goal. Which persona's declared goal covers this part best? Judge the goal as declared, not the persona's name.",
+      "instructions": "This is one part of a piece of delegated work, given as `part`, with the kind of act it asks for and the task's stage. `kind_paired_group` is the group usually suited to that kind, and `dispatching_persona` and `dispatching_group` are who is sending the part; weigh both in the choice. Each option is a persona with its group and its declared goal. Which persona's declared goal covers this part best? Judge the goal as declared, not the persona's name.",
       "criterion_template": "{persona}, in {group}: {goal}"
     },
     "adequacy": {

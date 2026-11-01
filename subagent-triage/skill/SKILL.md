@@ -111,7 +111,7 @@ For each part, decide first the effort you would give it unaided, before you see
 text to a file and run:
 
 ```bash
-python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file> --ledger <ledger> --session <session id> --member <id> --attempt <n> --effort-unaided <level> --task <task id> --build-root <folder> --ratified-root <folder> [--kind-groups <file>] [--kind-groups-key pairs]
+python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file> --ledger <ledger> --session <session id> --member <id> --attempt <n> --effort-unaided <level> --task <task id> --build-root <folder> --ratified-root <folder> --parent-persona <your own persona> [--kind-groups <file>] [--kind-groups-key pairs] [--register <file>] [--register-rows-key rows] [--unit-key unit] [--custodian-key custodian]
 ```
 
 `--effort-unaided` is one of `low`, `medium`, `high`, `xhigh` or `max`. The script stamps it from the clock before it

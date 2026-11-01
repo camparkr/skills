@@ -9,6 +9,8 @@
                       [--task <id>] [--build-root <folder> ...] [--ratified-root <folder> ...]
                       [--task-key task_id] [--status-key status]
                       [--kind-groups <file>] [--kind-groups-key pairs]
+                      [--register <file>] [--register-rows-key rows] [--unit-key unit] [--custodian-key custodian]
+                      [--parent-persona <name>]
 
 The act decision (decisions/d1-act.json). Each of the eight kinds in the ledger skill's kinds.json is asked as a
 Noul, one request each, with the definition's instructions and the kind's test as its criterion. Their lines are
@@ -20,8 +22,21 @@ exact: a persona is a row of the roster whose file exists and whose frontmatter 
 ratified key, and whose name is not one given by --user. The roster is a YAML or JSON file; the --*-key options name
 where its rows and their fields are, so the script reads any roster without knowing its workspace. With no eligible
 persona, the answer is `none adequate` with the rule that emptied the set, and Jev is not asked. Otherwise one Choice
-over the eligible personas, each criterion `<persona>, in <group>: <goal>`, with the part, its kind and the task's
-stage as state, then the adequacy Noul on the persona it ranks first, against the definition's line.
+over the eligible personas, each criterion `<persona>, in <group>: <goal>`, with the part, its kind, the group the
+kind is paired with, the dispatching session's own persona and group, and the task's stage as state, then the
+adequacy Noul on the persona it ranks first, against the definition's line.
+
+The custodian rule. Where --register names a register (a YAML or JSON file whose list at --register-rows-key holds
+rows, each with a unit at --unit-key and a custodian at --custodian-key), a part that names a unit the register lists
+reaches only that unit's custodians: every other persona is excluded with the rule as its reason. A unit is named
+where its text stands whole in the delegation's body, with no path character joining it on either side, so an
+absolute path ending in the unit, or the unit with a suffix, is not it. A part naming several units needs a persona
+recorded against each. A part naming none, or no register given, changes nothing. A register that cannot be read
+stops the script with exit 2.
+
+The dispatching session's own persona is the name --parent-persona gives, and its group is that name's group on the
+roster, whether or not the persona is eligible. With no --parent-persona, each reads `unrecorded (<reason>)`; a name
+the roster lacks keeps the name and reads its group as unrecorded.
 
 The task's stage is read by stage.py, from the task --task names and the folders --build-root and --ratified-root
 name, before any decision is asked. It is a fact of the persona decision (its state, its exact evidence and the pending
@@ -41,9 +56,9 @@ folder --ledger names, under --session. The part's text goes to Jev only; no rec
 
 The group the part's kind is paired with (`kind_paired_grouping`) is read, once the act decision reads one kind, from
 the table --kind-groups names: a JSON or YAML file whose object at --kind-groups-key (a dotted path, `pairs` by
-default) maps each kind to its group. It is a fact for the pending file, never the record's own grouping. With no
-table given, a table that cannot be read or holds no object at the key, a kind the table lacks, or no kind read, the
-value reads `unrecorded (<reason>)` and the triage goes on: the value is never guessed.
+default) maps each kind to its group. It is a fact for the persona Choice and the pending file, never the record's
+own grouping. With no table given, a table that cannot be read or holds no object at the key, a kind the table lacks,
+or no kind read, the value reads `unrecorded (<reason>)` and the triage goes on: the value is never guessed.
 
 The pending triage file is <pending-ledger>/.pending/<session>/triage-<member>-<attempt>.json, in the ledger's
 pending.schema.json shape, each value stamped from the clock when it is decided. --pending-ledger defaults to
@@ -52,7 +67,7 @@ the output's `pending_file` is null and `no_pending_file` says why. A part whose
 holding the failure.
 
 Output: one JSON object on standard output. Exit codes: 0 answered; 1 refused on its input; 2 cannot run (the ledger
-scripts, kinds.json or a decision file not found, or the roster unreadable); 3 a decision's request to Jev failed (the
+scripts, kinds.json or a decision file not found, or the roster or register unreadable); 3 a decision's request to Jev failed (the
 output and the pending file record the failure).
 
 The override, when the parent passes a level other than the effort decision's:
@@ -301,8 +316,48 @@ def stamped(value):
 # The roster
 # ---------------------------------------------------------------------------
 
-def read_roster(args):
-    """(eligible, excluded): eligible as [{name, group, goal, file}] in roster order; excluded as {name: rule}."""
+CUSTODIAN_RULE = 'the part names a unit the register records against other personas only'
+
+
+def read_register(args):
+    """{unit: [custodian, ...]} from the register --register names, or None where it names none."""
+    if not args.register:
+        return None
+    try:
+        data = read_structured(args.register)
+    except (OSError, ValueError) as exc:
+        raise CannotRun('the register %s could not be read: %s' % (args.register, exc))
+    except CannotRun:
+        raise
+    except Exception as exc:
+        raise CannotRun('the register %s could not be read: %s: %s' % (args.register, type(exc).__name__, exc))
+    rows = data if isinstance(data, list) else dig(data, args.register_rows_key) if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise CannotRun('the register %s holds no list at %r' % (args.register, args.register_rows_key))
+    held = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        unit, custodian = dig(row, args.unit_key), dig(row, args.custodian_key)
+        if isinstance(unit, str) and unit.strip() and isinstance(custodian, str) and custodian.strip():
+            held.setdefault(unit.strip(), [])
+            if custodian.strip() not in held[unit.strip()]:
+                held[unit.strip()].append(custodian.strip())
+    return held
+
+
+def units_named(text, register):
+    """The register's units the text names, in register order. A unit is named where it stands whole: no path
+    character joins it on either side, so an absolute path ending in the unit, or the unit with a suffix, is not it."""
+    return [unit for unit in register or {}
+            if re.search(r'(?<![\w/.~-])' + re.escape(unit) + r'(?![\w/~-])(?!\.\w)', text)]
+
+
+def read_roster(args, text=''):
+    """(eligible, excluded, rows, units, groups): eligible as [{name, group, goal, file}] in roster order; excluded
+    as {name: rule}; the number of rows; the register's units `text` names; and every named row's group."""
+    register = read_register(args)
+    units = units_named(text, register)
     data = read_structured(args.roster)
     rows = data if isinstance(data, list) else dig(data, args.rows_key) if isinstance(data, dict) else None
     if rows is None:
@@ -311,11 +366,13 @@ def read_roster(args):
         raise CannotRun('the roster\'s %r is not a list' % args.rows_key)
     root = Path(args.file_root) if args.file_root else Path(args.roster).resolve().parent
     users = set(args.user or [])
-    eligible, excluded = [], {}
+    eligible, excluded, groups = [], {}, {}
     for row in rows:
         name = dig(row, args.name_key) if isinstance(row, dict) else None
         if not isinstance(name, str) or not name:
             continue
+        group = dig(row, args.group_key)
+        groups.setdefault(name, group if isinstance(group, str) and group else 'unrecorded (no group)')
         if name in users:
             excluded[name] = 'the persona is the user'
             continue
@@ -332,10 +389,23 @@ def read_roster(args):
         if not isinstance(goal, str) or not goal.strip():
             excluded[name] = 'its ratified declaration names no goal'
             continue
-        group = dig(row, args.group_key)
-        eligible.append({'name': name, 'group': group if isinstance(group, str) and group else 'unrecorded (no group)',
-                         'goal': ' '.join(goal.split()), 'file': str(path)})
-    return eligible, excluded, len(rows)
+        missing = [unit for unit in units if name not in register[unit]]
+        if missing:
+            excluded[name] = '%s (%s)' % (CUSTODIAN_RULE, ', '.join(missing))
+            continue
+        eligible.append({'name': name, 'group': groups[name], 'goal': ' '.join(goal.split()), 'file': str(path)})
+    return eligible, excluded, len(rows), units, groups
+
+
+def dispatching_facts(parent, groups):
+    """The dispatching session's own persona and group: the name --parent-persona gives, and its roster group."""
+    if not parent or not parent.strip():
+        reason = 'unrecorded (no --parent-persona was given)'
+        return reason, reason
+    parent = parent.strip()
+    if parent not in groups:
+        return parent, 'unrecorded (the roster lists no persona %s)' % parent
+    return parent, groups[parent]
 
 
 # ---------------------------------------------------------------------------
@@ -570,14 +640,19 @@ def act_decision(jev, definition, kinds, part, subject, quote, decided_by):
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by)
 
 
-def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subject, quote, decided_by, stage):
+def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subject, quote, decided_by, stage,
+                     facts):
+    """`facts` holds the Choice's facts beyond the part, kind and stage: kind_paired_group, dispatching_persona and
+    dispatching_group, with units_named for the record."""
     composition = definition['composition']
     line = composition['adequacy']['line']
     line_version = composition['adequacy']['line_version']
-    exact = {'eligible': [p['name'] for p in eligible], 'excluded': excluded, 'roster_rows': rows, 'kind': kind,
+    exact = {'eligible': [p['name'] for p in eligible], 'excluded': excluded, 'roster_rows': rows,
+             'units_named': facts['units_named'], 'kind': kind, 'kind_paired_group': facts['kind_paired_group'],
+             'dispatching_persona': facts['dispatching_persona'], 'dispatching_group': facts['dispatching_group'],
              'stage': stage}
-    section = {'eligible': exact['eligible'], 'excluded': excluded, 'line': line, 'line_version': line_version,
-               'choice': None, 'persona': None, 'adequacy': None, 'below_line': None}
+    section = {'eligible': exact['eligible'], 'excluded': excluded, 'units_named': facts['units_named'], 'line': line,
+               'line_version': line_version, 'choice': None, 'persona': None, 'adequacy': None, 'below_line': None}
     if not eligible:
         rules = sorted(set(excluded.values())) or ['the roster lists no persona']
         answer = 'none adequate (%s)' % '; '.join(rules)
@@ -585,7 +660,9 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
         basis = {'requests': 'none: no persona is eligible', 'line': line, 'line_version': line_version}
         return section, record(definition, subject, quote, answer, basis, outcome(definition, 'no persona'),
                                decided_by, exact=exact)
-    state = {'part': part, 'kind': kind, 'stage': stage}
+    state = {'part': part, 'kind': kind, 'kind_paired_group': facts['kind_paired_group'],
+             'dispatching_persona': facts['dispatching_persona'], 'dispatching_group': facts['dispatching_group'],
+             'stage': stage}
     template = composition['choice']['criterion_template']
     criteria = dict((p['name'], template.format(persona=p['name'], group=p['group'], goal=p['goal'])) for p in eligible)
     question = {'type': 'choice', 'instructions': composition['choice']['instructions'], 'criteria': criteria}
@@ -833,6 +910,11 @@ def parse(argv):
     parser.add_argument('--user', action='append')
     parser.add_argument('--kind-groups')
     parser.add_argument('--kind-groups-key', default='pairs')
+    parser.add_argument('--register')
+    parser.add_argument('--register-rows-key', default='rows')
+    parser.add_argument('--unit-key', default='unit')
+    parser.add_argument('--custodian-key', default='custodian')
+    parser.add_argument('--parent-persona')
     import stage
     stage.add_arguments(parser)
     return parser.parse_args(argv)
@@ -867,7 +949,7 @@ def main(argv=None):
         d1 = read_json(DECISIONS / 'd1-act.json')
         d3 = read_json(DECISIONS / 'd3-figure.json')
         d4 = read_json(DECISIONS / 'd4-effort.json')
-        eligible, excluded, rows = read_roster(args)
+        eligible, excluded, rows, units, groups = read_roster(args, body)
     except CannotRun as exc:
         return fail(2, str(exc))
     except Exception as exc:
@@ -896,12 +978,16 @@ def main(argv=None):
     failures = []
     if act.get('failure'):
         failures.append('act decision: %s' % act['failure'])
+    paired = kind_paired_group(args.kind_groups, args.kind_groups_key, act['kind'])
     if act['kind']:
         pending['kind'] = stamped(act['kind'])
+        own, own_group = dispatching_facts(args.parent_persona, groups)
+        facts = {'units_named': units, 'kind_paired_group': paired, 'dispatching_persona': own,
+                 'dispatching_group': own_group}
         persona, persona_record = persona_decision(jev, d3, part, act['kind'], eligible, excluded, rows,
                                                    '%s, read as %s' % (subject, act['kind']), quote,
                                                    '%s at %s' % (d3['engine']['name'], d3['engine']['model']),
-                                                   reading['stage'])
+                                                   reading['stage'], facts)
         records.append(persona_record)
         if persona.get('failure'):
             failures.append('persona decision: %s' % persona['failure'])
@@ -910,14 +996,15 @@ def main(argv=None):
             pending['persona_facts'] = stamped({'persona': persona['persona'], 'group': persona['group'],
                                                 'goal': persona['goal'], 'eligible': persona['eligible'],
                                                 'choice': persona['choice']['probabilities'],
-                                                'adequacy': persona['adequacy'], 'stage': reading['stage']})
+                                                'adequacy': persona['adequacy'], 'stage': reading['stage'],
+                                                'kind_paired_group': paired, 'dispatching_persona': own,
+                                                'dispatching_group': own_group})
             pending['chosen_by'] = stamped(CHOSEN_BY)
             if persona['below_line']:
                 pending['below_line'] = stamped({'probability': persona['adequacy'], 'line': persona['line'],
                                                  'line_version': persona['line_version']})
     else:
         persona = None
-    paired = kind_paired_group(args.kind_groups, args.kind_groups_key, act['kind'])
     pending['kind_paired_grouping'] = stamped(paired)
     effort, effort_record = effort_decision(jev, d4, part, body, act['kind'], persona and persona['persona'],
                                             args.effort_unaided, subject, quote,

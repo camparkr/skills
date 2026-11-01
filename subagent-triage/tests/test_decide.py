@@ -680,5 +680,119 @@ class DecideTests(unittest.TestCase):
         self.assertFalse(self.pending_path(member='m26').exists())
         self.assertEqual(out['kind_paired_grouping'], 'unrecorded (the act decision read no kind)')
 
+    # -- The custodian rule (d3-figure's third eligibility rule) -----------------------------------------------------
+
+    CUSTODIAN_RULE = 'the part names a unit the register records against other personas only'
+
+    def persona_choice_state(self):
+        found = [body['state'] for body in self.jev.seen
+                 if list(body['questions'].values())[0]['type'] == 'choice'
+                 and 'none' not in list(body['questions'].values())[0]['criteria']
+                 and sorted(list(body['questions'].values())[0]['criteria']) != sorted(LEVELS)]
+        self.assertEqual(len(found), 1)
+        return found[0]
+
+    def test_custodian_a_part_naming_a_unit_reaches_only_its_custodian(self):
+        # The builder's goal carries MARK-ADEQUATE, so without the rule the Choice would give it the part.
+        code, out = self.run_decide('roster-two.yaml', part='part-unit.md', member='m30',
+                                    extra=['--register', str(FIXTURES / 'register.yaml')])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['persona']['eligible'], ['cataloguer'])
+        self.assertIn(self.CUSTODIAN_RULE, out['persona']['excluded']['builder'])
+        self.assertIn('shelves/catalogue/entry.md', out['persona']['excluded']['builder'])
+        self.assertEqual(out['persona']['persona'], 'cataloguer')
+        self.assertEqual(out['persona']['units_named'], ['shelves/catalogue/entry.md'])
+        record = out['decision_records'][1]
+        self.assertEqual(record['exact_evidence']['units_named'], ['shelves/catalogue/entry.md'])
+        data = self.pending(member='m30')
+        self.assertEqual(data['persona_facts']['value']['eligible'], ['cataloguer'])
+        self.check_schema(data)
+
+    def test_custodian_the_register_s_keys_are_named_as_the_roster_s_are(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-unit.md', member='m31',
+                                    extra=['--register', str(FIXTURES / 'register-keys.json'),
+                                           '--register-rows-key', 'custody.entries', '--unit-key', 'item',
+                                           '--custodian-key', 'keeper'])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['persona']['eligible'], ['cataloguer'])
+
+    def test_custodian_likeness_a_path_like_the_unit_is_not_the_unit(self):
+        # An absolute path ending in the unit, and the unit with a suffix: neither is matched, so nothing changes.
+        code, out = self.run_decide('roster-two.yaml', part='part-unit-likeness.md', member='m32',
+                                    extra=['--register', str(FIXTURES / 'register.yaml')])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['persona']['eligible'], ['cataloguer', 'builder'])
+        self.assertEqual(out['persona']['units_named'], [])
+        self.assertEqual(out['persona']['persona'], 'builder')
+
+    def test_custodian_a_part_naming_no_unit_changes_nothing(self):
+        code, out = self.run_decide('roster-two.yaml', member='m33',
+                                    extra=['--register', str(FIXTURES / 'register.yaml')])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['persona']['eligible'], ['cataloguer', 'builder'])
+        self.assertEqual(out['persona']['excluded'], {})
+        self.assertEqual(out['persona']['persona'], 'builder')
+
+    def test_custodian_two_units_need_a_persona_recorded_against_each(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-two-units.md', member='m34',
+                                    extra=['--register', str(FIXTURES / 'register.yaml')])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['persona']['eligible'], [])
+        self.assertTrue(out['persona']['answer'].startswith('none adequate ('), out['persona']['answer'])
+        self.assertIn(self.CUSTODIAN_RULE, out['persona']['answer'])
+        self.assertEqual(sorted(out['persona']['units_named']),
+                         ['shelves/catalogue/entry.md', 'shelves/workshop/bench.md'])
+
+    def test_custodian_an_unreadable_register_cannot_run(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-unit.md', member='m35',
+                                    extra=['--register', str(self.tmp / 'missing.yaml')])
+        self.assertEqual(code, 2, out)
+        self.assertIn('missing.yaml', out['error'])
+        self.assertFalse(self.pending_path(member='m35').exists())
+
+    # -- The facts for the persona Choice (d3-figure's facts_for_the_choice) -----------------------------------------
+
+    def test_choice_facts_the_choice_is_sent_the_paired_group_and_the_dispatching_persona(self):
+        code, out = self.run_decide('roster-two.yaml', member='m36',
+                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json'),
+                                           '--parent-persona', 'cataloguer'])
+        self.assertEqual(code, 0, out)
+        state = self.persona_choice_state()
+        self.assertEqual(sorted(state), ['dispatching_group', 'dispatching_persona', 'kind', 'kind_paired_group',
+                                         'part', 'stage'])
+        self.assertEqual(state['kind'], 'build')
+        self.assertEqual(state['kind_paired_group'], 'makers')
+        self.assertEqual(state['dispatching_persona'], 'cataloguer')
+        self.assertEqual(state['dispatching_group'], 'library')
+        self.assertEqual(state['stage'], STAGE)
+        exact = out['decision_records'][1]['exact_evidence']
+        self.assertEqual((exact['kind_paired_group'], exact['dispatching_persona'], exact['dispatching_group']),
+                         ('makers', 'cataloguer', 'library'))
+        facts = self.pending(member='m36')['persona_facts']['value']
+        self.assertEqual((facts['kind_paired_group'], facts['dispatching_persona'], facts['dispatching_group']),
+                         ('makers', 'cataloguer', 'library'))
+
+    def test_choice_facts_an_ineligible_parent_s_group_is_still_read_from_the_roster(self):
+        code, out = self.run_decide('roster-likeness.yaml', member='m37', extra=['--parent-persona', 'the-user'])
+        self.assertEqual(code, 0, out)
+        state = self.persona_choice_state()
+        self.assertEqual(state['dispatching_persona'], 'the-user')
+        self.assertEqual(state['dispatching_group'], 'none')
+
+    def test_choice_facts_likeness_no_parent_persona_or_an_unlisted_one_is_unrecorded(self):
+        code, out = self.run_decide('roster-two.yaml', member='m38')
+        self.assertEqual(code, 0, out)
+        state = self.persona_choice_state()
+        self.assertEqual(state['dispatching_persona'], 'unrecorded (no --parent-persona was given)')
+        self.assertEqual(state['dispatching_group'], 'unrecorded (no --parent-persona was given)')
+        self.assertEqual(state['kind_paired_group'], 'unrecorded (no kind-to-group table was given)')
+        self.jev.seen.clear()
+        code, out = self.run_decide('roster-two.yaml', member='m39', extra=['--parent-persona', 'builde'])
+        self.assertEqual(code, 0, out)
+        state = self.persona_choice_state()
+        self.assertEqual(state['dispatching_persona'], 'builde')
+        self.assertEqual(state['dispatching_group'], 'unrecorded (the roster lists no persona builde)')
+
+
 if __name__ == '__main__':
     unittest.main()

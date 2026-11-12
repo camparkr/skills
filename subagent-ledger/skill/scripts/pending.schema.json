@@ -81,7 +81,8 @@
             "archiving",
             "transfer",
             "conversion",
-            "user-decision"
+            "user-decision",
+            "setting-right"
           ]
         },
         "stamped_at": {
@@ -132,6 +133,14 @@
         "triage_failure": {
           "$ref": "#/$defs/stampedText",
           "description": "That the planning skill's triage was attempted and failed, with the reason."
+        },
+        "harness_assigned": {
+          "$ref": "#/$defs/stampedText",
+          "description": "The harness the planning skill assigned the part: the harness its decision chose from the reachable list, the parent's own where the list names none or the decision gave none, or the one an override passed instead. It sits beside harness, the harness the call ran on."
+        },
+        "sender": {
+          "$ref": "#/$defs/stampedText",
+          "description": "Who sent the part: the dispatching session's own persona, or unrecorded (<reason>). Recorded as who sent the work; no decision reads it."
         }
       },
       "additionalProperties": false

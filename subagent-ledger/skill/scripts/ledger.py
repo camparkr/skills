@@ -86,7 +86,7 @@ SELECTABLE = (
     'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
     'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided', 'decision_records',
     'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by', 'overrides', 'below_line',
-    'triage_failure',
+    'triage_failure', 'harness_assigned', 'sender',
 )
 # Fields no longer selectable, and gone from the schema. A record written before they were retired
 # keeps them as written, and the reader prints them where a record carries them. A `fields` list
@@ -99,7 +99,7 @@ DISPATCH_ONLY = {'model_requested', 'effort_assigned', 'auth_route', 'brief_path
                  'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'triage_kind',
                  'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided',
                  'decision_records', 'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by',
-                 'overrides', 'below_line', 'triage_failure'}
+                 'overrides', 'below_line', 'triage_failure', 'harness_assigned', 'sender'}
 # The values a planning skill's pending triage file carries, absent where there was none.
 NO_PENDING_FILE = 'unrecorded (no pending triage file for this call)'
 RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'answer_source', 'isolation',
@@ -134,6 +134,8 @@ NOT_GIVEN = {
     'overrides': NO_PENDING_FILE,
     'below_line': NO_PENDING_FILE,
     'triage_failure': NO_PENDING_FILE,
+    'harness_assigned': NO_PENDING_FILE,
+    'sender': NO_PENDING_FILE,
     'task': 'unrecorded (the brief names no task)',
 }
 NO_VALUE = 'unrecorded (the capture supplied no value)'

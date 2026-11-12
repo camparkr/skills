@@ -132,7 +132,9 @@
         "chosen_by",
         "overrides",
         "below_line",
-        "triage_failure"
+        "triage_failure",
+        "harness_assigned",
+        "sender"
       ]
     },
     "fieldList": {
@@ -373,7 +375,8 @@
             "archiving",
             "transfer",
             "conversion",
-            "user-decision"
+            "user-decision",
+            "setting-right"
           ]
         },
         {
@@ -705,6 +708,14 @@
         "triage_failure": {
           "$ref": "#/$defs/stampedOrUnrecorded",
           "description": "Copied from the pending triage file with its stamp: that the planning skill's triage was attempted and failed, with the reason."
+        },
+        "harness_assigned": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: the harness the planning skill assigned the part: the harness its decision chose from the reachable list, the parent's own where the list names none or the decision gave none, or the one an override passed instead. It sits beside harness, the harness the call ran on."
+        },
+        "sender": {
+          "$ref": "#/$defs/stampedOrUnrecorded",
+          "description": "Copied from the pending triage file with its stamp: who sent the part: the dispatching session's own persona, or unrecorded (<reason>). Recorded as who sent the work; no decision reads it."
         },
         "check_results": {
           "type": "array",
@@ -2285,6 +2296,54 @@
                 "not": {
                   "contains": {
                     "const": "triage_failure"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "harness_assigned"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "harness_assigned"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "harness_assigned"
+                  }
+                }
+              }
+            }
+          },
+          "$comment": "A record written before this field existed lists it in neither list."
+        },
+        {
+          "if": {
+            "required": [
+              "sender"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fields_on": {
+                "contains": {
+                  "const": "sender"
+                }
+              },
+              "fields_not_chosen": {
+                "not": {
+                  "contains": {
+                    "const": "sender"
                   }
                 }
               }

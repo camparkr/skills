@@ -32,6 +32,10 @@
     {
       "name": "user-decision",
       "test": "Does the call need someone with authority over the work to set its objective, accept a risk no standing rule covers, or approve or refuse its result?"
+    },
+    {
+      "name": "setting-right",
+      "test": "Does the call set right the wording of a governing text, such as a project's rules, policies or standing definitions, from matter already decided, adding no ruling of its own, returning no verdict or review, and building no part of a program or a skill?"
     }
   ]
 }

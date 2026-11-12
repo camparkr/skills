@@ -35,7 +35,7 @@
     },
     {
       "name": "setting-right",
-      "test": "Does the call set right the wording of a governing text, such as a project's rules, policies or standing definitions, from matter already decided, adding no ruling of its own, returning no verdict or review, and building no part of a program or a skill?"
+      "test": "Does the call set right the wording of a governing text (a project's rules, policies or standing definitions, not the instructions of a skill, a prompt or any other capability), from matter already decided, adding no ruling of its own and returning no verdict or review?"
     }
   ]
 }

@@ -1,8 +1,8 @@
 {
-  "description": "Which eligible persona takes a part, and whether it is adequate. Exact eligibility first, then a Choice over the eligible personas, then a Noul on the chosen persona's adequacy. The adequacy line is 0.5, provisional, with no measured basis, until calibration replaces it.",
+  "description": "Which eligible persona takes a part, and whether it is adequate. Exact eligibility first; then, for a part whose form names a builder, the builder the settings' forms map names; otherwise a Choice over the eligible personas, then a Noul on the chosen persona's adequacy. The adequacy line is 0.5, provisional, with no measured basis, until calibration replaces it.",
   "id": "d3-figure",
   "question": "Which eligible persona takes this part, and is it adequate?",
-  "definition_version": 1,
+  "definition_version": 2,
   "provisional": true,
   "basis": "The adequacy line of 0.5 is a starting value with no measured basis. Calibration on a labelled set replaces it.",
   "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice", "noul"]},
@@ -14,13 +14,19 @@
       "the persona is not the user",
       "where the part names a capability, the persona is recorded against that capability in the register the settings name",
       "an unknown persona name is refused, never matched to a near name",
-      "where the part names no capability, every persona that meets the first two rules is eligible"
+      "where the part names no capability, every persona that meets the first two rules is eligible",
+      "where the part's kind is verdict-or-review, no persona in the group of the persona that did the work the part calls to account, read from that work's own dispatch record; where no record names that persona, no persona is chosen and the part goes back to the parent"
     ],
     "facts_for_the_choice": [
-      "each candidate's group and declared goal",
-      "the part's kind, and the group the settings pair with that kind",
-      "the dispatching session's own persona and group",
-      "the task's stage, read by the stage read"
+      "each candidate's declared goal and what it declares it does",
+      "the part's kind",
+      "the task's stage, read by the stage read",
+      "for a build part, its form, which names the builder through the settings' forms map"
+    ],
+    "never_facts": [
+      "who sent the part, its persona or its group: the pending file records the sender, and no decision reads it",
+      "any group a kind is paired with",
+      "a candidate's group, except in the verdict-or-review eligibility rule"
     ],
     "withheld_for_control": ["the task's stage"]
   },
@@ -28,13 +34,18 @@
     "choice": {
       "type": "choice",
       "over": "the eligible personas",
-      "instructions": "This is one part of a piece of delegated work, given as `part`, with the kind of act it asks for and the task's stage. `kind_paired_group` is the group usually suited to that kind, and `dispatching_persona` and `dispatching_group` are who is sending the part; weigh both in the choice. Each option is a persona with its group and its declared goal. Which persona's declared goal covers this part best? Judge the goal as declared, not the persona's name.",
-      "criterion_template": "{persona}, in {group}: {goal}"
+      "instructions": "This is one part of a piece of delegated work, given as `part`, with the kind of act it asks for and the task's stage. Each option is a persona with its declared goal and what it declares it does. Which persona's declared goal and acts cover this part best? Judge them as declared, not the persona's name.",
+      "criterion_template": "{persona}: {goal}",
+      "does_template": " It does: {does}"
+    },
+    "form_builder": {
+      "asked_of": "a build part whose form decision read code or model, at, above or below its line",
+      "rule": "the persona the settings' forms map names for that form, where it is eligible; no Choice and no adequacy Noul are asked"
     },
     "adequacy": {
       "type": "noul",
       "asked_of": "the persona the Choice ranks first",
-      "instructions": "This is one part of a piece of delegated work, given as `part`, and one persona's declared goal and group. Can this persona do this part within its declared goal, without the part asking for work its goal does not cover?",
+      "instructions": "This is one part of a piece of delegated work, given as `part`, and one persona's declared goal and acts. Can this persona do this part within its declared goal, without the part asking for work its goal does not cover?",
       "line": 0.5,
       "line_version": 0
     }
@@ -46,6 +57,19 @@
       "answer": "none adequate, with the eligibility rule that emptied the set",
       "route": "no persona is chosen; the part goes back to the parent",
       "lane": "reasoned"
+    },
+    {
+      "when": "the forms map names no eligible builder for the part's form",
+      "answer": "none adequate, with the reason the map gave no builder",
+      "route": "no persona is chosen; the part goes back to the parent as a finding",
+      "lane": "reasoned"
+    },
+    {
+      "when": "the forms map names an eligible builder for the part's form",
+      "answer": "that builder",
+      "route": "the dispatch goes to this persona unless the parent overrides",
+      "lane": "delivered",
+      "delegated_authority": "the parent, which an override withdraws"
     },
     {
       "when": "the adequacy Noul is at or above the line",
@@ -68,7 +92,7 @@
     }
   ],
   "override": {
-    "records": ["this decision's persona", "its adequacy probability", "the parent's own persona", "the persona chosen instead", "the reason", "the time"]
+    "records": ["this decision's persona", "its adequacy probability, or that the forms map chose it", "the parent's own persona", "the persona chosen instead", "the reason", "the time"]
   },
   "calibration": {
     "measure": "agreement with labels naming an acceptable set of personas, on the held-out half; whether withholding the stage moves a choice",

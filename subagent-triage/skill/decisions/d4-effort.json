@@ -1,10 +1,10 @@
 {
-  "description": "Which effort level a part warrants. A Choice over the levels the harness offers for the model in use, with exact facts given as state. An effort is always assigned, or recorded as unrecorded with its reason.",
+  "description": "Which effort level a part warrants. A Choice over the levels the assigned harness offers the assigned model, with exact facts given as state. An effort is always assigned, or recorded as unrecorded with its reason.",
   "id": "d4-effort",
   "question": "Which effort level does this part warrant?",
-  "definition_version": 0,
+  "definition_version": 1,
   "provisional": true,
-  "basis": "Version 0 is written from the level descriptions below, with no calibration. Each later version is written from calibration misses only and tested on a fresh held-out half.",
+  "basis": "Version 0 was written from the level descriptions below, with no calibration; version 1 asks over the levels the assigned harness offers the assigned model and adds both to the facts. Each later version is written from calibration misses only and tested on a fresh held-out half.",
   "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice"]},
   "decision_point_classification": "mixed",
   "subject": "the part, with its brief and inputs",
@@ -15,13 +15,15 @@
       "the task's stage",
       "the brief's length in words",
       "the number of input files the brief names, and their total size in bytes",
-      "the number of paths in the write set, or none"
-    ]
+      "the number of paths in the write set, or none",
+      "the harness and the model assigned to the part"
+    ],
+    "levels_offered": "the levels the reachable list gives the assigned model on the assigned harness, in this file's order; where the list gives none, or names neither, every level below"
   },
   "composition": {
     "choice": {
       "type": "choice",
-      "over": "the levels the harness offers for the model in use; a level the harness does not offer is left out before asking",
+      "over": "the levels the assigned harness offers the assigned model; a level it does not offer is left out before asking",
       "instructions": "This is one part of a piece of delegated work, given as `part`, with facts about it given as state. Which effort level does doing this part well warrant? Choose the lowest level at which the part is likely to be done right. A higher level is warranted only by what the part asks, not by its importance alone.",
       "criteria": {
         "low": "The part is routine and fully specified: a short, mechanical act whose result the brief nearly states, such as a lookup, a move or a format change, with little to weigh.",
@@ -40,7 +42,7 @@
       "lane": "reasoned"
     },
     {
-      "when": "the request fails or times out",
+      "when": "the request fails or times out, or the assigned model is offered no level this decision defines",
       "answer": "unrecorded (<reason>)",
       "route": "the parent's unaided level is passed, and the record says why",
       "lane": "reasoned"
@@ -52,7 +54,7 @@
     "calibrated": false
   },
   "override": {
-    "records": ["this decision's level", "the level passed instead", "the reason", "the time"]
+    "records": ["this decision's level", "the level passed instead, one the assigned harness offers the assigned model", "the reason", "the time"]
   },
   "calibration": {
     "needed_level": "the lowest level at which at least two of three runs on one model pass, judged by a fresh reader given the item's answer key and blind to the level",

@@ -1,5 +1,6 @@
 ---
 name: subagent-triage
+type: concept
 description: "Plans a team of subagents before any is sent, and records why each was sent where it was. For each part of a delegation it reads the kind of act, chooses an eligible persona and assigns an effort level, then writes the brief, the plan and a pending triage file the ledger copies onto the dispatch record. Use it before every dispatch that names a persona, whether the delegation is one part or many, and at the close to mark which hand-overs the parent used. Triggers: /subagent-triage, plan this team, split this delegation, which persona should take this, what effort should this get, close the plan. Not for searches, page fetches or MCP reads, for a message to a running subagent or for checking what a subagent returned (use subagent-return)."
 ---
 
@@ -111,7 +112,7 @@ For each part, decide first the effort you would give it unaided, before you see
 text to a file and run:
 
 ```bash
-python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file> --ledger <ledger> --session <session id> --member <id> --attempt <n> --effort-unaided <level> --task <task id> --build-root <folder> --ratified-root <folder> --parent-persona <your own persona> [--kind-groups <file>] [--kind-groups-key pairs] [--register <file>] [--register-rows-key rows] [--unit-key unit] [--custodian-key custodian]
+python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file> --ledger <ledger> --session <session id> --member <id> --attempt <n> --effort-unaided <level> --task <task id> --build-root <folder> --ratified-root <folder> --parent-persona <your own persona> [--does-key declaration.does] [--register <file>] [--register-rows-key rows] [--unit-key unit] [--custodian-key custodian] [--work-call <call id>] [--forms <file>] [--forms-key builders] [--reachable <file>] [--reachable-key harnesses] [--parent-harness <name>] [--parent-model <name>]
 ```
 
 `--effort-unaided` is one of `low`, `medium`, `high`, `xhigh` or `max`. The script stamps it from the clock before it
@@ -131,12 +132,6 @@ under other names, say where with `--rows-key` (`rows` by default), `--name-key`
 reads a nested key. `--file-root` is the folder the rows' file paths are read from, by default the roster's own
 folder.
 
-**The kind-to-group table** is optional. Name it with `--kind-groups <file>`: a JSON or YAML file whose object at
-`--kind-groups-key` (a dotted path, `pairs` by default) maps each kind to its group. Once the act decision reads a
-kind, the script reads the group paired with it as `kind_paired_grouping`, a fact for the pending file and never the
-record's own grouping. With no table, a table that cannot be read or holds no object at the key, a kind the table
-lacks, or no kind read, the value reads `unrecorded (<reason>)` and the triage goes on.
-
 The script writes the member's pending triage file, `<ledger>/.pending/<session id>/triage-<member>-<attempt>.json`,
 and prints its path as `pending_file`. Read the output:
 
@@ -148,8 +143,6 @@ and prints its path as `pending_file`. Read the output:
   its line: the part still goes to the persona ranked first, its brief says no persona was found adequate and its
   record marks the part below the line. Where `persona.answer` reads `none adequate (...)`, no persona was eligible,
   and the part goes back to you. Where it reads `unrecorded (...)`, the request failed: choose the persona yourself.
-- **`kind_paired_grouping`** is the group the kind-to-group table pairs with the kind read, or `unrecorded (...)` with
-  the reason. It is a fact for the record; it decides nothing.
 - **`effort.pass`** is the level to pass. It is the effort decision's level, or your own unaided level where that
   decision returned none.
 
@@ -168,6 +161,8 @@ override, record it in the member's pending triage file before the dispatch:
 ```bash
 python3 <skill>/scripts/decide.py override --pending <pending file> --decision d3-figure --persona <name> --parent-persona <your own persona> --reason "<why>"
 python3 <skill>/scripts/decide.py override --pending <pending file> --decision d4-effort --level <level> --reason "<why>"
+python3 <skill>/scripts/decide.py override --pending <pending file> --decision d6-harness --harness <name> --reason "<why>"
+python3 <skill>/scripts/decide.py override --pending <pending file> --decision d7-model --model <name> --reason "<why>"
 ```
 
 **The persona.** Override it before you write the brief: the brief writer refuses a persona the pending file does

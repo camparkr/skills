@@ -1,30 +1,44 @@
 #!/usr/bin/env python3
-"""Ask Jev the act, persona and effort decisions for one part of a delegation, and write its pending triage file.
+"""Ask Jev the act, form, persona, harness, model and effort decisions for one part of a delegation, and write its
+pending triage file.
 
     python3 decide.py --delegation <file> --roster <file> --ledger <folder> --session <id> --member <id>
                       --effort-unaided <level> [--attempt 1] [--pending-ledger <folder>] [--key-from-zsh]
                       [--rows-key rows] [--name-key name] [--group-key group] [--file-key file]
-                      [--goal-key declaration.goal] [--ratified-key declaration-ratified]
+                      [--goal-key declaration.goal] [--does-key declaration.does] [--ratified-key declaration-ratified]
                       [--file-root <folder>] [--user <name> ...]
                       [--task <id>] [--build-root <folder> ...] [--ratified-root <folder> ...]
                       [--task-key task_id] [--status-key status]
-                      [--kind-groups <file>] [--kind-groups-key pairs]
                       [--register <file>] [--register-rows-key rows] [--unit-key unit] [--custodian-key custodian]
+                      [--work-call <call id>] [--forms <file>] [--forms-key builders]
+                      [--reachable <file>] [--reachable-key harnesses] [--parent-harness <name>] [--parent-model <name>]
                       [--parent-persona <name>]
 
-The act decision (decisions/d1-act.json). Each of the eight kinds in the ledger skill's kinds.json is asked as a
+The act decision (decisions/d1-act.json). Each of the nine kinds in the ledger skill's kinds.json is asked as a
 Noul, one request each, with the definition's instructions and the kind's test as its criterion. Their lines are
-unset, so each probability is printed and no line is applied. The provisional Choice over the eight kinds and `none`,
-each criterion the kind's test, gives the answer.
+unset, so each probability is printed and no line is applied. The provisional Choice over the nine kinds, `none` and
+`two-or-more`, each criterion the kind's test, gives the answer. A part read as `none` goes back to the parent as a
+finding; one read as `two-or-more` goes back to be split into one part per kind, each triaged on its own. Neither
+gets a persona or a pending file.
 
-The persona decision (decisions/d3-figure.json), asked only when the act decision read one kind. Eligibility is
-exact: a persona is a row of the roster whose file exists and whose frontmatter carries a non-empty value at the
-ratified key, and whose name is not one given by --user. The roster is a YAML or JSON file; the --*-key options name
-where its rows and their fields are, so the script reads any roster without knowing its workspace. With no eligible
-persona, the answer is `none adequate` with the rule that emptied the set, and Jev is not asked. Otherwise one Choice
-over the eligible personas, each criterion `<persona>, in <group>: <goal>`, with the part, its kind, the group the
-kind is paired with, the dispatching session's own persona and group, and the task's stage as state, then the
-adequacy Noul on the persona it ranks first, against the definition's line.
+The form decision (decisions/d5-form.json), asked only of a part read as `build`: one Choice, whether code or a
+model's inference decides the output of what the part builds, or both, or none (it builds no capability). `code` or
+`model` names the builder through the forms map --forms names: a JSON or YAML file whose object at --forms-key maps
+`code` and `model` to a persona each. `both` sends the part back to be split. `none` leaves the persona to the
+persona Choice. An answer below the definition's line goes to the builder the map names for `model`, and its record
+marks it below the line with its probability, the line and the line's version.
+
+The persona decision (decisions/d3-figure.json), asked only when the act decision read one kind and nothing split
+the part. Eligibility is exact: a persona is a row of the roster whose file exists and whose frontmatter carries a
+non-empty value at the ratified key and a goal, and whose name is not one given by --user. The roster is a YAML or
+JSON file; the --*-key options name where its rows and their fields are, so the script reads any roster without
+knowing its workspace. Where the form named a builder, the decision's answer is that builder, if it is eligible, and
+Jev is not asked; a map with no builder for the form, or a builder not eligible, sends the part back as a finding.
+With no eligible persona, the answer is `none adequate` with the rule that emptied the set, and Jev is not asked.
+Otherwise one Choice over the eligible personas, each criterion `<persona>: <goal>`, followed by what it declares it
+does (--does-key) where it declares it, with the part, its kind and the task's stage as state; then the adequacy Noul
+on the persona it ranks first, against the definition's line. No decision reads who sent the part, or any group a
+kind is paired with.
 
 The custodian rule. Where --register names a register (a YAML or JSON file whose list at --register-rows-key holds
 rows, each with a unit at --unit-key and a custodian at --custodian-key), a part that names a unit the register lists
@@ -34,41 +48,51 @@ absolute path ending in the unit, or the unit with a suffix, is not it. A part n
 recorded against each. A part naming none, or no register given, changes nothing. A register that cannot be read
 stops the script with exit 2.
 
-The dispatching session's own persona is the name --parent-persona gives, and its group is that name's group on the
-roster, whether or not the persona is eligible. With no --parent-persona, each reads `unrecorded (<reason>)`; a name
-the roster lacks keeps the name and reads its group as unrecorded.
+The review rule. A part read as `verdict-or-review` calls work to account. The persona that did that work is read
+from the work's own dispatch record: the record in the ledger folder whose call id --work-call names, at its
+`persona-name`. Every persona in that persona's roster group is excluded, with the rule as its reason. Where no
+--work-call is given, no record has the id, or the record or the roster gives no persona or group, no persona is
+chosen and the part goes back to the parent as a finding. The sender is never read for this rule.
+
+The sender, --parent-persona, is recorded in the pending file as `sender`, who sent the part, or `unrecorded
+(<reason>)`. No decision reads it.
 
 The task's stage is read by stage.py, from the task --task names and the folders --build-root and --ratified-root
 name, before any decision is asked. It is a fact of the persona decision (its state, its exact evidence and the pending
 file's persona facts) and of the effort decision.
 
-The effort decision (decisions/d4-effort.json), asked after the other two whatever they read. The parent's unaided
-level, --effort-unaided, is stamped from the clock before Jev is asked anything. One Choice over the levels the Agent
-tool offers (low, medium, high, xhigh, max), with the part and these exact facts as state: the kind (or `none`), the
-persona (or `none`), the stage as stage.py read it, the delegation's length in words, how many of
-the absolute paths it names outside its write set are files and their total size in bytes, and the number of paths
-in its `## Write set` (or `none`). Where the request fails, the level reads `unrecorded (<reason>)` and the output
-says to pass the unaided level.
+The harness decision (decisions/d6-harness.json) and the model decision (decisions/d7-model.json), asked after the
+persona decision and before the effort decision, whatever the others read. The reachable list --reachable names is a
+JSON or YAML file whose list at --reachable-key holds each harness, with its `name`, a `description` and its `models`,
+each with a `name`, a `description` and the effort `levels` it is offered on that harness. The harness is chosen from
+the list, then the model from the models it gives that harness: with one listed, it is assigned without asking; with
+several, one Choice, each criterion `<name>: <description>`. Where the list names none, the parent's own is assigned:
+--parent-harness (by default the harness the session's own variables name) and --parent-model. Where a request
+fails or answers off the list, the parent's own is passed and the record says why. An answer off the list is never
+assigned. A reachable list that cannot be read, or a harness or model with no name, stops the script with exit 2.
+
+The effort decision (decisions/d4-effort.json), asked last whatever the others read. The parent's unaided level,
+--effort-unaided, is stamped from the clock before Jev is asked anything. One Choice over the levels the assigned
+harness offers the assigned model (every level, low to max, where the list gives none), with the part and these exact
+facts as state: the kind (or `none`), the persona (or `none`), the stage as stage.py read it, the delegation's length
+in words, how many of the absolute paths it names outside its write set are files and their total size in bytes, the
+number of paths in its `## Write set` (or `none`), and the harness and model assigned. Where the request fails, or no
+level is offered, the level reads `unrecorded (<reason>)` and the output says to pass the unaided level.
 
 Each Jev request is recorded as its own dispatch and return through the ledger skill's ledger.py, in the ledger
 folder --ledger names, under --session. The part's text goes to Jev only; no record holds it. A retry on HTTP 429 or
 5xx is a request of its own with its own pair.
 
-The group the part's kind is paired with (`kind_paired_grouping`) is read, once the act decision reads one kind, from
-the table --kind-groups names: a JSON or YAML file whose object at --kind-groups-key (a dotted path, `pairs` by
-default) maps each kind to its group. It is a fact for the persona Choice and the pending file, never the record's
-own grouping. With no table given, a table that cannot be read or holds no object at the key, a kind the table lacks,
-or no kind read, the value reads `unrecorded (<reason>)` and the triage goes on: the value is never guessed.
-
 The pending triage file is <pending-ledger>/.pending/<session>/triage-<member>-<attempt>.json, in the ledger's
-pending.schema.json shape, each value stamped from the clock when it is decided. --pending-ledger defaults to
---ledger. Where the act decision reads the part as none, no pending file is written, since the part is not dispatched:
-the output's `pending_file` is null and `no_pending_file` says why. A part whose act request failed still has its file,
-holding the failure.
+pending.schema.json shape, each value stamped from the clock when it is decided: among them `harness_assigned`, the
+harness to pass, and `sender`. --pending-ledger defaults to --ledger. Where the act decision reads the part as none,
+or a decision splits it, no pending file is written, since the part is not dispatched: the output's `pending_file`
+is null and `no_pending_file` says why. A part whose act request failed still has its file, holding the failure.
 
-Output: one JSON object on standard output. Exit codes: 0 answered; 1 refused on its input; 2 cannot run (the ledger
-scripts, kinds.json or a decision file not found, or the roster or register unreadable); 3 a decision's request to Jev failed (the
-output and the pending file record the failure).
+Output: one JSON object on standard output, whose `harness.pass`, `model.pass` and `effort.pass` are the values to
+pass. Exit codes: 0 answered; 1 refused on its input; 2 cannot run (the ledger scripts, kinds.json or a decision file
+not found, or the roster, register or reachable list unreadable); 3 a decision's request to Jev failed (the output
+and the pending file record the failure).
 
 The override, when the parent passes a level other than the effort decision's:
 
@@ -76,7 +100,19 @@ The override, when the parent passes a level other than the effort decision's:
 
 It appends to the pending file's `overrides` list the decision's level (read from the file's own d4-effort record),
 the level passed instead, the reason and the time, and restamps the list. It refuses, with exit 1 and the file
-unchanged, a file with no d4-effort record, an unknown level, an empty reason or another decision.
+unchanged, a file with no d4-effort record, an unknown level, a level the record's `levels_offered` leaves out, an
+empty reason or another decision.
+
+The override, when the parent passes a harness or a model other than the decision's:
+
+    python3 decide.py override --pending <file> --decision d6-harness --harness <name> --reason <text>
+    python3 decide.py override --pending <file> --decision d7-model --model <name> --reason <text>
+
+It appends to the `overrides` list the decision's value (`decision_harness` or `decision_model`, read from the file's
+own record), the value passed instead (`harness_passed` or `model_passed`), the reason and the time. An override of
+the harness also sets `harness_assigned` to the harness passed, restamped. It refuses, with exit 1 and the file
+unchanged, a file with no such record, a value off the reachable list the record names (the parent's own where it
+names none), the decision's own value and an empty reason.
 
 The override, when the parent sends the part to a persona other than the persona decision's:
 
@@ -85,12 +121,13 @@ The override, when the parent sends the part to a persona other than the persona
 
 It appends to the `overrides` list the six values an override of the persona records, the first two read from the
 file's own d3-figure record: the decision's persona (`decision_persona`, its answer less any below-the-line mark),
-its adequacy probability (`adequacy_probability`), the parent's own persona (`parent_persona`), the persona chosen
-instead (`persona_chosen`), the reason and the time. It sets `triage_persona` to the persona chosen and `chosen_by`
-to the dispatching agent, each restamped; the decision's record is left as it was. It refuses, with exit 1 and the
-file unchanged, a file with no d3-figure record, a record with no adequacy probability (the decision chose no persona
-to override), a persona the roster does not list (the record's eligible and excluded names: an unknown name is
-refused, never matched), the decision's own persona, an empty parent persona and an empty reason.
+its adequacy probability (`adequacy_probability`, or `not asked (...)` where the forms map named the builder), the
+parent's own persona (`parent_persona`), the persona chosen instead (`persona_chosen`), the reason and the time. It
+sets `triage_persona` to the persona chosen and `chosen_by` to the dispatching agent, each restamped; the decision's
+record is left as it was. It refuses, with exit 1 and the file unchanged, a file with no d3-figure record, a record
+with no adequacy probability and no forms map's builder (the decision chose no persona to override), a persona the
+roster does not list (the record's eligible and excluded names: an unknown name is refused, never matched), the
+decision's own persona, an empty parent persona and an empty reason.
 
 The override, when the parent sends the part with no persona at all (R-11: such a dispatch goes out as an override
 with its reason):
@@ -156,10 +193,22 @@ OVERRIDE_CHOSEN_BY = 'the dispatching agent'
 LEVELS = ('low', 'medium', 'high', 'xhigh', 'max')  # the levels the Agent tool offers
 EFFORT_DECISION = 'd4-effort'
 PERSONA_DECISION = 'd3-figure'
+FORM_DECISION = 'd5-form'
+HARNESS_DECISION = 'd6-harness'
+MODEL_DECISION = 'd7-model'
 NO_PERSONA = 'no-persona'  # R-11: the parent's dispatch with no persona, recorded as an override
 BELOW_LINE = ', below the line'
-ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`\'"(<\[])|^)(~?/[^\s`\'"<>()\[\]{}]+|[A-Za-z]:[\\/][^\s`\'"<>()\[\]{}]+)',
-                           re.MULTILINE)
+SPLIT_LABEL = 'two-or-more'  # the act Choice's answer for a part that asks for two or more kinds (R-37)
+MAKING_KIND = 'build'  # the kind whose parts the form decision asks of (R-38)
+REVIEW_KIND = 'verdict-or-review'  # the kind whose candidates lose the group of the work's own persona (R-37)
+FORMS = ('code', 'model')  # the form answers the settings' forms map names a builder for
+MAP_CHOSEN = 'not asked (the forms map named the builder)'
+NO_SENDER = 'unrecorded (no --parent-persona was given)'
+REVIEW_RULE = 'the persona shares its group (%s) with %s, who performed the work called to account'
+# An absolute path: `~/` and one name or more, a drive letter, or `/` and at least two names. A word of one name
+# after `/`, such as a quoted slash command (`/dry-run`), is not read as a path (dry run 17, H4).
+ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`\'"(<\[])|^)(~/[^\s`\'"<>()\[\]{}]+|/[^\s`\'"<>()\[\]{}/]+/[^\s`\'"<>()\[\]{}]*'
+                           r'|[A-Za-z]:[\\/][^\s`\'"<>()\[\]{}]+)', re.MULTILINE)
 
 
 class CannotRun(Exception):
@@ -283,27 +332,6 @@ def git_commit(path):
     return done.stdout.strip() or None
 
 
-def kind_paired_group(path, key, kind):
-    """The group the table at `path` pairs with `kind`, or `unrecorded (<reason>)`. Never raises, never guesses."""
-    if not kind:
-        return 'unrecorded (the act decision read no kind)'
-    if not path:
-        return 'unrecorded (no kind-to-group table was given)'
-    try:
-        data = read_structured(path)
-    except (OSError, ValueError, CannotRun) as exc:
-        return 'unrecorded (the kind-to-group table %s could not be read: %s)' % (path, exc)
-    except Exception as exc:
-        return 'unrecorded (the kind-to-group table %s could not be read: %s: %s)' % (path, type(exc).__name__, exc)
-    pairs = dig(data, key)
-    if not isinstance(pairs, dict):
-        return 'unrecorded (the kind-to-group table %s holds no pairs at %r)' % (path, key)
-    group = pairs.get(kind)
-    if not isinstance(group, str) or not group.strip():
-        return 'unrecorded (the kind-to-group table %s pairs no group with %s)' % (path, kind)
-    return group
-
-
 def stamp():
     return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
@@ -389,23 +417,134 @@ def read_roster(args, text=''):
         if not isinstance(goal, str) or not goal.strip():
             excluded[name] = 'its ratified declaration names no goal'
             continue
+        does = dig(meta, args.does_key)
         missing = [unit for unit in units if name not in register[unit]]
         if missing:
             excluded[name] = '%s (%s)' % (CUSTODIAN_RULE, ', '.join(missing))
             continue
-        eligible.append({'name': name, 'group': groups[name], 'goal': ' '.join(goal.split()), 'file': str(path)})
+        eligible.append({'name': name, 'group': groups[name], 'goal': ' '.join(goal.split()),
+                         'does': ' '.join(does.split()) if isinstance(does, str) and does.strip() else None,
+                         'file': str(path)})
     return eligible, excluded, len(rows), units, groups
 
 
-def dispatching_facts(parent, groups):
-    """The dispatching session's own persona and group: the name --parent-persona gives, and its roster group."""
-    if not parent or not parent.strip():
-        reason = 'unrecorded (no --parent-persona was given)'
-        return reason, reason
-    parent = parent.strip()
-    if parent not in groups:
-        return parent, 'unrecorded (the roster lists no persona %s)' % parent
-    return parent, groups[parent]
+def sender_of(parent):
+    """Who sent the part: the name --parent-persona gives, or unrecorded. Recorded only; no decision reads it."""
+    return parent.strip() if parent and parent.strip() else NO_SENDER
+
+
+def work_performer(folder, call_id):
+    """(the persona that did the work `call_id` names, read from that work's own dispatch record in the ledger
+    folder, or None; and why there is none). Never read from the sender."""
+    if not call_id or not call_id.strip():
+        return None, 'no --work-call names the work the part calls to account'
+    call_id = call_id.strip()
+    for path in sorted(Path(folder).glob('*.jsonl')):
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if call_id not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and row.get('record') == 'dispatch' and row.get('call_id') == call_id:
+                persona = row.get('persona-name')
+                if isinstance(persona, str) and persona.strip() and not persona.startswith('unrecorded ('):
+                    return persona.strip(), None
+                return None, 'the dispatch record of %s names no persona (%s)' % (call_id, persona)
+    return None, 'no dispatch record in %s has the call id %s' % (folder, call_id)
+
+
+def review_rule(args, eligible, excluded, groups):
+    """(eligible, excluded, facts, finding) for a verdict-or-review part: every persona in the group of the persona
+    that did the work is excluded; where no record names that persona, the finding says why."""
+    performer, why = work_performer(args.ledger, args.work_call)
+    group = groups.get(performer) if performer else None
+    if performer and (not isinstance(group, str) or group.startswith('unrecorded (')):
+        why = 'the roster gives no group for %s, who did the work %s names' % (performer, args.work_call)
+        performer = None
+    if performer is None:
+        return eligible, excluded, {'work_call': args.work_call or NONE_LABEL}, \
+            'no persona is recorded as having done the work called to account: %s' % why
+    kept, excluded = [], dict(excluded)
+    for persona in eligible:
+        if persona['group'] == group:
+            excluded[persona['name']] = REVIEW_RULE % (group, performer)
+        else:
+            kept.append(persona)
+    return kept, excluded, {'work_call': args.work_call, 'work_persona': performer, 'work_group': group}, None
+
+
+def form_builder(args, form):
+    """(the persona the settings' forms map names for `form`, or None; and why there is none)."""
+    if not args.forms:
+        return None, 'no forms map was given, so no builder is named for %s' % form
+    try:
+        data = read_structured(args.forms)
+    except CannotRun as exc:
+        return None, 'the forms map %s could not be read for %s: %s' % (args.forms, form, exc)
+    except Exception as exc:
+        return None, 'the forms map %s could not be read for %s: %s: %s' % (args.forms, form, type(exc).__name__, exc)
+    builders = dig(data, args.forms_key) if isinstance(data, dict) else None
+    name = builders.get(form) if isinstance(builders, dict) else None
+    if not isinstance(name, str) or not name.strip():
+        return None, 'the forms map %s names no builder for %s at %r' % (args.forms, form, args.forms_key)
+    return name.strip(), None
+
+
+def read_reachable(args):
+    """The reachable list as [{name, description, models: [{name, description, levels}]}]; [] where none is named.
+    A list that cannot be read, or a harness or model with no name, stops the script."""
+    if not args.reachable:
+        return []
+    try:
+        data = read_structured(args.reachable)
+    except CannotRun:
+        raise
+    except Exception as exc:
+        raise CannotRun('the reachable list %s could not be read: %s: %s' % (args.reachable, type(exc).__name__, exc))
+    rows = data if isinstance(data, list) else dig(data, args.reachable_key) if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise CannotRun('the reachable list %s holds no list at %r' % (args.reachable, args.reachable_key))
+
+    def named(row, what):
+        name = row.get('name') if isinstance(row, dict) else None
+        if not isinstance(name, str) or not name.strip():
+            raise CannotRun('the reachable list %s holds a %s with no name' % (args.reachable, what))
+        return name.strip(), ' '.join(str(row.get('description') or '').split())
+
+    out = []
+    for row in rows:
+        name, description = named(row, 'harness')
+        models = []
+        for entry in row.get('models') or []:
+            model, text = named(entry, 'model')
+            levels = entry.get('levels')
+            if levels is not None and (not isinstance(levels, list) or not all(isinstance(x, str) for x in levels)):
+                raise CannotRun('the reachable list %s gives %s levels that are not a list of names' % (
+                    args.reachable, model))
+            models.append({'name': model, 'description': text, 'levels': levels})
+        out.append({'name': name, 'description': description, 'models': models})
+    return out
+
+
+def models_of(harnesses, harness):
+    for entry in harnesses:
+        if entry['name'] == harness:
+            return entry['models']
+    return []
+
+
+def levels_for(harnesses, harness, model):
+    """The levels the reachable list gives `model` on `harness`, in LEVELS order; every level where it gives none."""
+    for entry in models_of(harnesses, harness):
+        if entry['name'] == model and entry['levels'] is not None:
+            return [level for level in LEVELS if level in entry['levels']]
+    return list(LEVELS)
 
 
 # ---------------------------------------------------------------------------
@@ -613,9 +752,10 @@ def act_decision(jev, definition, kinds, part, subject, quote, decided_by):
     reading = composition['provisional_reading']
     criteria = dict((name, tests[name]) for name in names)
     criteria[reading['none']['label']] = reading['none']['criterion']
+    criteria[reading['split']['label']] = reading['split']['criterion']
     choice_question = {'type': 'choice', 'instructions': reading['instructions'], 'criteria': criteria}
     section = {'nouls': nouls, 'noul_failures': failures, 'lines': None if all(v is None for v in lines.values())
-               else lines, 'line_applied': False, 'provisional': definition['provisional']}
+               else lines, 'line_applied': False, 'provisional': definition['provisional'], 'split': False}
     try:
         choice = jev.ask('d1-act provisional choice', state, 'kind', choice_question)
     except JevFailure as failure:
@@ -629,6 +769,11 @@ def act_decision(jev, definition, kinds, part, subject, quote, decided_by):
         answer = 'none (the provisional Choice read none: %s)' % reading['none']['criterion']
         lane_from = outcome(definition, 'no Noul')
         kind = None
+    elif read == reading['split']['label']:
+        answer = 'split (the provisional Choice read two or more kinds: %s)' % reading['split']['criterion']
+        lane_from = outcome(definition, 'two or more Nouls')
+        kind = None
+        section['split'] = True
     else:
         answer = read
         kind = read
@@ -640,31 +785,85 @@ def act_decision(jev, definition, kinds, part, subject, quote, decided_by):
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by)
 
 
+def form_decision(jev, definition, part, subject, quote, decided_by):
+    """The printed form section and its decision record, for a build part (R-38). One Choice over code, model, both
+    and none; an answer below the line goes to the model builder, marked."""
+    composition = definition['composition']['choice']
+    line, version = composition['line'], composition['line_version']
+    criteria = dict(composition['criteria'])
+    question = {'type': 'choice', 'instructions': composition['instructions'], 'criteria': criteria}
+    section = {'choice': None, 'answer': None, 'form': None, 'split': False, 'below_line': None, 'probability': None,
+               'line': line, 'line_version': version}
+    try:
+        choice = jev.ask('%s choice' % definition['id'], {'part': part}, 'form', question)
+    except JevFailure as failure:
+        answer = 'unrecorded (%s)' % failure.reason
+        section.update(answer=answer, failure=failure.reason)
+        basis = {'choice': None, 'line': line, 'line_version': version,
+                 'definition_version': definition['definition_version']}
+        return section, record(definition, subject, quote, answer, basis, outcome(definition, 'the request fails'),
+                               decided_by)
+    read = choice['choice']
+    probability = choice['probabilities'][read]
+    below = probability < line
+    section.update(choice=choice, probability=probability, below_line=below)
+    if below:
+        answer, form = read + BELOW_LINE, 'model'
+        lane_from = outcome(definition, "the Choice's answer is below")
+    elif read == 'both':
+        answer, form = 'split (the part builds both: %s)' % criteria['both'], None
+        lane_from = outcome(definition, 'the Choice reads both')
+        section['split'] = True
+    elif read == NONE_LABEL:
+        answer, form = 'none (the part builds no capability)', None
+        lane_from = outcome(definition, 'the Choice reads none')
+    else:
+        answer, form = read, read
+        lane_from = outcome(definition, 'the Choice reads code or model')
+    section.update(answer=answer, form=form)
+    basis = {'choice': choice['probabilities'], 'probability': probability, 'line': line, 'line_version': version,
+             'definition_version': definition['definition_version']}
+    return section, record(definition, subject, quote, answer, basis, lane_from, decided_by)
+
+
 def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subject, quote, decided_by, stage,
-                     facts):
-    """`facts` holds the Choice's facts beyond the part, kind and stage: kind_paired_group, dispatching_persona and
-    dispatching_group, with units_named for the record."""
+                     units, extra=None, builder=None, finding=None):
+    """The persona section and its decision record. Its facts are the part, its kind, the stage and each candidate's
+    declared goal and acts: never the sender, and never a group paired with the kind (R-37). `builder` is the
+    persona the forms map names for the part's form; `finding` is why the part goes back with no persona."""
     composition = definition['composition']
     line = composition['adequacy']['line']
     line_version = composition['adequacy']['line_version']
     exact = {'eligible': [p['name'] for p in eligible], 'excluded': excluded, 'roster_rows': rows,
-             'units_named': facts['units_named'], 'kind': kind, 'kind_paired_group': facts['kind_paired_group'],
-             'dispatching_persona': facts['dispatching_persona'], 'dispatching_group': facts['dispatching_group'],
-             'stage': stage}
-    section = {'eligible': exact['eligible'], 'excluded': excluded, 'units_named': facts['units_named'], 'line': line,
+             'units_named': units, 'kind': kind, 'stage': stage}
+    exact.update(extra or {})
+    section = {'eligible': exact['eligible'], 'excluded': excluded, 'units_named': units, 'line': line,
                'line_version': line_version, 'choice': None, 'persona': None, 'adequacy': None, 'below_line': None}
-    if not eligible:
-        rules = sorted(set(excluded.values())) or ['the roster lists no persona']
+    names = dict((p['name'], p) for p in eligible)
+    if finding is None and builder is not None and builder not in names:
+        finding = 'the forms map names %s for %s, and %s is not eligible: %s' % (
+            builder, exact.get('form'), builder, excluded.get(builder, 'the roster does not list it'))
+    if finding is not None or not eligible:
+        rules = [finding] if finding else (sorted(set(excluded.values())) or ['the roster lists no persona'])
         answer = 'none adequate (%s)' % '; '.join(rules)
         section['answer'] = answer
-        basis = {'requests': 'none: no persona is eligible', 'line': line, 'line_version': line_version}
-        return section, record(definition, subject, quote, answer, basis, outcome(definition, 'no persona'),
+        basis = {'requests': 'none: no persona is chosen', 'line': line, 'line_version': line_version}
+        when = 'the forms map names no' if exact.get('form') in FORMS else 'no persona'
+        return section, record(definition, subject, quote, answer, basis, outcome(definition, when),
                                decided_by, exact=exact)
-    state = {'part': part, 'kind': kind, 'kind_paired_group': facts['kind_paired_group'],
-             'dispatching_persona': facts['dispatching_persona'], 'dispatching_group': facts['dispatching_group'],
-             'stage': stage}
+    if builder is not None:
+        chosen = names[builder]
+        section.update(persona=builder, group=chosen['group'], goal=chosen['goal'], does=chosen['does'],
+                       adequacy=MAP_CHOSEN, below_line=False, answer=builder)
+        basis = {'requests': 'none: the forms map names the builder', 'form_builder': exact.get('form'),
+                 'adequacy': MAP_CHOSEN}
+        return section, record(definition, subject, quote, builder, basis,
+                               outcome(definition, 'the forms map names an'), decided_by, exact=exact)
+    state = {'part': part, 'kind': kind, 'stage': stage}
     template = composition['choice']['criterion_template']
-    criteria = dict((p['name'], template.format(persona=p['name'], group=p['group'], goal=p['goal'])) for p in eligible)
+    does_template = composition['choice']['does_template']
+    criteria = dict((p['name'], template.format(persona=p['name'], goal=p['goal'])
+                     + (does_template.format(does=p['does']) if p['does'] else '')) for p in eligible)
     question = {'type': 'choice', 'instructions': composition['choice']['instructions'], 'criteria': criteria}
     try:
         choice = jev.ask('d3-figure choice', state, 'persona', question)
@@ -674,7 +873,7 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
         adequacy_q = {'type': 'noul', 'instructions': composition['adequacy']['instructions'],
                       'criteria': {'true': composition['adequacy']['instructions'].rsplit('. ', 1)[-1]}}
         adequacy = jev.ask('d3-figure adequacy %s' % first['name'], {
-            'part': part, 'persona': first['name'], 'group': first['group'], 'goal': first['goal']},
+            'part': part, 'persona': first['name'], 'goal': first['goal'], 'does': first['does'] or NONE_LABEL},
             'adequate', adequacy_q)['noul']
     except JevFailure as failure:
         answer = 'unrecorded (%s)' % failure.reason
@@ -690,24 +889,73 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
     else:
         answer = first['name']
         lane_from = outcome(definition, 'the adequacy Noul is at or above')
-    section.update(persona=first['name'], group=first['group'], goal=first['goal'], adequacy=adequacy,
-                   below_line=below, answer=answer)
+    section.update(persona=first['name'], group=first['group'], goal=first['goal'], does=first['does'],
+                   adequacy=adequacy, below_line=below, answer=answer)
     basis = {'choice': probabilities, 'adequacy': adequacy, 'line': line, 'line_version': line_version}
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
 
 
-def effort_decision(jev, definition, part, body, kind, persona, unaided, subject, quote, decided_by, stage):
-    """The printed effort section and its decision record. Asked whatever the act and persona decisions read."""
+def listed_decision(jev, definition, qid, options, parent, state, subject, quote, decided_by, nothing):
+    """The harness or model section and its decision record (R-39): chosen from `options`, the reachable list's
+    entries; the parent's own where the list names none or the decision gives none. `nothing` says why the list
+    names none. `pass` is the value to pass; an answer off the list is never it."""
+    names = [o['name'] for o in options]
+    exact = {'reachable': names, 'parent_%s' % qid: parent}
+    section = {'reachable': names, 'parent': parent, 'choice': None}
+    if not options:
+        lane_from = outcome(definition, 'the settings list nothing')
+        basis = {'requests': 'none: %s, so the parent\'s own is assigned' % nothing}
+        section.update(answer=parent, route=lane_from['route'], **{'pass': parent})
+        return section, record(definition, subject, None, parent, basis, lane_from, decided_by, exact=exact)
+    if len(options) == 1:
+        lane_from = outcome(definition, 'the settings list one')
+        basis = {'requests': 'none: the settings list one %s' % qid}
+        section.update(answer=names[0], route=lane_from['route'], **{'pass': names[0]})
+        return section, record(definition, subject, None, names[0], basis, lane_from, decided_by, exact=exact)
+    template = definition['composition']['choice']['criterion_template']
+    criteria = dict((o['name'], template.format(name=o['name'], description=o['description'] or o['name']))
+                    for o in options)
+    question = {'type': 'choice', 'instructions': definition['composition']['choice']['instructions'],
+                'criteria': criteria}
+    try:
+        choice = jev.ask('%s choice' % definition['id'], state, qid, question)
+    except JevFailure as failure:
+        answer = 'unrecorded (%s)' % failure.reason
+        lane_from = outcome(definition, 'the request fails')
+        section.update(answer=answer, failure=failure.reason, route=lane_from['route'], **{'pass': parent})
+        basis = {'choice': None, 'definition_version': definition['definition_version']}
+        return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
+    answer = choice['choice']
+    lane_from = outcome(definition, 'the Choice returns')
+    section.update(choice=choice, answer=answer, route=lane_from['route'], **{'pass': answer})
+    basis = {'choice': choice['probabilities'], 'definition_version': definition['definition_version']}
+    return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
+
+
+def effort_decision(jev, definition, part, body, kind, persona, unaided, subject, quote, decided_by, stage,
+                    harness, model, levels):
+    """The printed effort section and its decision record. Asked whatever the act and persona decisions read, over
+    `levels`, the levels the assigned harness offers the assigned model (R-39)."""
     named, resolving, size = named_inputs(body)
     _, write_set = split_write_set(body)
     facts = {'kind': kind or NONE_LABEL, 'persona': persona or NONE_LABEL, 'stage': stage,
              'words': len(body.split()), 'input_files_resolving': len(resolving), 'input_bytes': size,
-             'write_set_paths': len(write_set) if write_set else NONE_LABEL}
+             'write_set_paths': len(write_set) if write_set else NONE_LABEL, 'harness': harness, 'model': model}
+    exact = dict(facts, levels_offered=list(levels))
     composition = definition['composition']['choice']
-    criteria = dict((level, composition['criteria'][level]) for level in LEVELS)
+    criteria = dict((level, composition['criteria'][level]) for level in levels)
     question = {'type': 'choice', 'instructions': composition['instructions'], 'criteria': criteria}
     state = dict({'part': part}, **facts)
-    section = {'unaided': unaided, 'facts': facts, 'input_files_named': len(named), 'choice': None, 'level': None}
+    section = {'unaided': unaided, 'facts': facts, 'levels_offered': list(levels), 'input_files_named': len(named),
+               'choice': None, 'level': None}
+    if not levels:
+        answer = 'unrecorded (the assigned harness %s offers the assigned model %s no level this decision defines)' % (
+            harness, model)
+        lane_from = outcome(definition, 'the request fails')
+        section.update(answer=answer, route=lane_from['route'], **{'pass': unaided})
+        basis = {'choice': None, 'definition_version': definition['definition_version'],
+                 'provisional': definition['provisional']}
+        return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
     try:
         choice = jev.ask('%s choice' % definition['id'], state, 'effort', question)
     except JevFailure as failure:
@@ -716,13 +964,13 @@ def effort_decision(jev, definition, part, body, kind, persona, unaided, subject
         section.update(answer=answer, failure=failure.reason, route=lane_from['route'], **{'pass': unaided})
         basis = {'choice': None, 'definition_version': definition['definition_version'],
                  'provisional': definition['provisional']}
-        return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=facts)
+        return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
     answer = choice['choice']
     lane_from = outcome(definition, 'the Choice returns')
     section.update(choice=choice, level=answer, answer=answer, route=lane_from['route'], **{'pass': answer})
     basis = {'choice': choice['probabilities'], 'definition_version': definition['definition_version'],
              'provisional': definition['provisional']}
-    return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=facts)
+    return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
 
 
 # ---------------------------------------------------------------------------
@@ -730,8 +978,30 @@ def effort_decision(jev, definition, part, body, kind, persona, unaided, subject
 # ---------------------------------------------------------------------------
 
 def effort_override(args, record):
-    """The override entry for the effort decision; its level is checked before the file is read."""
+    """The override entry for the effort decision, or the reason it is refused: a level the assigned harness does
+    not offer the assigned model, where the record names the levels offered."""
+    exact = record.get('exact_evidence') if isinstance(record.get('exact_evidence'), dict) else {}
+    offered = exact.get('levels_offered')
+    if isinstance(offered, list) and args.level not in offered:
+        return None, 'the level %s is not one the assigned harness offers the assigned model: %s' % (
+            args.level, ', '.join(offered) or 'none')
     return {'decision': args.decision, 'decision_level': record.get('answer'), 'level_passed': args.level,
+            'reason': args.reason, 'at': stamp()}, None
+
+
+def listed_override(args, record):
+    """The override entry for the harness or model decision, or the reason it is refused: a value off the reachable
+    list the record names (the parent's own where it names none), or the decision's own value."""
+    what = 'harness' if args.decision == HARNESS_DECISION else 'model'
+    value = args.harness if what == 'harness' else args.model
+    exact = record.get('exact_evidence') if isinstance(record.get('exact_evidence'), dict) else {}
+    reachable = list(exact.get('reachable') or []) or [exact.get('parent_%s' % what)]
+    if value not in reachable:
+        return None, 'the %s %r is not on the reachable list: %s' % (what, value, ', '.join(
+            str(v) for v in reachable))
+    if value == record.get('answer'):
+        return None, '%s is the decision\'s own %s: there is nothing to override' % (value, what)
+    return {'decision': args.decision, 'decision_%s' % what: record.get('answer'), '%s_passed' % what: value,
             'reason': args.reason, 'at': stamp()}, None
 
 
@@ -739,7 +1009,7 @@ def persona_override(args, record):
     """The override entry for the persona decision, or the reason it is refused."""
     basis = record.get('uncertainty_basis') if isinstance(record.get('uncertainty_basis'), dict) else {}
     probability = basis.get('adequacy')
-    if isinstance(probability, bool) or not isinstance(probability, (int, float)):
+    if probability != MAP_CHOSEN and (isinstance(probability, bool) or not isinstance(probability, (int, float))):
         return None, ('the %s record carries no adequacy probability: the decision chose no persona to override '
                       '(its answer: %s)' % (args.decision, record.get('answer')))
     exact = record.get('exact_evidence') if isinstance(record.get('exact_evidence'), dict) else {}
@@ -765,8 +1035,8 @@ def no_persona_override(args, record):
     else:
         answer = record.get('answer')
         basis = record.get('uncertainty_basis') if isinstance(record.get('uncertainty_basis'), dict) else {}
-        named = isinstance(answer, str) and answer and isinstance(basis.get('adequacy'), (int, float)) \
-            and not isinstance(basis.get('adequacy'), bool)
+        named = isinstance(answer, str) and answer and (basis.get('adequacy') == MAP_CHOSEN or (
+            isinstance(basis.get('adequacy'), (int, float)) and not isinstance(basis.get('adequacy'), bool)))
         persona = (answer[:-len(BELOW_LINE)] if answer.endswith(BELOW_LINE) else answer) if named else \
             'unrecorded (the %s record named no persona: %s)' % (PERSONA_DECISION, answer)
     return {'decision': NO_PERSONA, 'decision_persona': persona, 'reason': args.reason, 'at': stamp()}, None
@@ -795,8 +1065,8 @@ def no_persona_path(args):
 
 def override(argv):
     parser = argparse.ArgumentParser(prog='decide.py override',
-                                     description='Record a level or persona the parent passes instead of the '
-                                                 'decision\'s, or a dispatch with no persona.')
+                                     description='Record a level, persona, harness or model the parent passes '
+                                                 'instead of the decision\'s, or a dispatch with no persona.')
     parser.add_argument('--pending')
     parser.add_argument('--ledger')
     parser.add_argument('--session')
@@ -806,18 +1076,24 @@ def override(argv):
     parser.add_argument('--level')
     parser.add_argument('--persona')
     parser.add_argument('--parent-persona')
+    parser.add_argument('--harness')
+    parser.add_argument('--model')
     parser.add_argument('--reason', required=True)
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         return fail(1, 'the arguments could not be read')
-    if args.decision not in (PERSONA_DECISION, EFFORT_DECISION, NO_PERSONA):
-        return fail(1, 'only %s, %s and %s take an override here, not %s' % (PERSONA_DECISION, EFFORT_DECISION,
-                                                                              NO_PERSONA, args.decision))
+    takes = (PERSONA_DECISION, EFFORT_DECISION, HARNESS_DECISION, MODEL_DECISION, NO_PERSONA)
+    if args.decision not in takes:
+        return fail(1, 'only %s take an override here, not %s' % (', '.join(takes), args.decision))
     if args.decision == EFFORT_DECISION and args.level not in LEVELS:
         return fail(1, 'unknown level %r: the levels are %s' % (args.level, ', '.join(LEVELS)))
     if args.decision == PERSONA_DECISION and not args.persona:
         return fail(1, 'an override of %s names the persona chosen instead, with --persona' % PERSONA_DECISION)
+    for decision, value, option in ((HARNESS_DECISION, args.harness, '--harness'),
+                                    (MODEL_DECISION, args.model, '--model')):
+        if args.decision == decision and not (value or '').strip():
+            return fail(1, 'an override of %s names the value passed instead, with %s' % (decision, option))
     if not args.reason.strip():
         return fail(1, 'the reason is empty')
     if args.decision == NO_PERSONA:
@@ -846,7 +1122,8 @@ def override(argv):
     elif not found:
         return fail(1, 'the pending file holds no %s record: %s' % (args.decision, path))
     else:
-        make = effort_override if args.decision == EFFORT_DECISION else persona_override
+        make = {EFFORT_DECISION: effort_override, PERSONA_DECISION: persona_override,
+                HARNESS_DECISION: listed_override, MODEL_DECISION: listed_override}[args.decision]
         entry, refusal = make(args, found[-1])
     if refusal:
         return fail(1, refusal)
@@ -860,6 +1137,8 @@ def override(argv):
     elif args.decision == NO_PERSONA:
         data.pop('triage_persona', None)
         data['chosen_by'] = stamped(OVERRIDE_CHOSEN_BY)
+    elif args.decision == HARNESS_DECISION:
+        data['harness_assigned'] = stamped(args.harness)
     path.parent.mkdir(parents=True, exist_ok=True)
     written = path.with_name(path.name + '.writing')
     written.write_text(json.dumps(data, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
@@ -890,7 +1169,8 @@ def key_from_zsh():
 
 
 def parse(argv):
-    parser = argparse.ArgumentParser(description='Ask the act, persona and effort decisions for one part.')
+    parser = argparse.ArgumentParser(description='Ask the act, form, persona, harness, model and effort decisions '
+                                                 'for one part.')
     parser.add_argument('--delegation', required=True)
     parser.add_argument('--roster', required=True)
     parser.add_argument('--ledger', required=True)
@@ -905,11 +1185,17 @@ def parse(argv):
     parser.add_argument('--group-key', default='group')
     parser.add_argument('--file-key', default='file')
     parser.add_argument('--goal-key', default='declaration.goal')
+    parser.add_argument('--does-key', default='declaration.does')
     parser.add_argument('--ratified-key', default='declaration-ratified')
     parser.add_argument('--file-root')
     parser.add_argument('--user', action='append')
-    parser.add_argument('--kind-groups')
-    parser.add_argument('--kind-groups-key', default='pairs')
+    parser.add_argument('--work-call')
+    parser.add_argument('--forms')
+    parser.add_argument('--forms-key', default='builders')
+    parser.add_argument('--reachable')
+    parser.add_argument('--reachable-key', default='harnesses')
+    parser.add_argument('--parent-harness')
+    parser.add_argument('--parent-model')
     parser.add_argument('--register')
     parser.add_argument('--register-rows-key', default='rows')
     parser.add_argument('--unit-key', default='unit')
@@ -949,7 +1235,11 @@ def main(argv=None):
         d1 = read_json(DECISIONS / 'd1-act.json')
         d3 = read_json(DECISIONS / 'd3-figure.json')
         d4 = read_json(DECISIONS / 'd4-effort.json')
+        d5 = read_json(DECISIONS / 'd5-form.json')
+        d6 = read_json(DECISIONS / 'd6-harness.json')
+        d7 = read_json(DECISIONS / 'd7-model.json')
         eligible, excluded, rows, units, groups = read_roster(args, body)
+        harnesses = read_reachable(args)
     except CannotRun as exc:
         return fail(2, str(exc))
     except Exception as exc:
@@ -978,51 +1268,87 @@ def main(argv=None):
     failures = []
     if act.get('failure'):
         failures.append('act decision: %s' % act['failure'])
-    paired = kind_paired_group(args.kind_groups, args.kind_groups_key, act['kind'])
-    if act['kind']:
-        pending['kind'] = stamped(act['kind'])
-        own, own_group = dispatching_facts(args.parent_persona, groups)
-        facts = {'units_named': units, 'kind_paired_group': paired, 'dispatching_persona': own,
-                 'dispatching_group': own_group}
-        persona, persona_record = persona_decision(jev, d3, part, act['kind'], eligible, excluded, rows,
-                                                   '%s, read as %s' % (subject, act['kind']), quote,
-                                                   '%s at %s' % (d3['engine']['name'], d3['engine']['model']),
-                                                   reading['stage'], facts)
+
+    def engine(definition):
+        return '%s at %s' % (definition['engine']['name'], definition['engine']['model'])
+
+    kind = act['kind']
+    read_as = '%s, read as %s' % (subject, kind)
+    form = None
+    if kind == MAKING_KIND:
+        form, form_record = form_decision(jev, d5, part, read_as, quote, engine(d5))
+        records.append(form_record)
+        if form.get('failure'):
+            failures.append('form decision: %s' % form['failure'])
+    split = act['split'] or bool(form and form['split'])
+    persona = None
+    if kind and not split:
+        pending['kind'] = stamped(kind)
+        candidates, ruled_out, extra, finding, builder = eligible, excluded, {}, None, None
+        if kind == REVIEW_KIND:
+            candidates, ruled_out, extra, finding = review_rule(args, eligible, excluded, groups)
+        if form and form['form'] in FORMS:
+            extra['form'] = form['form']
+            if finding is None:
+                builder, finding = form_builder(args, form['form'])
+        persona, persona_record = persona_decision(jev, d3, part, kind, candidates, ruled_out, rows, read_as, quote,
+                                                   engine(d3), reading['stage'], units, extra=extra,
+                                                   builder=builder, finding=finding)
         records.append(persona_record)
         if persona.get('failure'):
             failures.append('persona decision: %s' % persona['failure'])
         if persona['persona']:
             pending['triage_persona'] = stamped(persona['persona'])
-            pending['persona_facts'] = stamped({'persona': persona['persona'], 'group': persona['group'],
-                                                'goal': persona['goal'], 'eligible': persona['eligible'],
-                                                'choice': persona['choice']['probabilities'],
+            pending['persona_facts'] = stamped({'persona': persona['persona'], 'goal': persona['goal'],
+                                                'does': persona['does'], 'eligible': persona['eligible'],
+                                                'choice': persona['choice'] and persona['choice']['probabilities'],
                                                 'adequacy': persona['adequacy'], 'stage': reading['stage'],
-                                                'kind_paired_group': paired, 'dispatching_persona': own,
-                                                'dispatching_group': own_group})
+                                                'form': form and form['form']})
             pending['chosen_by'] = stamped(CHOSEN_BY)
             if persona['below_line']:
                 pending['below_line'] = stamped({'probability': persona['adequacy'], 'line': persona['line'],
                                                  'line_version': persona['line_version']})
-    else:
-        persona = None
-    pending['kind_paired_grouping'] = stamped(paired)
-    effort, effort_record = effort_decision(jev, d4, part, body, act['kind'], persona and persona['persona'],
-                                            args.effort_unaided, subject, quote,
-                                            '%s at %s' % (d4['engine']['name'], d4['engine']['model']),
-                                            reading['stage'])
+    chosen = persona and persona['persona']
+
+    # The harness, then the model it offers, each from the reachable list (R-39): after the persona, before the
+    # effort. Where the list names none, or a decision gives none, the parent's own is passed.
+    parent_harness = (args.parent_harness or '').strip() or calling_harness()
+    parent_model = (args.parent_model or '').strip() or 'unrecorded (no --parent-model was given)'
+    state = {'part': part, 'kind': kind or NONE_LABEL, 'persona': chosen or NONE_LABEL}
+    harness, harness_record = listed_decision(jev, d6, 'harness', harnesses, parent_harness, state, subject, quote,
+                                              engine(d6), 'the settings list no reachable harness')
+    records.append(harness_record)
+    if harness.get('failure'):
+        failures.append('harness decision: %s' % harness['failure'])
+    models = models_of(harnesses, harness['pass'])
+    model, model_record = listed_decision(jev, d7, 'model', models, parent_model,
+                                          dict(state, harness=harness['pass']), subject, quote, engine(d7),
+                                          'the settings list no model for the harness %s' % harness['pass'])
+    records.append(model_record)
+    if model.get('failure'):
+        failures.append('model decision: %s' % model['failure'])
+    levels = levels_for(harnesses, harness['pass'], model['pass'])
+    effort, effort_record = effort_decision(jev, d4, part, body, kind, chosen, args.effort_unaided, subject, quote,
+                                            engine(d4), reading['stage'], harness['pass'], model['pass'], levels)
     records.append(effort_record)
     if effort.get('failure'):
         failures.append('effort decision: %s' % effort['failure'])
+    pending['harness_assigned'] = stamped(harness['pass'])
+    pending['sender'] = stamped(sender_of(args.parent_persona))
     pending['decision_records'] = stamped(records)
     if failures:
         pending['triage_failure'] = stamped('; '.join(failures))
 
     # A part the act decision read as none is never dispatched: a pending file for it would be listed at the close as
     # never dispatched. A part whose act request failed is not one of these; its file holds the failure.
-    read_none = act['kind'] is None and not act.get('failure')
+    read_none = act['kind'] is None and not act.get('failure') and not act['split']
     path, skipped = None, None
     if read_none:
         skipped = 'none written: the act decision read the part as none, so it is not dispatched'
+    elif split:
+        why = 'the act decision read two or more kinds' if act['split'] else 'the form decision read both forms'
+        skipped = 'none written: the part is to be split (%s), so it is not dispatched; split it and triage each ' \
+                  'part' % why
     else:
         folder = Path(args.pending_ledger or args.ledger) / '.pending' / ledger.pending_name(args.session)
         folder.mkdir(parents=True, exist_ok=True)
@@ -1030,9 +1356,10 @@ def main(argv=None):
         path.write_text(json.dumps(pending, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
 
     shown = {'delegation': str(delegation.resolve()), 'session': args.session, 'member': args.member,
-             'attempt': args.attempt, 'effort_unaided': pending['effort_unaided'], 'stage': reading, 'act': act,
-             'persona': persona, 'kind_paired_grouping': paired, 'effort': effort, 'decision_records': records,
-             'jev_calls': jev.calls, 'pending_file': str(path) if path else None}
+             'attempt': args.attempt, 'sender': pending['sender']['value'], 'effort_unaided': pending['effort_unaided'],
+             'stage': reading, 'act': act, 'form': form, 'persona': persona, 'harness': harness, 'model': model,
+             'effort': effort, 'decision_records': records, 'jev_calls': jev.calls,
+             'pending_file': str(path) if path else None}
     if skipped:
         shown['no_pending_file'] = skipped
     print(json.dumps(shown, indent=1, ensure_ascii=False))

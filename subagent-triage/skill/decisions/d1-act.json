@@ -1,17 +1,17 @@
 {
-  "description": "Which kinds of act a part of a delegation asks for. Eight independent Nouls, one per kind of act, each with its own line. Until every line is set by calibration, a provisional Choice reads one kind and the record says it is provisional. The kinds and their tests have one home, the subagent-ledger skill's scripts/kinds.json; this file names them and never restates a test.",
+  "description": "Which kinds of act a part of a delegation asks for. Nine independent Nouls, one per kind of act, each with its own line. Until every line is set by calibration, a provisional Choice reads one kind and the record says it is provisional. The kinds and their tests have one home, the subagent-ledger skill's scripts/kinds.json; this file names them and never restates a test.",
   "id": "d1-act",
   "question": "Which kinds of act does this part ask for?",
-  "definition_version": 0,
+  "definition_version": 1,
   "provisional": true,
-  "basis": "No line is measured. Version 0 reads one kind with the provisional Choice. The Nouls are defined so calibration can set their lines; they are not asked at dispatch until it does.",
+  "basis": "No line is measured. Version 1 reads one kind, none, or two or more with the provisional Choice; version 0 had eight kinds and read two or more as none. The Nouls are defined so calibration can set their lines; they are not asked at dispatch until it does.",
   "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["noul", "choice"]},
   "decision_point_classification": "bounded_semantic",
   "exact_facts": [],
   "subject": "the part: what it asks for, as the plan states it, with the brief's task text where the brief is written",
   "kinds": {
     "from": "subagent-ledger/skill/scripts/kinds.json",
-    "names": ["verdict-or-review", "deliberation", "build", "inquiry", "archiving", "transfer", "conversion", "user-decision"],
+    "names": ["verdict-or-review", "deliberation", "build", "inquiry", "archiving", "transfer", "conversion", "user-decision", "setting-right"],
     "test_field": "test"
   },
   "composition": {
@@ -27,18 +27,23 @@
         "archiving": null,
         "transfer": null,
         "conversion": null,
-        "user-decision": null
+        "user-decision": null,
+        "setting-right": null
       },
       "ask_before_lines_set": false
     },
     "provisional_reading": {
       "type": "choice",
       "used_while": "any line in nouls.lines is null",
-      "instructions": "This is one part of a piece of delegated work, given as `part`: what the part asks a subagent to do, and its inputs. Which one kind of act does the part ask for? Judge the work the part asks to be done, not the work around it. Choose `none` when no kind's test is met, or when the part asks for two kinds equally.",
+      "instructions": "This is one part of a piece of delegated work, given as `part`: what the part asks a subagent to do, and its inputs. Which one kind of act does the part ask for? Judge the work the part asks to be done, not the work around it. Choose `none` when no kind's test is met, and `two-or-more` when the part asks for two or more kinds of act, each a purpose of its own.",
       "criteria_from": "each kind's test, keyed by its name",
       "none": {
         "label": "none",
-        "criterion": "The part meets no kind's test, or it asks for two or more kinds of act and no one of them is the part's purpose."
+        "criterion": "The part meets no kind's test."
+      },
+      "split": {
+        "label": "two-or-more",
+        "criterion": "The part asks for two or more kinds of act, each a purpose of its own, so it is two or more parts."
       }
     }
   },
@@ -58,11 +63,10 @@
       "delegated_authority": "the parent, by invoking the skill"
     },
     {
-      "when": "two or more Nouls are over their lines",
-      "answer": "each kind over its line",
-      "route": "the part is split into one part per kind, each with its own record",
-      "lane": "delivered",
-      "delegated_authority": "the parent, by invoking the skill"
+      "when": "two or more Nouls are over their lines; or, while provisional, the Choice reads two-or-more",
+      "answer": "split, with the reason",
+      "route": "the part goes back to the parent to be split into one part per kind, each triaged on its own; no persona is chosen for it and no pending file is written",
+      "lane": "reasoned"
     },
     {
       "when": "user-decision is among the kinds read",

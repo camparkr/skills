@@ -808,6 +808,8 @@ class DecideTests(unittest.TestCase):
     def work_record(self, persona, call_id='toolu_work_1'):
         sys.path.insert(0, str(LEDGER_SCRIPTS))
         import ledger
+        # The ledger writes persona-name only where its settings turn the field on.
+        (self.ledger / 'config.json').write_text('{"fields": "all"}', encoding='utf-8')
         written = ledger.dispatch(ledger=str(self.ledger), brief='The work called to account.', session=SESSION,
                                   call_id=call_id, agent_id='unrecorded (not yet returned)',
                                   dispatched_at='2026-01-15T00:00:00.000Z', route='subagent',

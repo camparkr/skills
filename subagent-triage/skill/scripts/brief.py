@@ -29,7 +29,8 @@ differs from --persona or --kind stops the brief: record the override first.
 What stops the brief, each with the reason and exit 1, writing nothing:
 
   * the persona file, or the memory index beside it (`index.md` in the persona file's folder), is not a file;
-  * an absolute path the task names does not exist;
+  * an absolute path the task names does not exist. A path is `~/` and a name, a drive letter, or `/` and at least
+    two names: a word of one name after `/`, such as a quoted slash command, is not a path;
   * a write-set path is absolute, or leaves the repository; a writer's repository is not a git working tree's top
     folder (--repository, or the working folder's git top); a write-set path may name a file still to be created;
   * the task holds a `## Write set` section of its own, which the capture would read as the write set;

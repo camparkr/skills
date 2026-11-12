@@ -39,11 +39,13 @@ report gives each hop the output it was judged by, so a miss of the 20-word valu
     whose dispatch never happened. None is removed;
   * `faults`: a dispatch the plan does not list; an override lacking any value it records (for the persona
     decision: the decision's persona, its adequacy probability, the parent's persona, the persona chosen, the reason
-    and the time; for the effort decision: the decision's level, the level passed, the reason and the time; for a
-    dispatch with no persona: the reason and the time); a
+    and the time; for the effort, harness and model decisions: the decision's value, the value passed, the reason and
+    the time; for a dispatch with no persona: the reason and the time); a
     passed effort (`effort_assigned`) other than the one to pass (the last effort override's level, else the effort
-    decision's level, else, where it gave none, the unaided level); and an unaided level stamped after the decision
-    records.
+    decision's level, else, where it gave none, the unaided level); an unaided level stamped after the decision
+    records; a passed model (`model_requested`) other than the one to pass (the last model override's, else the
+    model decision's, else, where it gave none, the parent's own); and, where the dispatch carries a harness assigned
+    (`harness_assigned`), a dispatch run on another harness, or a return naming no harness run and no reason.
 
 Exit codes: 0 closed with no fault; 3 closed, with faults reported; 1 refused (a plan unreadable or already closed, or
 no transcript); 2 cannot run (the ledger or return skill not found).
@@ -73,8 +75,11 @@ FILE_TOOLS = {'Write': ('file_path', 'content'), 'Edit': ('file_path', 'new_stri
               'MultiEdit': ('file_path', None), 'NotebookEdit': ('notebook_path', 'new_source')}
 DISPATCH_TOOLS = ('Agent', 'Task')
 PERSONA, EFFORT = 'd3-figure', 'd4-effort'
+HARNESS, MODEL = decide.HARNESS_DECISION, decide.MODEL_DECISION
 NEEDS = {PERSONA: ('decision_persona', 'adequacy_probability', 'parent_persona', 'persona_chosen', 'reason', 'at'),
          EFFORT: ('decision_level', 'level_passed', 'reason', 'at'),
+         HARNESS: ('decision_harness', 'harness_passed', 'reason', 'at'),
+         MODEL: ('decision_model', 'model_passed', 'reason', 'at'),
          decide.NO_PERSONA: ('reason', 'at')}
 NO_PARENT = 'unrecorded (no parent named)'
 SHOWN = 300
@@ -381,7 +386,8 @@ def override_faults(row):
         missing = [key for key in needs if entry.get(key) in (None, '') or (isinstance(entry.get(key), str)
                                                                              and not entry[key].strip())]
         if entry.get('decision') == PERSONA and 'adequacy_probability' not in missing \
-                and not number(entry.get('adequacy_probability')):
+                and not number(entry.get('adequacy_probability')) \
+                and entry.get('adequacy_probability') != decide.MAP_CHOSEN:
             missing.append('adequacy_probability')
         if missing:
             out.append('the %s override lacks %s' % (entry['decision'], ', '.join(missing)))
@@ -411,6 +417,45 @@ def effort_faults(row):
     if first is not None and then is not None and first > then:
         out.append('the unaided level was stamped after the decision records (%s after %s)'
                    % (stamp_of(row, 'effort_unaided'), stamp_of(row, 'decision_records')))
+    return out
+
+
+def model_faults(row):
+    """A passed model (`model_requested`) other than the one to pass: the last model override's, else the model
+    decision's, else, where it gave none, the parent's own its record names. Read only where a d7-model record is."""
+    found = decision(row, MODEL)
+    if not isinstance(found, dict):
+        return []
+    answer = found.get('answer')
+    exact = found.get('exact_evidence') if isinstance(found.get('exact_evidence'), dict) else {}
+    chosen = [o for o in overrides_of(row) if o.get('decision') == MODEL]
+    if chosen:
+        expected, why = chosen[-1].get('model_passed'), 'the model override records %s' % chosen[-1].get(
+            'model_passed')
+    elif isinstance(answer, str) and not answer.startswith('unrecorded ('):
+        expected, why = answer, 'the model decision\'s model is %s and no override is recorded' % answer
+    else:
+        expected = exact.get('parent_model')
+        why = 'the model decision gave none (%s), so the parent\'s own model %s is the one to pass' % (
+            answer, expected)
+    passed = row.get('model_requested')
+    return [] if passed == expected else ['passed model %s, but %s' % (passed, why)]
+
+
+def harness_faults(row, returned):
+    """A dispatch carrying a harness assigned that ran on another harness, or whose return names no harness run and
+    no reason (R-40)."""
+    assigned = value_of(row, 'harness_assigned')
+    if not isinstance(assigned, str) or assigned.startswith('unrecorded ('):
+        return []
+    out = []
+    ran = row.get('harness')
+    if isinstance(ran, str) and ran.strip() and not ran.startswith('unrecorded (') and ran != assigned:
+        out.append('ran on the harness %s, but the harness assigned is %s' % (ran, assigned))
+    if isinstance(returned, dict):
+        named = returned.get('harness')
+        if not isinstance(named, str) or not named.strip():
+            out.append('the return names no harness run and no reason, beside the harness assigned %s' % assigned)
     return out
 
 
@@ -468,7 +513,8 @@ def close(args):
         if isinstance(mark, dict):
             below.append(dict(summary(row), probability=mark.get('probability'), line=mark.get('line'),
                               line_version=mark.get('line_version')))
-        for fault in override_faults(row) + effort_faults(row):
+        for fault in override_faults(row) + effort_faults(row) + model_faults(row) + harness_faults(
+                row, returns.get(row.get('call_id'))):
             faults.append({'call_id': row.get('call_id'), 'fault': fault})
     entries = [(m.get('member'), m.get('attempt', 1)) for m in plan.get('members') or []]
     plan['closed_at'] = decide.stamp()

@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Decide'
-description: 'Asks Jev the act, persona and effort decisions for one part, records each request on the ledger, and writes the part''s pending triage file. Its override mode records a level or persona the parent passes instead, or a dispatch sent with no persona.'
+description: 'Asks Jev the act, form, persona, harness, model and effort decisions for one part, records each request on the ledger, and writes the part''s pending triage file, except for a part read as none or sent back to be split. Its override mode records a persona, level, harness or model the parent passes instead, or a dispatch sent with no persona.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -13,7 +13,7 @@ x-component:
   gcs: {reads: [], writes: []}
   external-apis:
     api.typesafe.ai:
-      - https://api.typesafe.ai/v1/systemone  # URL literal in decide.py:117
+      - https://api.typesafe.ai/v1/systemone  # URL literal in decide.py:171
   pubsub: {}
   depends-on: []
   overlaps-with: []
@@ -21,4 +21,4 @@ x-component:
 
 # Decide
 
-Asks Jev the act, persona and effort decisions for one part, records each request on the ledger, and writes the part's pending triage file. Its override mode records a level or persona the parent passes instead, or a dispatch sent with no persona.
+Asks Jev the act, form, persona, harness, model and effort decisions for one part, records each request on the ledger, and writes the part's pending triage file, except for a part read as none or sent back to be split. Its override mode records a persona, level, harness or model the parent passes instead, or a dispatch sent with no persona.

@@ -17,8 +17,9 @@ makes those choices quickly and records none of them. Afterwards no one can say 
 a better-suited persona was passed over or whether the effort matched the work.
 
 *Subagent-triage* makes the choices in a fixed order and records each one where the call's own record will carry it.
-It reads the kind of act each part asks for, chooses an eligible persona and assigns an effort. It writes the brief
-and a plan. Every value lands on the call's dispatch record in the ledger the `subagent-ledger` skill keeps.
+It reads the kind of act each part asks for, chooses an eligible persona and assigns a harness, a model and an
+effort. It writes the brief and a plan. Every value lands on the call's dispatch record in the ledger the
+`subagent-ledger` skill keeps.
 
 ## Terms
 
@@ -42,14 +43,15 @@ This skill's triage is not the ledger's own `triage_command`, which reads a brie
 For each member, the dispatch record carries:
 
 - the kind of act its part asks for, and how sure the reading was;
+- for a build part, whether code or a model's inference decides the output of what it builds, which names its builder;
 - the persona chosen, the facts the choice rested on, whether it was found adequate and any override with its reason;
-- the group a kind-to-group table pairs with the kind read (`kind_paired_grouping`), where the parent names one
-  with `--kind-groups` and `--kind-groups-key`, or `unrecorded` with the reason;
+- who sent the part (`sender`), recorded only: no decision reads it;
+- the harness and model assigned, each with any override, and the harness to pass (`harness_assigned`);
 - the parent's own effort level, chosen before it saw the skill's, then the skill's level and any override; and
 - the member id and attempt, so a re-dispatch counts against the member it repeats.
 
-The three readings are decision definitions in `skill/decisions/`, written for Jev at model `jev-1.13.0`. Each answer is a decision record with its
-probability, line, version and lane, so results from different versions are never pooled.
+The readings are decision definitions in `skill/decisions/`, written for Jev at model `jev-1.13.0`. Each answer is a
+decision record with its probability, line, version and lane, so results from different versions are never pooled.
 
 ## Why use subagent-triage
 
@@ -67,17 +69,18 @@ probability, line, version and lane, so results from different versions are neve
 
 ## Known limits
 
-- **The lines are provisional.** The act decision reads one kind with a provisional Choice until its eight lines are
-  set. The adequacy line is 0.5, with no measured basis. The effort decision is uncalibrated.
+- **The lines are provisional.** The act decision reads one kind, none or two or more with a provisional Choice until
+  its nine lines are set. The adequacy and form lines are 0.5, with no measured basis. The harness, model and effort
+  decisions are uncalibrated.
 - **The citation rule is a starting value.** A hop counts as cited on a path, a call id or 20 consecutive words
   quoted. A parent that acts on a hop's output in its own words is marked not cited.
-- **Eligibility reads the roster alone.** A persona's standing comes from its file's ratified declaration. No
-  register of capabilities narrows the set.
+- **Eligibility trusts its sources.** A persona's standing comes from its file's ratified declaration, and the skill
+  checks only that the mark is there. A register of capabilities narrows the set only where the parent names one.
 - **The dispatch check is evidence, not a lock.** It finds a pending triage file for the member and attempt. A parent
   that writes one by hand gets past it.
 - **Claude Code only.** Other harnesses wait on probes of whether they take a per-call effort and carry a brief's
   front matter to the record.
-- **Jev is required** for the three decisions, which are written for model `jev-1.13.0`. Without it, every decision
+- **Jev is required** for the six decisions, which are written for model `jev-1.13.0`. Without it, every decision
   records its failure and the parent chooses.
 
 ## Who it is for
@@ -137,11 +140,12 @@ rows:
   file: personas/reviewer.md
 ```
 
-A persona's file carries its declared goal and a ratified mark in its front matter:
+A persona's file carries its declared goal, what it declares it does and a ratified mark in its front matter:
 
 ```yaml
 declaration:
   goal: Builds what a settled design specifies, with tests.
+  does: Writes scripts and their tests from a build specification.
 declaration-ratified:
   by: the owner
   at: '2026-01-01T00:00:00Z'
@@ -157,6 +161,7 @@ Where your roster or files use other names, say where they are:
 | `--file-key` | `file` | each row's file, relative to `--file-root` |
 | `--file-root` | the roster's folder | where the rows' files are read from |
 | `--goal-key` | `declaration.goal` | the declared goal, in the persona file's front matter |
+| `--does-key` | `declaration.does` | what the persona declares it does, in the persona file's front matter |
 | `--ratified-key` | `declaration-ratified` | the ratified mark, in the persona file's front matter |
 | `--user` | none | a row that is the user, never a candidate. Repeat for more |
 
@@ -165,6 +170,17 @@ A dotted name reads a nested key.
 **The stage** (`stage.py`, and `decide.py` with the same options). `--build-root` and `--ratified-root` name the
 folders the stage read looks in, each a folder or a glob pattern, repeated for more. `--task-key` (`task_id`) and
 `--status-key` (`status`) name the front-matter keys it reads.
+
+**The forms map** (`decide.py`, `--forms`). A JSON or YAML file whose object at `--forms-key` (`builders`) names the
+persona that builds each form: `code` and `model`. The skill names no builder itself.
+
+**The reachable list** (`decide.py`, `--reachable`). A JSON or YAML file whose list at `--reachable-key`
+(`harnesses`) holds each harness the parent can reach, with its `name`, a `description` and its `models`, each with a
+`name`, a `description` and the effort `levels` it is offered on that harness. Where the list names none,
+`--parent-harness` and `--parent-model`, the parent's own, are passed.
+
+**The parent and the work** (`decide.py`). `--parent-persona` names who sends the part, recorded as `sender`.
+`--work-call` names the call id of the work a review part calls to account.
 
 **The environment.**
 
@@ -189,12 +205,15 @@ instruction. The dispatch check runs as `checks.dispatch`.
 - `skill/decisions/d1-act.json`: the act decision.
 - `skill/decisions/d3-figure.json`: the persona decision.
 - `skill/decisions/d4-effort.json`: the effort decision.
+- `skill/decisions/d5-form.json`: the form decision.
+- `skill/decisions/d6-harness.json`: the harness decision.
+- `skill/decisions/d7-model.json`: the model decision.
 - `skill/references/decisions.md`: what a decision definition holds, the lanes and the decision record.
 - `skill/references/brief-format.md`: the brief every member gets.
 - `skill/references/plan-format.md`: the plan file, its proposal and how `close` marks a hop cited.
 - `skill/scripts/witness.py`: checks the ledger is writing for this session.
 - `skill/scripts/stage.py`: reads a task's stage from named files.
-- `skill/scripts/decide.py`: asks the three decisions for one part, writes its pending triage file and records an
+- `skill/scripts/decide.py`: asks the six decisions for one part, writes its pending triage file and records an
   override.
 - `skill/scripts/plan.py`: writes the planner's own pending file and the plan file, and lists a re-dispatch.
 - `skill/scripts/brief.py`: writes one member's brief.

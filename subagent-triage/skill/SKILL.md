@@ -1,6 +1,5 @@
 ---
 name: subagent-triage
-type: concept
 description: "Plans a team of subagents before any is sent, and records why each was sent where it was. For each part of a delegation it reads the kind of act, chooses an eligible persona and assigns an effort level, then writes the brief, the plan and a pending triage file the ledger copies onto the dispatch record. Use it before every dispatch that names a persona, whether the delegation is one part or many, and at the close to mark which hand-overs the parent used. Triggers: /subagent-triage, plan this team, split this delegation, which persona should take this, what effort should this get, close the plan. Not for searches, page fetches or MCP reads, for a message to a running subagent or for checking what a subagent returned (use subagent-return)."
 ---
 

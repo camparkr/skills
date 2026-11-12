@@ -205,6 +205,20 @@ class BriefTests(unittest.TestCase):
         code, out, path = self.write(body='task-missing-input.md')
         self.assert_stopped(code, out, path, str(FIXTURES / 'input-missing.txt'))
 
+    def test_dry_run_17_h4_a_quoted_slash_command_is_no_missing_path(self):
+        code, out, path = self.write(body='task-slash-command.md')
+        self.assertEqual(code, 0, out)
+        text = path.read_text(encoding='utf-8')
+        self.assertIn('`/dry-run`', text)
+        self.assertIn('`/subagent-triage`', text)
+        self.assertEqual(out['inputs'], [str(FIXTURES / 'input-present.txt')])
+
+    def test_dry_run_17_h4_likeness_a_missing_input_path_is_still_refused(self):
+        code, out, path = self.write(body='task-missing-input.md')
+        self.assertEqual(code, 1, out)
+        self.assertIn('input-missing.txt', out['error'])
+        self.assertFalse(path.exists())
+
     def test_a_repository_that_does_not_exist_stops_the_brief(self):
         code, out, path = self.write(repository=self.tmp / 'no-such-repo')
         self.assert_stopped(code, out, path, str(self.tmp / 'no-such-repo'))

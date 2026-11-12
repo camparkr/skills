@@ -426,5 +426,96 @@ class CloseTests(unittest.TestCase):
         self.assertIn('stamped after', out['faults'][0]['fault'])
 
 
+    # -- TC-26 and TC-27: the model and harness passed and run (R-39, R-40; SI-4, SI-8) -----------------------------
+
+    def model_records(self, answer='model-b2'):
+        return [{'question': 'd3-figure', 'answer': 'builder', 'uncertainty_basis': {'adequacy': 0.9, 'line': 0.5}},
+                {'question': 'd6-harness', 'answer': 'claude-code',
+                 'exact_evidence': {'reachable': ['claude-code'], 'parent_harness': 'claude-code'}},
+                {'question': 'd7-model', 'answer': answer,
+                 'exact_evidence': {'reachable': ['model-b1', 'model-b2'], 'parent_model': 'model-p'}},
+                {'question': 'd4-effort', 'answer': 'medium'}]
+
+    def test_tc26_likeness_a_passed_model_differing_from_d7_s_with_no_override_is_a_fault(self):
+        plan = self.plan([('m1', 'build')], [['m1']])
+        self.dispatch('toolu_m1', 'm1', records=self.model_records(), extra={'model_requested': 'model-b1'})
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 3, out)
+        fault, = out['faults']
+        self.assertIn('model-b1', fault['fault'])
+        self.assertIn('model-b2', fault['fault'])
+
+    def test_tc26_a_model_override_on_the_record_makes_the_passed_model_right(self):
+        plan = self.plan([('m1', 'build')], [['m1']])
+        override = {'decision': 'd7-model', 'decision_model': 'model-b2', 'model_passed': 'model-b1',
+                    'reason': 'a long context', 'at': at(0, 25)}
+        self.dispatch('toolu_m1', 'm1', records=self.model_records(), overrides=[override],
+                      extra={'model_requested': 'model-b1'})
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['faults'], [])
+
+    def test_tc26_empty_with_no_model_from_d7_the_parent_s_own_is_the_one_to_pass(self):
+        plan = self.plan([('m1', 'build'), ('m2', 'build')], [['m1', 'm2']])
+        records = self.model_records(answer='unrecorded (Jev failed: HTTP 500)')
+        self.dispatch('toolu_m1', 'm1', records=records, extra={'model_requested': 'model-p'})
+        self.dispatch('toolu_m2', 'm2', records=records, extra={'model_requested': 'model-b2'})
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 3, out)
+        self.assertEqual([f['call_id'] for f in out['faults']], ['toolu_m2'])
+        self.assertIn('model-p', out['faults'][0]['fault'])
+
+    def test_tc26_likeness_a_model_or_harness_override_with_no_reason_is_a_fault(self):
+        plan = self.plan([('m1', 'build')], [['m1']])
+        overrides = [{'decision': 'd7-model', 'decision_model': 'model-b2', 'model_passed': 'model-b1',
+                      'reason': ' ', 'at': at(0, 25)},
+                     {'decision': 'd6-harness', 'decision_harness': 'claude-code', 'harness_passed': 'claude-code',
+                      'at': at(0, 26)}]
+        self.dispatch('toolu_m1', 'm1', records=self.model_records(), overrides=overrides,
+                      extra={'model_requested': 'model-b1'})
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 3, out)
+        said = ' '.join(f['fault'] for f in out['faults'])
+        self.assertIn('the d7-model override lacks reason', said)
+        self.assertIn('the d6-harness override lacks reason', said)
+
+    def raw_return(self, call, harness=None):
+        row = {'schema': 'subagent-ledger/1', 'record': 'return', 'call_id': call, 'session': SESSION,
+               'agent_id': 'agent-x', 'dispatched_at': at(1), 'returned_at': at(3), 'outcome': 'served',
+               'outcome_reason': 'none (served)', 'route': 'subagent', 'caller': 'parent'}
+        if harness is not None:
+            row['harness'] = harness
+        with open(str(self.ledger / ('%s.jsonl' % SESSION)), 'a', encoding='utf-8') as handle:
+            handle.write(json.dumps(row) + '\n')
+
+    def test_tc27_likeness_a_return_naming_no_harness_run_and_no_reason_is_a_fault(self):
+        plan = self.plan([('m1', 'build'), ('m2', 'build')], [['m1', 'm2']])
+        assigned = {'harness_assigned': stamped('claude-code', at(0, 20)), 'model_requested': 'model-b2'}
+        self.dispatch('toolu_m1', 'm1', records=self.model_records(), extra=dict(assigned))
+        self.raw_return('toolu_m1')
+        self.dispatch('toolu_m2', 'm2', records=self.model_records(), extra=dict(assigned))
+        self.raw_return('toolu_m2', harness='claude-code')
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 3, out)
+        fault, = out['faults']
+        self.assertEqual(fault['call_id'], 'toolu_m1')
+        self.assertIn('names no harness', fault['fault'])
+
+    def test_tc27_likeness_a_dispatch_run_on_another_harness_than_assigned_is_a_fault(self):
+        plan = self.plan([('m1', 'build')], [['m1']])
+        self.dispatch('toolu_m1', 'm1', records=self.model_records(),
+                      extra={'harness_assigned': stamped('harness-b', at(0, 20)), 'model_requested': 'model-b2'})
+        self.say(at(8), 'Done.')
+        code, out = self.close(plan)
+        self.assertEqual(code, 3, out)
+        fault, = out['faults']
+        self.assertIn('harness-b', fault['fault'])
+        self.assertIn('claude-code', fault['fault'])
+
 if __name__ == '__main__':
     unittest.main()

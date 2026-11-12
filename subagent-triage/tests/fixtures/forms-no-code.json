@@ -1,0 +1,6 @@
+{
+  "description": "A likeness: a forms map with no builder for code.",
+  "builders": {
+    "model": "reasoner"
+  }
+}

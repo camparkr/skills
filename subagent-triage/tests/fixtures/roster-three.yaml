@@ -1,0 +1,14 @@
+# Four ratified personas in three groups: two builders in the workshop, a cataloguer and a reviewer.
+rows:
+- name: cataloguer
+  group: library
+  file: personas/cataloguer.md
+- name: builder
+  group: workshop
+  file: personas/builder.md
+- name: reasoner
+  group: workshop
+  file: personas/reasoner.md
+- name: reviewer
+  group: court
+  file: personas/reviewer.md

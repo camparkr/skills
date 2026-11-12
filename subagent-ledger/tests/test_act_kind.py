@@ -40,7 +40,7 @@ FIXTURES = HERE / 'fixtures'
 KINDS_FILE = SCRIPTS / 'kinds.json'
 
 KIND_NAMES = ['verdict-or-review', 'deliberation', 'build', 'inquiry', 'archiving', 'transfer', 'conversion',
-              'user-decision']
+              'user-decision', 'setting-right']
 # This file's own values for each kind, standing in for whatever a workspace's briefs carry.
 VALUES = dict((name, 'value-for-%s' % name) for name in KIND_NAMES)
 NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
@@ -154,7 +154,7 @@ class KindWorld(unittest.TestCase):
 
 class TheKinds(unittest.TestCase):
 
-    def test_kinds_json_holds_the_eight_names_each_with_a_test(self):
+    def test_kinds_json_holds_the_nine_names_each_with_a_test(self):
         if not KINDS_FILE.is_file():
             raise AssertionError('kinds.json does not exist yet: the code this control tests is not built')
         data = json.loads(KINDS_FILE.read_text(encoding='utf-8'))

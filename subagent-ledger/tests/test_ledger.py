@@ -506,7 +506,7 @@ class SchemaAgainstFixtures(unittest.TestCase):
     def test_the_selectable_fields_match_the_writer(self):
         names = ledger.load_schema()['$defs']['selectableName']['enum']
         self.assertEqual(list(ledger.SELECTABLE), names)
-        self.assertEqual(len(names), 43)  # 0.2.7 adds answer_source; U2a adds fourteen
+        self.assertEqual(len(names), 45)  # 0.2.7 adds answer_source; U2a adds fourteen; R-40 and R-37 add two
         self.assertEqual(list(ledger.DEFAULT_FIELDS),
                          ['model_requested', 'model', 'tokens', 'cost', 'outcome_reason'])
 

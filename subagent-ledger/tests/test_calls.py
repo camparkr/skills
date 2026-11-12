@@ -65,8 +65,8 @@ SELECTABLE = (
     'user_answer', 'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
     'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided', 'decision_records',
     'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by', 'overrides', 'below_line',
-    'triage_failure',
-)  # 0.2.7 adds answer_source; U2a adds the last fourteen
+    'triage_failure', 'harness_assigned', 'sender',
+)  # 0.2.7 adds answer_source; U2a adds fourteen; amendment 2's R-40 and R-37 add the last two
 
 
 def load(path, name):

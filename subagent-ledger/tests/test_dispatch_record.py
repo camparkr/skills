@@ -64,11 +64,13 @@ def full_triage_file(persona='reviewer'):
         'overrides': stamped([], LATER),
         'below_line': stamped({'below': False}, LATER),
         'triage_failure': stamped('none (the triage did not fail)', LATER),
+        'harness_assigned': stamped('harness-a', LATER),
+        'sender': stamped('lead', LATER),
     }
 
 
 PENDING_VALUES = ('effort_unaided', 'decision_records', 'triage_persona', 'persona_facts', 'kind_paired_grouping',
-                  'chosen_by', 'overrides', 'below_line', 'triage_failure')
+                  'chosen_by', 'overrides', 'below_line', 'triage_failure', 'harness_assigned', 'sender')
 
 
 class Capture(unittest.TestCase):

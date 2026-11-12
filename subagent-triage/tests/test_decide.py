@@ -3,11 +3,17 @@ asked of a stand-in for Jev, with every request recorded through the ledger's wr
 written; and its override mode.
 
 The stand-in answers from marks in the fixtures, never from the live service:
-- the act Choice reads `build` at 0.8 when the part carries MARK-BUILD;
-- each act Noul gives 0.9 for the build test on a MARK-BUILD part, and 0.05 otherwise;
+- the act Choice reads `build` at 0.8 when the part carries MARK-BUILD, `setting-right` when it carries MARK-CANON,
+  `verdict-or-review` when it carries MARK-REVIEW and `two-or-more` when it carries MARK-TWO;
+- each act Noul gives 0.9 for the build test on a MARK-BUILD part and for the setting-right test on a MARK-CANON
+  part, and 0.05 otherwise;
+- the form Choice reads `code` at 0.9 for MARK-CODE, `model` at 0.9 for MARK-SKILL, `both` at 0.9 for MARK-HOOK,
+  `model` at 0.4 (below the line) for MARK-UNSURE, and `none` at 0.9 otherwise;
 - the persona Choice gives most weight to a persona whose goal carries MARK-ADEQUATE;
 - the adequacy Noul gives 0.9 when the persona's goal carries MARK-ADEQUATE, and 0.1 otherwise;
-- the effort Choice reads `medium` at 0.6, each other level at 0.1.
+- the harness and model Choices read the option whose text carries MARK-PICK, else the first; on a MARK-OFFLIST part
+  they answer `rogue`, a label the question never offered;
+- the effort Choice reads `medium` at 0.6 where it is offered, else the first level offered.
 
 The fixtures name no real persona, group or path. The pending file is checked against the ledger's
 pending.schema.json where SUBAGENT_LEDGER_PENDING_SCHEMA names it or it sits beside ledger.py; otherwise that one check
@@ -33,7 +39,7 @@ FIXTURES = HERE / 'fixtures'
 LEDGER_SCRIPTS = HERE.parent.parent / 'subagent-ledger' / 'skill' / 'scripts'
 SESSION = '0e0e0e0e-1111-4222-8333-555555555555'
 KINDS = ['verdict-or-review', 'deliberation', 'build', 'inquiry', 'archiving', 'transfer', 'conversion',
-         'user-decision']
+         'user-decision', 'setting-right']
 RECORD_FIELDS = {'question', 'definition_version', 'subject', 'quote', 'answer', 'uncertainty_basis',
                  'decision_point_classification', 'exact_evidence', 'lane', 'delegated_authority', 'evidence_state',
                  'decided_by', 'final_disposition'}
@@ -41,7 +47,8 @@ LEVELS = ['low', 'medium', 'high', 'xhigh', 'max']
 STAGE = 'unrecorded (no task id was given)'
 STAGE_TREE = FIXTURES / 'stage'
 KEYS = ['--rows-key', 'rows', '--name-key', 'name', '--group-key', 'group', '--file-key', 'file',
-        '--goal-key', 'meta.declaration.goal', '--ratified-key', 'meta.declaration-ratified', '--user', 'the-user']
+        '--goal-key', 'meta.declaration.goal', '--does-key', 'meta.declaration.does',
+        '--ratified-key', 'meta.declaration-ratified', '--user', 'the-user']
 
 
 class StandIn:
@@ -50,6 +57,7 @@ class StandIn:
 
     def __init__(self):
         self.fail = set()
+        self.fail_qids = set()
         self.fail_effort = False
         self.seen = []
         self.arrived = []
@@ -64,35 +72,64 @@ class StandIn:
                 owner.seen.append(body)
                 owner.arrived.append(datetime.datetime.now(datetime.timezone.utc))
                 (qid, question), = body['questions'].items()
-                effort = question['type'] == 'choice' and sorted(question['criteria']) == sorted(LEVELS)
-                if question['type'] in owner.fail or (effort and owner.fail_effort):
+                effort = qid == 'effort'
+                if question['type'] in owner.fail or qid in owner.fail_qids or (effort and owner.fail_effort):
                     self.send_response(500)
                     self.end_headers()
                     self.wfile.write(b'stand-in told to fail')
                     return
                 state = body['state']
                 part = state.get('part', '')
+                criteria = question.get('criteria', {})
+
+                def spread(best, weight):
+                    rest = (1.0 - weight) / max(len(criteria) - 1, 1)
+                    return dict((label, weight if label == best else rest) for label in criteria)
+
                 if effort:
-                    probs = dict((level, 0.6 if level == 'medium' else 0.1) for level in LEVELS)
-                    answer = {'type': 'choice', 'choice': 'medium', 'confidence': 0.6, 'probabilities': probs}
+                    best = 'medium' if 'medium' in criteria else list(criteria)[0]
+                    probs = spread(best, 0.6)
+                    answer = {'type': 'choice', 'choice': best, 'confidence': 0.6, 'probabilities': probs}
+                elif qid == 'kind':
+                    best = 'none'
+                    for mark, label in (('MARK-TWO', 'two-or-more'), ('MARK-CANON', 'setting-right'),
+                                        ('MARK-REVIEW', 'verdict-or-review'), ('MARK-BUILD', 'build')):
+                        if mark in part and label in criteria:
+                            best = label
+                            break
+                    probs = spread(best, 0.8)
+                    answer = {'type': 'choice', 'choice': best, 'confidence': 0.9, 'probabilities': probs}
+                elif qid == 'form':
+                    best, weight = 'none', 0.9
+                    for mark, label, at in (('MARK-CODE', 'code', 0.9), ('MARK-SKILL', 'model', 0.9),
+                                            ('MARK-HOOK', 'both', 0.9), ('MARK-UNSURE', 'model', 0.4)):
+                        if mark in part:
+                            best, weight = label, at
+                            break
+                    probs = spread(best, weight)
+                    answer = {'type': 'choice', 'choice': best, 'confidence': weight, 'probabilities': probs}
+                elif qid in ('harness', 'model'):
+                    picked = [label for label, text in criteria.items() if 'MARK-PICK' in text]
+                    best = picked[0] if picked else list(criteria)[0]
+                    probs = spread(best, 0.7)
+                    if 'MARK-OFFLIST' in part:
+                        best = 'rogue'
+                        probs = dict(probs, rogue=0.9)
+                    answer = {'type': 'choice', 'choice': best, 'confidence': 0.7, 'probabilities': probs}
                 elif question['type'] == 'choice':
-                    criteria = question['criteria']
-                    if 'none' in criteria:
-                        best = 'build' if 'MARK-BUILD' in part else 'none'
-                        rest = 0.2 / (len(criteria) - 1)
-                        probs = dict((label, 0.8 if label == best else rest) for label in criteria)
-                    else:
-                        weights = dict((label, 7.0 if 'MARK-ADEQUATE' in text else 1.0)
-                                       for label, text in criteria.items())
-                        total = sum(weights.values())
-                        probs = dict((label, weight / total) for label, weight in weights.items())
+                    weights = dict((label, 7.0 if 'MARK-ADEQUATE' in text else 1.0)
+                                   for label, text in criteria.items())
+                    total = sum(weights.values())
+                    probs = dict((label, weight / total) for label, weight in weights.items())
                     answer = {'type': 'choice', 'choice': max(probs, key=probs.get), 'confidence': 0.9,
                               'probabilities': probs}
                 elif 'goal' in state:
                     answer = {'type': 'noul', 'noul': 0.9 if 'MARK-ADEQUATE' in state['goal'] else 0.1}
                 else:
-                    build = 'change what a program' in question['criteria']['true']
-                    answer = {'type': 'noul', 'noul': 0.9 if build and 'MARK-BUILD' in part else 0.05}
+                    test = question['criteria']['true']
+                    build = 'change what a program' in test and 'MARK-BUILD' in part
+                    canon = 'governing text' in test and 'MARK-CANON' in part
+                    answer = {'type': 'noul', 'noul': 0.9 if build or canon else 0.05}
                 out = json.dumps({'model': 'jev-1.13.0', 'answers': {qid: answer},
                                   'usage': {'input_tokens': 100, 'output_tokens': 10}}).encode()
                 self.send_response(200)
@@ -153,8 +190,7 @@ class DecideTests(unittest.TestCase):
         return self.ledger / '.pending' / SESSION / ('triage-%s-%s.json' % (member, attempt))
 
     def effort_state(self):
-        found = [body['state'] for body in self.jev.seen
-                 if sorted(list(body['questions'].values())[0]['criteria']) == sorted(LEVELS)]
+        found = [body['state'] for body in self.jev.seen if list(body['questions']) == ['effort']]
         self.assertEqual(len(found), 1)
         return found[0]
 
@@ -191,7 +227,7 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(sorted(out['act']['nouls']), sorted(KINDS))
         self.assertEqual(out['act']['nouls']['build'], 0.9)
         self.assertIsNone(out['act']['lines'])
-        self.assertEqual(sorted(out['act']['choice']['probabilities']), sorted(KINDS + ['none']))
+        self.assertEqual(sorted(out['act']['choice']['probabilities']), sorted(KINDS + ['none', 'two-or-more']))
         self.assertEqual(out['act']['kind'], 'build')
         self.assertEqual(out['persona']['eligible'], ['cataloguer', 'builder'])
         self.assertEqual(sorted(out['persona']['choice']['probabilities']), ['builder', 'cataloguer'])
@@ -199,10 +235,11 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(out['persona']['adequacy'], 0.9)
         self.assertFalse(out['persona']['below_line'])
         self.check_records(out)
-        # Twelve requests: eight Nouls, the act Choice, the persona Choice, the adequacy Noul and the effort Choice.
-        self.assertEqual(len(out['jev_calls']), 12)
+        # Fourteen requests: nine Nouls, the act Choice, the form Choice, the persona Choice, the adequacy Noul and
+        # the effort Choice. With no reachable list, the harness and the model are the parent's, and Jev is not asked.
+        self.assertEqual(len(out['jev_calls']), 14)
         records = self.records()
-        self.assertEqual(len(self.jev.seen), 12)
+        self.assertEqual(len(self.jev.seen), 14)
         ids = [call['call_id'] for call in out['jev_calls']]
         for call_id in ids:
             pair = [r for r in records if r.get('call_id') == call_id]
@@ -214,7 +251,8 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(data['triage_persona']['value'], 'builder')
         self.assertEqual(data['chosen_by']['value'], 'the planning skill')
         self.assertNotIn('below_line', data)
-        self.assertEqual(len(data['decision_records']['value']), 3)
+        self.assertEqual([r['question'] for r in data['decision_records']['value']],
+                         ['d1-act', 'd5-form', 'd3-figure', 'd6-harness', 'd7-model', 'd4-effort'])
         for value in data.values():
             self.assertRegex(value['stamped_at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d')
         self.check_schema(data)
@@ -226,8 +264,8 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(out['persona']['eligible'], [])
         self.assertIsNone(out['persona']['persona'])
         self.assertTrue(out['persona']['answer'].startswith('none adequate'))
-        self.assertEqual(len(out['jev_calls']), 10)
-        record = out['decision_records'][1]
+        self.assertEqual(len(out['jev_calls']), 12)
+        record, = [r for r in out['decision_records'] if r['question'] == 'd3-figure']
         self.assertEqual(record['lane'], 'reasoned')
         self.check_records(out)
         data = self.pending()
@@ -243,7 +281,7 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(out['persona']['persona'], 'cataloguer')
         self.assertEqual(out['persona']['adequacy'], 0.1)
         self.assertTrue(out['persona']['below_line'])
-        record = out['decision_records'][1]
+        record, = [r for r in out['decision_records'] if r['question'] == 'd3-figure']
         self.assertEqual(record['lane'], 'reasoned')
         self.assertIn('below the line', record['answer'])
         self.check_records(out)
@@ -333,7 +371,9 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(state['write_set_paths'], 2)
         self.assertIn('MARK-BUILD', state['part'])
         facts = dict((k, v) for k, v in state.items() if k != 'part')
-        self.assertEqual(self.d4(out)['exact_evidence'], facts)
+        exact = dict(self.d4(out)['exact_evidence'])
+        self.assertEqual(exact.pop('levels_offered'), LEVELS)
+        self.assertEqual(exact, facts)
 
     def test_no_kind_and_no_persona_are_given_as_none(self):
         code, out = self.run_decide('roster-two.yaml', part='part-plain.md', member='m6')
@@ -361,7 +401,8 @@ class DecideTests(unittest.TestCase):
                          and list((self.ledger / '.pending' / SESSION).glob('triage-*.json')))
         self.assertIsNone(out['pending_file'])
         self.assertIn('none', out['no_pending_file'])
-        self.assertEqual([r['question'] for r in out['decision_records']], ['d1-act', 'd4-effort'])
+        self.assertEqual([r['question'] for r in out['decision_records']],
+                         ['d1-act', 'd6-harness', 'd7-model', 'd4-effort'])
 
     def test_likeness_a_part_read_as_one_kind_still_writes_its_pending_file(self):
         code, out = self.run_decide('roster-two.yaml', member='m6k')
@@ -616,81 +657,9 @@ class DecideTests(unittest.TestCase):
         self.assertIn('d1-act', out['error'])
 
 
-    # -- The group the part's kind is paired with (R-10) -------------------------------------------------------------
-
-    def test_r10_the_kind_s_paired_group_is_read_from_the_table_given(self):
-        code, out = self.run_decide('roster-two.yaml', member='m20',
-                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json')])
-        self.assertEqual(code, 0, out)
-        self.assertEqual(out['kind_paired_grouping'], 'makers')
-        data = self.pending(member='m20')
-        self.assertEqual(data['kind_paired_grouping']['value'], 'makers')
-        self.assertRegex(data['kind_paired_grouping']['stamped_at'], r'^\d{4}-\d\d-\d\dT')
-        self.check_schema(data)
-
-    def test_r10_a_named_key_finds_the_pairs(self):
-        table = self.tmp / 'nested.json'
-        table.write_text(json.dumps({'outer': {'groups': {'build': 'makers'}}}), encoding='utf-8')
-        code, out = self.run_decide('roster-two.yaml', member='m21',
-                                    extra=['--kind-groups', str(table), '--kind-groups-key', 'outer.groups'])
-        self.assertEqual(code, 0, out)
-        self.assertEqual(self.pending(member='m21')['kind_paired_grouping']['value'], 'makers')
-
-    def test_r10_with_no_table_the_value_is_unrecorded_and_the_triage_goes_on(self):
-        code, out = self.run_decide('roster-two.yaml', member='m22')
-        self.assertEqual(code, 0, out)
-        data = self.pending(member='m22')
-        self.assertEqual(data['kind_paired_grouping']['value'], 'unrecorded (no kind-to-group table was given)')
-        self.assertEqual(data['triage_persona']['value'], 'builder')
-        self.check_schema(data)
-
-    def test_r10_a_kind_the_table_lacks_is_unrecorded_never_guessed(self):
-        code, out = self.run_decide('roster-two.yaml', member='m23',
-                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups-no-build.json')])
-        self.assertEqual(code, 0, out)
-        value = self.pending(member='m23')['kind_paired_grouping']['value']
-        self.assertRegex(value, r'^unrecorded \(.+\)$')
-        self.assertIn('pairs no group with build', value)
-        self.assertNotIn('readers', value)
-        self.assertEqual(out['persona']['persona'], 'builder')
-
-    def test_r10_an_unreadable_table_is_unrecorded_and_the_triage_goes_on(self):
-        code, out = self.run_decide('roster-two.yaml', member='m24',
-                                    extra=['--kind-groups', str(self.tmp / 'missing.json')])
-        self.assertEqual(code, 0, out)
-        value = self.pending(member='m24')['kind_paired_grouping']['value']
-        self.assertTrue(value.startswith('unrecorded (the kind-to-group table'), value)
-        self.assertEqual(out['effort']['level'], 'medium')
-
-    def test_r10_a_table_whose_key_holds_no_pairs_is_unrecorded(self):
-        code, out = self.run_decide('roster-two.yaml', member='m25',
-                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json'),
-                                           '--kind-groups-key', 'absent'])
-        self.assertEqual(code, 0, out)
-        value = self.pending(member='m25')['kind_paired_grouping']['value']
-        self.assertIn('absent', value)
-        self.assertTrue(value.startswith('unrecorded ('), value)
-
-    def test_r10_with_no_kind_read_the_value_says_so(self):
-        code, out = self.run_decide('roster-two.yaml', part='part-plain.md', member='m26',
-                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json')])
-        self.assertEqual(code, 0, out)
-        self.assertIsNone(out['act']['kind'])
-        # A part read as none writes no pending file (U5), so the value is read from the output.
-        self.assertFalse(self.pending_path(member='m26').exists())
-        self.assertEqual(out['kind_paired_grouping'], 'unrecorded (the act decision read no kind)')
-
     # -- The custodian rule (d3-figure's third eligibility rule) -----------------------------------------------------
 
     CUSTODIAN_RULE = 'the part names a unit the register records against other personas only'
-
-    def persona_choice_state(self):
-        found = [body['state'] for body in self.jev.seen
-                 if list(body['questions'].values())[0]['type'] == 'choice'
-                 and 'none' not in list(body['questions'].values())[0]['criteria']
-                 and sorted(list(body['questions'].values())[0]['criteria']) != sorted(LEVELS)]
-        self.assertEqual(len(found), 1)
-        return found[0]
 
     def test_custodian_a_part_naming_a_unit_reaches_only_its_custodian(self):
         # The builder's goal carries MARK-ADEQUATE, so without the rule the Choice would give it the part.
@@ -702,7 +671,7 @@ class DecideTests(unittest.TestCase):
         self.assertIn('shelves/catalogue/entry.md', out['persona']['excluded']['builder'])
         self.assertEqual(out['persona']['persona'], 'cataloguer')
         self.assertEqual(out['persona']['units_named'], ['shelves/catalogue/entry.md'])
-        record = out['decision_records'][1]
+        record, = [r for r in out['decision_records'] if r['question'] == 'd3-figure']
         self.assertEqual(record['exact_evidence']['units_named'], ['shelves/catalogue/entry.md'])
         data = self.pending(member='m30')
         self.assertEqual(data['persona_facts']['value']['eligible'], ['cataloguer'])
@@ -750,48 +719,357 @@ class DecideTests(unittest.TestCase):
         self.assertIn('missing.yaml', out['error'])
         self.assertFalse(self.pending_path(member='m35').exists())
 
-    # -- The facts for the persona Choice (d3-figure's facts_for_the_choice) -----------------------------------------
+    # -- R-37: the figure rests on the work, never on the sender (TC-24, the HARD constraint; SI-1) ----------------
 
-    def test_choice_facts_the_choice_is_sent_the_paired_group_and_the_dispatching_persona(self):
-        code, out = self.run_decide('roster-two.yaml', member='m36',
-                                    extra=['--kind-groups', str(FIXTURES / 'kind-groups.json'),
-                                           '--parent-persona', 'cataloguer'])
-        self.assertEqual(code, 0, out)
-        state = self.persona_choice_state()
-        self.assertEqual(sorted(state), ['dispatching_group', 'dispatching_persona', 'kind', 'kind_paired_group',
-                                         'part', 'stage'])
-        self.assertEqual(state['kind'], 'build')
-        self.assertEqual(state['kind_paired_group'], 'makers')
-        self.assertEqual(state['dispatching_persona'], 'cataloguer')
-        self.assertEqual(state['dispatching_group'], 'library')
-        self.assertEqual(state['stage'], STAGE)
-        exact = out['decision_records'][1]['exact_evidence']
-        self.assertEqual((exact['kind_paired_group'], exact['dispatching_persona'], exact['dispatching_group']),
-                         ('makers', 'cataloguer', 'library'))
-        facts = self.pending(member='m36')['persona_facts']['value']
-        self.assertEqual((facts['kind_paired_group'], facts['dispatching_persona'], facts['dispatching_group']),
-                         ('makers', 'cataloguer', 'library'))
+    def persona_request(self):
+        found = [body for body in self.jev.seen if list(body['questions']) == ['persona']]
+        self.assertEqual(len(found), 1)
+        return found[0]
 
-    def test_choice_facts_an_ineligible_parent_s_group_is_still_read_from_the_roster(self):
-        code, out = self.run_decide('roster-likeness.yaml', member='m37', extra=['--parent-persona', 'the-user'])
-        self.assertEqual(code, 0, out)
-        state = self.persona_choice_state()
-        self.assertEqual(state['dispatching_persona'], 'the-user')
-        self.assertEqual(state['dispatching_group'], 'none')
-
-    def test_choice_facts_likeness_no_parent_persona_or_an_unlisted_one_is_unrecorded(self):
-        code, out = self.run_decide('roster-two.yaml', member='m38')
-        self.assertEqual(code, 0, out)
-        state = self.persona_choice_state()
-        self.assertEqual(state['dispatching_persona'], 'unrecorded (no --parent-persona was given)')
-        self.assertEqual(state['dispatching_group'], 'unrecorded (no --parent-persona was given)')
-        self.assertEqual(state['kind_paired_group'], 'unrecorded (no kind-to-group table was given)')
+    def test_tc24_r37_the_same_part_from_two_senders_gets_the_same_choice_and_no_sender_fact(self):
+        code, first = self.run_decide('roster-two.yaml', member='m40', extra=['--parent-persona', 'cataloguer'])
+        self.assertEqual(code, 0, first)
+        sent_first = self.persona_request()
         self.jev.seen.clear()
-        code, out = self.run_decide('roster-two.yaml', member='m39', extra=['--parent-persona', 'builde'])
+        code, second = self.run_decide('roster-two.yaml', member='m41', extra=['--parent-persona', 'builder'])
+        self.assertEqual(code, 0, second)
+        sent_second = self.persona_request()
+        # The request to Jev is the same whoever sent the part, and so is the choice.
+        self.assertEqual(sent_first, sent_second)
+        self.assertEqual(first['persona']['persona'], second['persona']['persona'])
+        self.assertEqual(sorted(sent_first['state']), ['kind', 'part', 'stage'])
+        for out in (first, second):
+            d3, = [r for r in out['decision_records'] if r['question'] == 'd3-figure']
+            for key in ('dispatching_persona', 'dispatching_group', 'kind_paired_group', 'sender'):
+                self.assertNotIn(key, d3['exact_evidence'])
+        # The sender is recorded as who sent the work, and on nothing a decision reads.
+        self.assertEqual(self.pending(member='m40')['sender']['value'], 'cataloguer')
+        self.assertEqual(self.pending(member='m41')['sender']['value'], 'builder')
+        for member in ('m40', 'm41'):
+            data = self.pending(member=member)
+            self.assertNotIn('kind_paired_grouping', data)
+            for key in ('dispatching_persona', 'dispatching_group', 'kind_paired_group'):
+                self.assertNotIn(key, data['persona_facts']['value'])
+            self.check_schema(data)
+
+    def test_tc24_r37_the_choice_weighs_declared_goal_and_acts_and_names_no_group(self):
+        code, out = self.run_decide('roster-two.yaml', member='m42')
         self.assertEqual(code, 0, out)
-        state = self.persona_choice_state()
-        self.assertEqual(state['dispatching_persona'], 'builde')
-        self.assertEqual(state['dispatching_group'], 'unrecorded (the roster lists no persona builde)')
+        question = self.persona_request()['questions']['persona']
+        for text in [question['instructions']] + list(question['criteria'].values()):
+            for word in ('dispatching', 'kind_paired', 'weigh both', 'workshop', 'library'):
+                self.assertNotIn(word, text)
+        self.assertIn('Builds what a settled design specifies', question['criteria']['builder'])
+        self.assertIn('Writes code and its tests to a settled design', question['criteria']['builder'])
+        adequacy = [body for body in self.jev.seen if list(body['questions']) == ['adequate']]
+        self.assertEqual(len(adequacy), 1)
+        self.assertNotIn('group', adequacy[0]['state'])
+        self.assertNotIn('--kind-groups', SCRIPT.read_text(encoding='utf-8'))
+
+    def test_tc24_r37_a_part_sent_by_the_persona_that_best_fits_it_goes_to_that_persona(self):
+        code, out = self.run_decide('roster-two.yaml', member='m43', extra=['--parent-persona', 'builder'])
+        self.assertEqual(code, 0, out)
+        self.assertIn('builder', out['persona']['eligible'])
+        self.assertEqual(out['persona']['persona'], 'builder')
+
+    def test_tc24_r37_the_definition_s_instructions_carry_no_sender_and_no_paired_group(self):
+        d3 = json.loads((SCRIPT.parent.parent / 'decisions' / 'd3-figure.json').read_text(encoding='utf-8'))
+        text = json.dumps(d3['composition'])
+        for word in ('dispatching', 'kind_paired', 'weigh both', '{group}'):
+            self.assertNotIn(word, text)
+        facts = ' '.join(d3['exact_facts']['facts_for_the_choice'])
+        self.assertNotIn('dispatching', facts)
+        self.assertNotIn('paired', facts)
+
+    def test_tc24_r37_empty_a_part_meeting_no_test_goes_back_as_a_finding_with_no_kind_or_persona(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-plain.md', member='m44')
+        self.assertEqual(code, 0, out)
+        self.assertIsNone(out['act']['kind'])
+        self.assertIsNone(out['persona'])
+        self.assertIsNone(out['pending_file'])
+        self.assertFalse([body for body in self.jev.seen if list(body['questions']) == ['persona']])
+
+    def test_tc24_r37_a_part_meeting_two_tests_is_split_with_no_persona_and_no_pending_file(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-two-kinds.md', member='m45')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out['act']['split'])
+        self.assertIsNone(out['act']['kind'])
+        self.assertTrue(out['act']['answer'].startswith('split ('), out['act']['answer'])
+        self.assertIsNone(out['persona'])
+        self.assertIsNone(out['pending_file'])
+        self.assertIn('split', out['no_pending_file'])
+        kind_choice, = [body for body in self.jev.seen if list(body['questions']) == ['kind']]
+        self.assertIn('two-or-more', kind_choice['questions']['kind']['criteria'])
+        d1, = [r for r in out['decision_records'] if r['question'] == 'd1-act']
+        self.assertIn('split', d1['answer'])
+
+    # -- R-37's calling-to-account rule: the work's own record, never the sender -----------------------------------
+
+    def work_record(self, persona, call_id='toolu_work_1'):
+        sys.path.insert(0, str(LEDGER_SCRIPTS))
+        import ledger
+        written = ledger.dispatch(ledger=str(self.ledger), brief='The work called to account.', session=SESSION,
+                                  call_id=call_id, agent_id='unrecorded (not yet returned)',
+                                  dispatched_at='2026-01-15T00:00:00.000Z', route='subagent',
+                                  harness='claude-code', caller='parent', **{'persona-name': persona})
+        self.assertTrue(written.ok, written)
+        return call_id
+
+    def test_tc24_r37_a_review_part_excludes_the_group_of_the_persona_that_did_the_work(self):
+        call = self.work_record('builder')
+        code, out = self.run_decide('roster-three.yaml', part='part-review.md', member='m46',
+                                    extra=['--work-call', call, '--parent-persona', 'cataloguer'])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['act']['kind'], 'verdict-or-review')
+        self.assertEqual(sorted(out['persona']['eligible']), ['cataloguer', 'reviewer'])
+        for name in ('builder', 'reasoner'):
+            self.assertIn('performed the work called to account', out['persona']['excluded'][name])
+        chosen = out['persona']['persona']
+        self.jev.seen.clear()
+        # The same part sent by a persona of the workshop: the same candidates and the same choice.
+        code, again = self.run_decide('roster-three.yaml', part='part-review.md', member='m47',
+                                      extra=['--work-call', call, '--parent-persona', 'reasoner'])
+        self.assertEqual(code, 0, again)
+        self.assertEqual(again['persona']['eligible'], out['persona']['eligible'])
+        self.assertEqual(again['persona']['persona'], chosen)
+
+    def test_tc24_r37_empty_a_review_part_whose_work_names_no_performer_goes_back_as_a_finding(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-review.md', member='m48',
+                                    extra=['--parent-persona', 'builder'])
+        self.assertEqual(code, 0, out)
+        self.assertIsNone(out['persona']['persona'])
+        self.assertIn('called to account', out['persona']['answer'])
+        self.assertFalse([body for body in self.jev.seen if list(body['questions']) == ['persona']])
+        code, out = self.run_decide('roster-three.yaml', part='part-review.md', member='m49',
+                                    extra=['--work-call', 'toolu_no_such_call'])
+        self.assertEqual(code, 0, out)
+        self.assertIsNone(out['persona']['persona'])
+        self.assertIn('toolu_no_such_call', out['persona']['answer'])
+
+    # -- R-38: the form decides the builder of a part that makes a capability (TC-25; SI-1) ------------------------
+
+    FORMS = ['--forms', str(FIXTURES / 'forms.json')]
+
+    def d(self, out, question):
+        found = [r for r in out['decision_records'] if r['question'] == question]
+        self.assertEqual(len(found), 1, [r['question'] for r in out['decision_records']])
+        return found[0]
+
+    def test_tc25_r38_a_parser_is_code_and_goes_to_the_code_builder_the_map_names(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-parser.md', member='m50', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['form']['form'], 'code')
+        self.assertFalse(out['form']['below_line'])
+        self.assertEqual(out['persona']['persona'], 'builder')
+        self.assertEqual(self.d(out, 'd5-form')['answer'], 'code')
+        # The map names the builder exactly: no persona Choice is asked.
+        self.assertFalse([body for body in self.jev.seen if list(body['questions']) == ['persona']])
+        data = self.pending(member='m50')
+        self.assertEqual(data['triage_persona']['value'], 'builder')
+        self.assertIn('d5-form', [r['question'] for r in data['decision_records']['value']])
+        self.check_schema(data)
+
+    def test_tc25_r38_a_skill_is_model_and_goes_to_the_model_builder(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-skill.md', member='m51', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['form']['form'], 'model')
+        self.assertEqual(out['persona']['persona'], 'reasoner')
+
+    def test_tc25_r38_a_hook_and_its_prompt_make_both_and_the_part_is_split(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-hook.md', member='m52', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out['form']['split'])
+        self.assertIsNone(out['persona'])
+        self.assertIsNone(out['pending_file'])
+        self.assertIn('split', out['no_pending_file'])
+
+    def test_tc25_r38_below_its_line_the_form_goes_to_the_model_builder_marked(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-unsure.md', member='m53', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out['form']['below_line'])
+        self.assertEqual(out['form']['form'], 'model')
+        self.assertEqual(out['persona']['persona'], 'reasoner')
+        record = self.d(out, 'd5-form')
+        self.assertIn('below the line', record['answer'])
+        self.assertEqual(record['uncertainty_basis']['probability'], 0.4)
+        self.assertEqual(record['uncertainty_basis']['line'], 0.5)
+        self.assertEqual(record['uncertainty_basis']['line_version'], 0)
+        self.assertEqual(record['lane'], 'reasoned')
+
+    def test_tc25_r38_empty_a_build_part_making_no_capability_takes_no_form(self):
+        code, out = self.run_decide('roster-three.yaml', member='m54', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertIsNone(out['form']['form'])
+        self.assertTrue(self.d(out, 'd5-form')['answer'].startswith('none ('))
+        # Its persona is chosen by the persona Choice over every eligible persona (R-37 alone).
+        request = self.persona_request()
+        self.assertEqual(sorted(request['questions']['persona']['criteria']),
+                         ['builder', 'cataloguer', 'reasoner', 'reviewer'])
+
+    def test_tc25_r38_likeness_a_map_with_no_builder_for_the_form_is_a_finding(self):
+        for member, extra in (('m55', ['--forms', str(FIXTURES / 'forms-no-code.json')]), ('m56', [])):
+            code, out = self.run_decide('roster-three.yaml', part='part-parser.md', member=member, extra=extra)
+            self.assertEqual(code, 0, out)
+            self.assertIsNone(out['persona']['persona'])
+            self.assertTrue(out['persona']['answer'].startswith('none adequate ('), out['persona']['answer'])
+            self.assertIn('code', out['persona']['answer'])
+
+    def test_tc25_r38_a_part_that_is_not_making_takes_no_form_question(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-canon.md', member='m57', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertIsNone(out['form'])
+        self.assertFalse([body for body in self.jev.seen if list(body['questions']) == ['form']])
+
+    # -- R-39: the model and the harness, from the reachable list (TC-26; SI-4) ------------------------------------
+
+    def reachable(self, name):
+        return ['--reachable', str(FIXTURES / name), '--parent-harness', 'harness-p', '--parent-model', 'model-p']
+
+    def test_tc26_r39_empty_settings_listing_nothing_assign_the_parent_s_own_saying_why(self):
+        code, out = self.run_decide('roster-two.yaml', member='m60',
+                                    extra=['--parent-harness', 'harness-p', '--parent-model', 'model-p'])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['harness']['pass'], 'harness-p')
+        self.assertEqual(out['model']['pass'], 'model-p')
+        for question in ('d6-harness', 'd7-model'):
+            record = self.d(out, question)
+            self.assertIn('the settings list', json.dumps(record['uncertainty_basis']))
+        self.assertFalse([body for body in self.jev.seen if list(body['questions']) in (['harness'], ['model'])])
+        data = self.pending(member='m60')
+        self.assertEqual(data['harness_assigned']['value'], 'harness-p')
+        self.check_schema(data)
+
+    def test_tc26_r39_the_harness_then_its_model_are_chosen_from_the_list_and_d4_over_its_levels(self):
+        code, out = self.run_decide('roster-two.yaml', member='m61', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 0, out)
+        harness_q, = [b for b in self.jev.seen if list(b['questions']) == ['harness']]
+        self.assertEqual(sorted(harness_q['questions']['harness']['criteria']), ['harness-a', 'harness-b'])
+        self.assertEqual(out['harness']['pass'], 'harness-b')
+        model_q, = [b for b in self.jev.seen if list(b['questions']) == ['model']]
+        self.assertEqual(sorted(model_q['questions']['model']['criteria']), ['model-b1', 'model-b2'])
+        self.assertEqual(out['model']['pass'], 'model-b2')
+        effort_q, = [b for b in self.jev.seen if list(b['questions']) == ['effort']]
+        self.assertEqual(list(effort_q['questions']['effort']['criteria']), ['medium', 'max'])
+        self.assertEqual(effort_q['state']['harness'], 'harness-b')
+        self.assertEqual(effort_q['state']['model'], 'model-b2')
+        # The order: the figure, then the harness and the model, then the effort.
+        order = [list(b['questions'])[0] for b in self.jev.seen]
+        self.assertLess(order.index('persona'), order.index('harness'))
+        self.assertLess(order.index('harness'), order.index('model'))
+        self.assertLess(order.index('model'), order.index('effort'))
+        self.assertEqual(self.pending(member='m61')['harness_assigned']['value'], 'harness-b')
+        self.assertEqual(self.d(out, 'd4-effort')['exact_evidence']['levels_offered'], ['medium', 'max'])
+
+    def test_tc26_r39_one_listed_harness_and_model_are_assigned_without_asking(self):
+        code, out = self.run_decide('roster-two.yaml', member='m62', extra=self.reachable('reachable-one.json'))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((out['harness']['pass'], out['model']['pass']), ('harness-only', 'model-only'))
+        self.assertFalse([body for body in self.jev.seen if list(body['questions']) in (['harness'], ['model'])])
+        effort_q, = [b for b in self.jev.seen if list(b['questions']) == ['effort']]
+        self.assertEqual(list(effort_q['questions']['effort']['criteria']), ['low', 'high'])
+
+    def test_tc26_r39_likeness_an_answer_off_the_list_is_never_assigned(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-offlist.md', member='m63',
+                                    extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 3, out)
+        self.assertNotEqual(out['harness']['pass'], 'rogue')
+        self.assertNotEqual(out['model']['pass'], 'rogue')
+        self.assertEqual(out['harness']['pass'], 'harness-p')
+        self.assertTrue(self.d(out, 'd6-harness')['answer'].startswith('unrecorded ('))
+        self.assertEqual(self.pending(member='m63')['harness_assigned']['value'], 'harness-p')
+
+    def test_tc26_r39_empty_a_failed_decision_passes_the_parent_s_own_saying_why(self):
+        self.jev.fail_qids.update(('harness', 'model'))
+        code, out = self.run_decide('roster-two.yaml', member='m64', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 3, out)
+        self.assertEqual(out['harness']['pass'], 'harness-p')
+        self.assertEqual(out['model']['pass'], 'model-p')
+        self.assertIn('the parent', out['harness']['route'])
+        data = self.pending(member='m64')
+        self.assertIn('harness decision', data['triage_failure']['value'])
+
+    def override_value(self, member, decision, option, value, reason='the work needs a longer context'):
+        return self.run_script(['override', '--pending', str(self.pending_path(member=member)), '--decision',
+                                decision, option, value, '--reason', reason])
+
+    def test_tc26_r39_an_override_records_both_values_its_reason_and_time(self):
+        code, out = self.run_decide('roster-two.yaml', member='m65', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 0, out)
+        code, out = self.override_value('m65', 'd6-harness', '--harness', 'harness-a')
+        self.assertEqual(code, 0, out)
+        entry = out['override']
+        self.assertEqual((entry['decision'], entry['decision_harness'], entry['harness_passed']),
+                         ('d6-harness', 'harness-b', 'harness-a'))
+        self.assertEqual(entry['reason'], 'the work needs a longer context')
+        self.assertRegex(entry['at'], r'^\d{4}-\d\d-\d\dT')
+        code, out = self.override_value('m65', 'd7-model', '--model', 'model-b1')
+        self.assertEqual(code, 0, out)
+        entry = out['override']
+        self.assertEqual((entry['decision_model'], entry['model_passed']), ('model-b2', 'model-b1'))
+        data = self.pending(member='m65')
+        self.assertEqual(data['harness_assigned']['value'], 'harness-a')
+        self.assertEqual([o['decision'] for o in data['overrides']['value']], ['d6-harness', 'd7-model'])
+        self.check_schema(data)
+
+    def test_tc26_r39_likeness_an_override_off_the_list_or_with_no_reason_is_refused(self):
+        code, out = self.run_decide('roster-two.yaml', member='m66', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 0, out)
+        before = self.pending_path(member='m66').read_text(encoding='utf-8')
+        for decision, option, value, reason in (('d6-harness', '--harness', 'harness-z', 'r'),
+                                                ('d7-model', '--model', 'model-a1', 'r'),
+                                                ('d6-harness', '--harness', 'harness-a', '  '),
+                                                ('d4-effort', '--level', 'low', 'r')):
+            code, out = self.override_value('m66', decision, option, value, reason=reason)
+            self.assertEqual(code, 1, (decision, value, out))
+        self.assertEqual(self.pending_path(member='m66').read_text(encoding='utf-8'), before)
+
+    # -- R-40: the values assigned reach the pending file (TC-27; SI-8) --------------------------------------------
+
+    def test_tc27_r40_the_pending_file_carries_the_harness_assigned_the_sender_and_every_decision_record(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-parser.md', member='m67',
+                                    extra=self.FORMS + self.reachable('reachable-two.json')
+                                    + ['--parent-persona', 'cataloguer'])
+        self.assertEqual(code, 0, out)
+        data = self.pending(member='m67')
+        self.assertEqual(data['harness_assigned']['value'], out['harness']['pass'])
+        self.assertEqual(data['sender']['value'], 'cataloguer')
+        self.assertEqual([r['question'] for r in data['decision_records']['value']],
+                         ['d1-act', 'd5-form', 'd3-figure', 'd6-harness', 'd7-model', 'd4-effort'])
+        model = [r for r in data['decision_records']['value'] if r['question'] == 'd7-model'][0]
+        self.assertEqual(model['answer'], out['model']['pass'])
+        self.check_records(out)
+        self.check_schema(data)
+
+    def test_tc27_r40_with_no_sender_given_the_sender_reads_unrecorded_with_its_reason(self):
+        code, out = self.run_decide('roster-two.yaml', member='m68')
+        self.assertEqual(code, 0, out)
+        self.assertRegex(self.pending(member='m68')['sender']['value'], r'^unrecorded \(.+\)$')
+
+    # -- The ninth kind: setting a governing text right ------------------------------------------------------------
+
+    def test_a_part_setting_a_governing_text_right_reads_as_the_ninth_kind(self):
+        code, out = self.run_decide('roster-two.yaml', part='part-canon.md', member='m70')
+        self.assertEqual(code, 0, out)
+        self.assertIn('setting-right', out['act']['nouls'])
+        self.assertEqual(out['act']['nouls']['setting-right'], 0.9)
+        self.assertEqual(out['act']['kind'], 'setting-right')
+        self.assertEqual(self.pending(member='m70')['kind']['value'], 'setting-right')
+        self.check_schema(self.pending(member='m70'))
+
+    def test_likeness_a_skill_s_prose_still_reads_as_build(self):
+        code, out = self.run_decide('roster-three.yaml', part='part-skill.md', member='m71', extra=self.FORMS)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['act']['kind'], 'build')
+        self.assertLess(out['act']['nouls']['setting-right'], 0.5)
+
+    def test_the_act_decision_names_nine_kinds_and_the_kinds_file_tests_each(self):
+        d1 = json.loads((SCRIPT.parent.parent / 'decisions' / 'd1-act.json').read_text(encoding='utf-8'))
+        self.assertEqual(d1['kinds']['names'], KINDS)
+        self.assertEqual(sorted(d1['composition']['nouls']['lines']), sorted(KINDS))
+        kinds = json.loads((LEDGER_SCRIPTS / 'kinds.json').read_text(encoding='utf-8'))['kinds']
+        test, = [k['test'] for k in kinds if k['name'] == 'setting-right']
+        for word in ('canon', 'thiasos', 'diorth', 'Mouseion', 'synodos'):
+            self.assertNotIn(word, test)
 
 
 if __name__ == '__main__':

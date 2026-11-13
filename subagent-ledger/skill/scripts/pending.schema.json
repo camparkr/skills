@@ -114,10 +114,6 @@
           "$ref": "#/$defs/stampedObject",
           "description": "The facts the persona's choice rested on."
         },
-        "kind_paired_grouping": {
-          "$ref": "#/$defs/stampedText",
-          "description": "The grouping the part's kind is paired with: a fact for the choice, never the record's grouping."
-        },
         "chosen_by": {
           "$ref": "#/$defs/stampedText",
           "description": "Who chose the call's persona: the planning skill or the dispatching agent."

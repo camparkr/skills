@@ -128,7 +128,6 @@
         "decision_records",
         "triage_persona",
         "persona_facts",
-        "kind_paired_grouping",
         "chosen_by",
         "overrides",
         "below_line",
@@ -688,10 +687,6 @@
         "persona_facts": {
           "$ref": "#/$defs/stampedOrUnrecorded",
           "description": "Copied from the pending triage file with its stamp: the facts the persona's choice rested on."
-        },
-        "kind_paired_grouping": {
-          "$ref": "#/$defs/stampedOrUnrecorded",
-          "description": "Copied from the pending triage file with its stamp: the grouping the part's kind is paired with; never the record's grouping."
         },
         "chosen_by": {
           "$ref": "#/$defs/stampedOrUnrecorded",
@@ -2176,30 +2171,6 @@
                 "not": {
                   "contains": {
                     "const": "persona_facts"
-                  }
-                }
-              }
-            }
-          },
-          "$comment": "A record written before this field existed lists it in neither list."
-        },
-        {
-          "if": {
-            "required": [
-              "kind_paired_grouping"
-            ]
-          },
-          "then": {
-            "properties": {
-              "fields_on": {
-                "contains": {
-                  "const": "kind_paired_grouping"
-                }
-              },
-              "fields_not_chosen": {
-                "not": {
-                  "contains": {
-                    "const": "kind_paired_grouping"
                   }
                 }
               }

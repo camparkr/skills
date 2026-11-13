@@ -85,21 +85,21 @@ SELECTABLE = (
     'answer_path', 'answer_source', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind', 'user_answer',
     'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
     'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided', 'decision_records',
-    'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by', 'overrides', 'below_line',
-    'triage_failure', 'harness_assigned', 'sender',
+    'triage_persona', 'persona_facts', 'chosen_by', 'overrides', 'below_line', 'triage_failure', 'harness_assigned',
+    'sender',
 )
 # Fields no longer selectable, and gone from the schema. A record written before they were retired
 # keeps them as written, and the reader prints them where a record carries them. A `fields` list
 # naming one turns nothing on.
-RETIRED = ('recommended_harness', 'recommended_model', 'triage_model')
+RETIRED = ('recommended_harness', 'recommended_model', 'triage_model', 'kind_paired_grouping')
 DEFAULT_FIELDS = ('model_requested', 'model', 'tokens', 'cost', 'outcome_reason')
 # Which record a selectable field belongs to. A field that is on and belongs to the other record
 # reads `unrecorded (<reason>)` saying where it is.
 DISPATCH_ONLY = {'model_requested', 'effort_assigned', 'auth_route', 'brief_path', 'brief_source',
                  'persona-name', 'act_kind', 'user_answer', 'grouping', 'task', 'triage_kind',
                  'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided',
-                 'decision_records', 'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by',
-                 'overrides', 'below_line', 'triage_failure', 'harness_assigned', 'sender'}
+                 'decision_records', 'triage_persona', 'persona_facts', 'chosen_by', 'overrides', 'below_line',
+                 'triage_failure', 'harness_assigned', 'sender'}
 # The values a planning skill's pending triage file carries, absent where there was none.
 NO_PENDING_FILE = 'unrecorded (no pending triage file for this call)'
 RETURN_ONLY = {'model', 'tokens', 'cost', 'outcome_reason', 'effort', 'answer_path', 'answer_source', 'isolation',
@@ -129,7 +129,6 @@ NOT_GIVEN = {
     'decision_records': NO_PENDING_FILE,
     'triage_persona': NO_PENDING_FILE,
     'persona_facts': NO_PENDING_FILE,
-    'kind_paired_grouping': NO_PENDING_FILE,
     'chosen_by': NO_PENDING_FILE,
     'overrides': NO_PENDING_FILE,
     'below_line': NO_PENDING_FILE,

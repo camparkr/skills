@@ -46,8 +46,8 @@ TRIAGE_PREFIX = 'triage-'
 # The planning skill's own dispatch: its pending file is planner-<plan-request-id>.json, and its brief names that id.
 PLANNER_PREFIX = 'planner-'
 # The values copied onto the dispatch record, in the schema's order. `kind` is not copied: it becomes triage_kind.
-COPIED = ('effort_unaided', 'decision_records', 'triage_persona', 'persona_facts', 'kind_paired_grouping',
-          'chosen_by', 'overrides', 'below_line', 'triage_failure', 'harness_assigned', 'sender')
+COPIED = ('effort_unaided', 'decision_records', 'triage_persona', 'persona_facts', 'chosen_by', 'overrides',
+          'below_line', 'triage_failure', 'harness_assigned', 'sender')
 KIND = 'kind'
 UNREADABLE = 'unrecorded (the pending triage file %s could not be read: %s)'
 REASON_LIMIT = 200

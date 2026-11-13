@@ -100,8 +100,8 @@ The override, when the parent passes a level other than the effort decision's:
 
 It appends to the pending file's `overrides` list the decision's level (read from the file's own d4-effort record),
 the level passed instead, the reason and the time, and restamps the list. It refuses, with exit 1 and the file
-unchanged, a file with no d4-effort record, an unknown level, a level the record's `levels_offered` leaves out, an
-empty reason or another decision.
+unchanged, a file with no d4-effort record, an unknown level, a level the assigned model is not offered (after a
+model override, the model passed, by the d7-model record's `levels_offered`), an empty reason or another decision.
 
 The override, when the parent passes a harness or a model other than the decision's:
 
@@ -895,12 +895,16 @@ def persona_decision(jev, definition, part, kind, eligible, excluded, rows, subj
     return section, record(definition, subject, quote, answer, basis, lane_from, decided_by, exact=exact)
 
 
-def listed_decision(jev, definition, qid, options, parent, state, subject, quote, decided_by, nothing):
+def listed_decision(jev, definition, qid, options, parent, state, subject, quote, decided_by, nothing, levels=None):
     """The harness or model section and its decision record (R-39): chosen from `options`, the reachable list's
     entries; the parent's own where the list names none or the decision gives none. `nothing` says why the list
-    names none. `pass` is the value to pass; an answer off the list is never it."""
+    names none. `pass` is the value to pass; an answer off the list is never it. `levels`, for the model decision,
+    gives the levels each listed model is offered on the assigned harness, so an effort override after a model
+    override can be checked against the model passed."""
     names = [o['name'] for o in options]
     exact = {'reachable': names, 'parent_%s' % qid: parent}
+    if levels is not None:
+        exact['levels_offered'] = levels
     section = {'reachable': names, 'parent': parent, 'choice': None}
     if not options:
         lane_from = outcome(definition, 'the settings list nothing')
@@ -977,11 +981,26 @@ def effort_decision(jev, definition, part, body, kind, persona, unaided, subject
 # The override
 # ---------------------------------------------------------------------------
 
-def effort_override(args, record):
+def effort_override(args, record, data):
     """The override entry for the effort decision, or the reason it is refused: a level the assigned harness does
-    not offer the assigned model, where the record names the levels offered."""
+    not offer the assigned model, where a record names the levels offered. The assigned model is the decision's,
+    or, once the parent has overridden the model, the model passed (R-39): its levels are the ones the d7-model
+    record gives it."""
     exact = record.get('exact_evidence') if isinstance(record.get('exact_evidence'), dict) else {}
     offered = exact.get('levels_offered')
+    kept = data.get('overrides')
+    passed = [entry.get('model_passed') for entry in (kept.get('value') if isinstance(kept, dict) else None) or []
+              if isinstance(entry, dict) and entry.get('decision') == MODEL_DECISION]
+    if passed:
+        held = data.get('decision_records')
+        models = [r for r in (held.get('value') if isinstance(held, dict) else None) or []
+                  if isinstance(r, dict) and r.get('question') == MODEL_DECISION]
+        model_exact = models[-1].get('exact_evidence') if models else None
+        by_model = model_exact.get('levels_offered') if isinstance(model_exact, dict) else None
+        offered = by_model.get(passed[-1]) if isinstance(by_model, dict) else None
+        if not isinstance(offered, list):
+            return None, 'the %s record gives no levels for %s, the model passed: the level cannot be checked' % (
+                MODEL_DECISION, passed[-1])
     if isinstance(offered, list) and args.level not in offered:
         return None, 'the level %s is not one the assigned harness offers the assigned model: %s' % (
             args.level, ', '.join(offered) or 'none')
@@ -1122,7 +1141,7 @@ def override(argv):
     elif not found:
         return fail(1, 'the pending file holds no %s record: %s' % (args.decision, path))
     else:
-        make = {EFFORT_DECISION: effort_override, PERSONA_DECISION: persona_override,
+        make = {EFFORT_DECISION: lambda a, r: effort_override(a, r, data), PERSONA_DECISION: persona_override,
                 HARNESS_DECISION: listed_override, MODEL_DECISION: listed_override}[args.decision]
         entry, refusal = make(args, found[-1])
     if refusal:
@@ -1323,7 +1342,9 @@ def main(argv=None):
     models = models_of(harnesses, harness['pass'])
     model, model_record = listed_decision(jev, d7, 'model', models, parent_model,
                                           dict(state, harness=harness['pass']), subject, quote, engine(d7),
-                                          'the settings list no model for the harness %s' % harness['pass'])
+                                          'the settings list no model for the harness %s' % harness['pass'],
+                                          levels=dict((m['name'], levels_for(harnesses, harness['pass'], m['name']))
+                                                      for m in models))
     records.append(model_record)
     if model.get('failure'):
         failures.append('model decision: %s' % model['failure'])

@@ -1,0 +1,6 @@
+# A stand-in custodian register for decide.py's tests: one unit, kept by the cataloguer. It names no real unit.
+rows:
+- unit: shelves/catalogue/entry.md
+  custodian: cataloguer
+- unit: shelves/workshop/bench.md
+  custodian: builder

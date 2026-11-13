@@ -302,6 +302,22 @@ chosen, so a missing field is never mistaken for an empty one.
   ending in `*` covers every server whose name starts with the rest.
 - `keep_copies`: what happens to the copies of briefs and answers. `always`, the default, keeps them. `until-close`
   lets the prune remove them when the session closes. The records keep their fingerprints either way.
+- `checks`: the commands `wrapper.py` runs as checks, keyed by when each runs. `stop` runs at each subagent stop,
+  `handback` before a hand-back tool, `dispatch` before an Agent or Task call, `gate` before every tool call of the
+  parent, and `context` after the capture, when the parent gets a subagent's answer or the user sends a prompt. A
+  check reads the hook payload on standard input and prints `{"refuse": true or false, "reason": "<text>"}`; a
+  `context` check may also print `context`, text handed to the parent. A check that fails or runs too long refuses
+  nothing, and its record says it could not check. With none, the wrapper runs only the capture. Example:
+  `"checks": {"stop": "python3 /path/to/check_stop.py", "gate": "python3 /path/to/gate.py"}`.
+- `check_seconds`: how long each check may run before it is stopped. The default is 10, which also applies when the
+  value is not a positive number. Example: `"check_seconds": 20`.
+- `background_wait_seconds`: how long a background call's return waits for the subagent's transcript to show it has
+  ended. At the bound the return is written with the counters as the transcript stood, and the record says the wait
+  did not finish. With none, the harness's hook time-out is the only bound; a value that is not a positive number
+  writes an error line and leaves the wait unbounded. `wrapper.py --hook-entries` needs it, since each hook's time
+  limit is set above this wait plus `check_seconds` and a 30-second margin. With a `gate` check named, the limit
+  holds one more `check_seconds`, since one tool call may run the gate and then the dispatch check. Example:
+  `"background_wait_seconds": 600`.
 
 ## Contents of this folder
 

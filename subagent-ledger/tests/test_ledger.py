@@ -427,6 +427,7 @@ SCHEMA_PATTERNS = [
     ('#/$defs/session/anyOf/0', 'b5label-0000-4000-8000-000000000001'),
     ('#/$defs/fingerprint/properties/sha256', 'a' * 64),
     ('#/$defs/witness/properties/fingerprints/items/properties/sha256', '0' * 64),
+    ('#/$defs/baseline/anyOf/0/properties/commit', 'c' * 40),
 ]
 
 
@@ -505,7 +506,8 @@ class SchemaAgainstFixtures(unittest.TestCase):
     def test_the_selectable_fields_match_the_writer(self):
         names = ledger.load_schema()['$defs']['selectableName']['enum']
         self.assertEqual(list(ledger.SELECTABLE), names)
-        self.assertEqual(len(names), 29)  # 0.2.7 adds answer_source
+        self.assertEqual(len(names), 44)  # 0.2.7 adds answer_source; U2a adds fourteen; R-40 and R-37 add two;
+        # R-10 retires kind_paired_grouping
         self.assertEqual(list(ledger.DEFAULT_FIELDS),
                          ['model_requested', 'model', 'tokens', 'cost', 'outcome_reason'])
 

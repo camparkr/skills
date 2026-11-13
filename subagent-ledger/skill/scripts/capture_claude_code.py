@@ -4,8 +4,8 @@
     python3 capture_claude_code.py <event> [--ledger <folder>]
 
 with the hook's payload on standard input. It prints nothing on standard output and exits 0 on every
-path, including a payload that is empty or is not JSON, so it never blocks or changes a call. It
-imposes no time limit.
+path, including a payload that is empty or is not JSON, so it never blocks or changes a call. Its one
+time limit is the bound config.json may set on a background return's wait (`background_wait_seconds`).
 
 What each event does:
 
@@ -32,6 +32,23 @@ What each event does:
     `unrecorded (the caller stopped the subagent)`, its counters from the transcript as it stands.
     PostToolUse on TaskStop writes the same return where none was written. A stop naming no pending
     agent, such as a background shell task, writes nothing.
+  * SessionStart: a witness line, `event` SessionStart, before the session's first call, so a reader can tell a
+    session the capture saw from one it did not. A payload with no session id also writes an error line.
+  * PreToolUse on Agent or Task also reads, from the brief (the first readable file the prompt names), `member` and
+    `attempt` at the frontmatter keys config.json's `frontmatter` map names (by default `member` and `attempt`).
+    A prompt naming no file reads `unrecorded (the prompt names no file)`; a first file with no member id reads
+    `unrecorded (the first file the prompt names is not a brief: <path>)`, and `harness_payload.kinds_read_from`
+    says act_kind and triage_kind were read from that file. A member's pending triage file,
+    `triage-<member>-<attempt>.json` (pending.schema.json; read by pending.py), has each value copied onto the
+    record with its stamp, and is removed once the record is written; where it carries `kind`, no triage runs and
+    `harness_payload.triage_source` names the file. A malformed file writes an error line at stage `pending`, each
+    value reads unrecorded, and the record is still written. A brief with no member id that names the plan request
+    of a `planner-<id>.json` pending file is the planning skill's own dispatch: `member` and `attempt` say so and
+    name the request, and the file is removed. `session_effort` is the payload's `effort.level`. A writer, whose
+    brief's `## Write set` names a path, gets `baseline`: the working folder's HEAD, which its worktree branches
+    from. Nothing is removed outside <ledger>/.pending/<session>/, and no path a pending file names is followed.
+  * PreToolUse on SendMessage to an agent this ledger holds: `continues_call_id`, `member` and `attempt` of the
+    dispatch it continues, joined by agent id through the join file or the return record; and `session_effort`.
   * SubagentStart: a witness line, and a pending file keyed by the agent id. Each message still
     waiting for this agent's stop is marked as sent before a turn that started.
   * PostToolUse on Agent or Task, a foreground call: the return record. The tool response is the one
@@ -65,8 +82,10 @@ What each event does:
     A transcript that is absent, or that does not carry the envelope's result, leaves each of them
     unrecorded, saying why.
 
-A background return waits until the subagent's own transcript shows it has ended, re-reading it with
-no limit of its own; the harness's time-out on hooks is the only bound. It has ended at the first of:
+A background return waits until the subagent's own transcript shows it has ended, re-reading it. Where
+config.json sets `background_wait_seconds`, the wait ends at that bound: the return is written with the counters as
+the transcript stood, and `harness_payload.wait` says the wait was unfinished. With no setting, the harness's
+time-out on hooks is the only bound; a setting that is no positive number writes an error line and leaves it so. It has ended at the first of:
 its final request stopped for a reason other than tool_use and holds the answer SubagentStop reports;
 its final request is a call to one of the harness's hand-back tools (subagent-tools.json), whose
 input at the tool's answer key is then the answer; the transcript does not exist when SubagentStop
@@ -77,6 +96,30 @@ The turn is found by what started it: a background dispatch's turn opens the tra
 message's turn starts at the first row of a listed delivery form holding that message. The model, the
 counters and the isolation evidence are then that turn's, ending at the request that holds the answer.
 The wait is recorded as `tokens.read_after_seconds`.
+
+The return's answer is the one the parent received: on a call with a delivered hand-back, the last delivered
+hand-back's message (on a foreground call `tool_response.handbackReport.text`, else the transcript's last hand-back
+whose result is no error), never the closing text or the harness's note; otherwise the final message.
+`harness_payload.answer_from` says which: `hand-back message` or `final message`.
+
+Kept check results (pending.py): at each SubagentStop the capture takes that stop's kept result, and the stop's witness
+line carries it as `check_results`, so it is on the record at the stop. A result that refused the stop leaves the
+witness line and no return; the member runs on and a later stop writes it. The call's one return, at whichever event
+its route names, carries every kept result for its agent as `check_results`, in order, as it was found, whatever the
+field setting, and the kept files are removed once it is written. Where config.json's `checks` names a `stop` check
+and a stop left no result, that stop's entry reads `unrecorded (no check result when the return was written)`. With no
+check on and none kept, the return carries no `check_results`. At a hand-back the wrapper has the capture write a
+witness line carrying the hand-back's result (handback_witness), before the report can reach the parent.
+
+A hand-back member, whose stop payload carries `permission_mode` `auto` (the mode in which Claude Code gives a
+subagent its hand-back tool), has no report at a stop with no delivered hand-back before it: Claude Code refuses that
+stop itself until the member hands back. Such a stop writes its witness line and no return, and a background call's
+return waits for the first stop after a delivered hand-back. A background hand-back member that ends with no delivered
+hand-back has no return; the count check reports it.
+
+PostToolUse on the parent's shell tool: each pending disposition file (pending.py, take_dispositions), written by the
+return check's disposition script, becomes a disposition line naming this shell call in `recorded_at_call`, and is
+removed. A file that does not validate writes an error line at stage `pending` and is removed.
 
 The brief's frontmatter gives `persona-name`, `act_kind`, `user_answer` and `task`, each at the key of
 the same name unless `config.json`'s `frontmatter` map names another; a map replaces a default key by
@@ -140,6 +183,7 @@ if str(HERE) not in sys.path:
 
 import commands  # noqa: E402
 import ledger  # noqa: E402
+import pending  # noqa: E402
 import transcripts  # noqa: E402
 
 HARNESS = 'claude-code'
@@ -154,7 +198,22 @@ AUTH_VARIABLES = ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUT
 FRONTMATTER_FIELDS = ('persona-name', 'act_kind', 'task')
 # The brief's frontmatter keys read when config.json has no `frontmatter` map; a map replaces them key by key.
 DEFAULT_FRONTMATTER = {'act_kind': 'act_kind', 'user_answer': 'user_answer', 'persona-name': 'persona-name',
-                       'task': 'task'}
+                       'task': 'task', 'member': 'member', 'attempt': 'attempt'}
+# The brief read: a brief is the first readable file the prompt names, and a member's brief carries a member id.
+NO_FILE_NAMED = 'unrecorded (the prompt names no file)'
+NOT_A_BRIEF = 'the first file the prompt names is not a brief: %s'
+NO_ATTEMPT = 'unrecorded (the brief names no attempt)'
+PLANNER_MEMBER = "unrecorded (the planner's own dispatch, plan request %s: its brief carries no member)"
+ATTEMPT_NOT_A_NUMBER = "unrecorded (the brief's attempt is not a whole number: %s)"
+WRITE_SET_HEADING = '## Write set'
+SESSION_START = 'SessionStart'
+SESSION_START_AGENT = 'unrecorded (no agent: a session start)'
+# The wrapper's checks, named in config.json beside triage_command; `stop` runs at each SubagentStop.
+CHECKS_SETTING = 'checks'
+# The bound on a background return's wait for its transcript to end, in seconds, from config.json. None: no bound.
+WAIT_SETTING = 'background_wait_seconds'
+HANDBACK_ANSWER = 'hand-back message'
+FINAL_ANSWER = 'final message'
 NO_KIND = 'unrecorded (the brief names no kind; no triage ran)'
 NO_KIND_CLI = 'unrecorded (the command names no kind; no triage ran)'
 # The triage: a command named by config.json's `triage_command`, run at each subagent or call-script
@@ -224,6 +283,12 @@ def receiving_session(given, response=None):
         if isinstance(value, str) and value:
             return value
     return 'unrecorded (the payload names no receiving session)'
+# What the wrapper ran before the capture at a dispatch: its check's time and result, kept on the dispatch record's
+# harness_payload as `wrapper`. Set by wrapper.py in the same process; empty when the capture runs alone.
+WRAPPER_NOTE = {}
+REFUSED_AGENT = 'unrecorded (no agent: the dispatch was refused before it ran)'
+REFUSED_RUN = 'unrecorded (the dispatch was refused before it ran)'
+REFUSED_CLASS = 'refused_by_check'
 NAMED_IN_PROMPT = re.compile(r'''[^\s'"`()<>|;,]+''')
 _ARRIVAL = {}
 
@@ -310,6 +375,8 @@ def _route(event, payload, folder, held):
         return pre_stop(payload, folder, held)
     if READ_STOPS and event == 'PostToolUse' and tool in stop_tools(HARNESS):
         return post_stop(payload, folder, held)
+    if event == SESSION_START:
+        return session_start(payload, folder, held)
     if event == 'SubagentStart':
         return subagent_start(payload, folder, held)
     if event == 'SubagentStop':
@@ -317,6 +384,8 @@ def _route(event, payload, folder, held):
     if event == 'PreToolUse' and tool in shell_tools(HARNESS):
         return pre_shell(payload, folder, held)
     if event in ('PostToolUse', 'PostToolUseFailure') and tool in shell_tools(HARNESS):
+        if event == 'PostToolUse':
+            write_dispositions(payload, folder, held)
         return post_shell(event, payload, folder, held)
     route = outside_route(HARNESS, tool) if event in OUTSIDE_EVENTS else None
     if route == 'mcp' and not_a_call(folder, mcp_server_of(HARNESS, tool, payload.get('mcp_server'))[0]):
@@ -380,10 +449,41 @@ def pre_agent(payload, folder, held):
         'auth_route': auth_route(),
         'brief_source': source or inline_source(payload),
         'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
+        'session_effort': session_effort_of(payload, 'PreToolUse'),
     })
-    found, seconds = dispatch_kind(folder, brief if source else prompt, held)
+    read, not_a_brief = brief_read(folder, brief, source)
+    fields.update(read)
+    taken = None
+    if read['member'].startswith('unrecorded (') and (not_a_brief or not source):
+        # The planning skill's own dispatch carries no member: its brief names the plan request whose pending file
+        # is planner-<id>.json. Its record says so, and the brief read's untriaged reading does not apply.
+        with pending_lock(folder, held.session):
+            taken = pending.take_planner(pending_dir(folder, held.session), brief if source else prompt)
+        if taken is not None:
+            fields['member'] = fields['attempt'] = PLANNER_MEMBER % taken.request_id
+            not_a_brief = None
+    elif source and not read['member'].startswith('unrecorded ('):
+        with pending_lock(folder, held.session):
+            taken = pending.take_triage(pending_dir(folder, held.session), read['member'], read['attempt'], _safe,
+                                        ledger.validate)
+        if taken is not None:
+            fields.update(taken.values)
+            if taken.problem:
+                held.error(folder, 'pending', 'the pending triage file is malformed: %s' % taken.problem,
+                           record='dispatch')
+        if is_writer(brief):
+            fields['baseline'] = baseline_of(payload.get('cwd'))
+    pending_kind = taken.kind if taken is not None else None
+    found, seconds = dispatch_kind(folder, brief if source else prompt, held, pending_kind=pending_kind)
     fields.update(found)
     fields['harness_payload'] = with_triage_time(payload, seconds)
+    if pending_kind is not None:
+        fields['harness_payload'] = dict(fields['harness_payload'],
+                                         triage_source='the pending triage file %s' % taken.name)
+    if not_a_brief:
+        fields['harness_payload'] = dict(fields['harness_payload'], kinds_read_from=not_a_brief)
+    if WRAPPER_NOTE:
+        fields['harness_payload'] = dict(fields['harness_payload'], wrapper=dict(WRAPPER_NOTE))
     fields['user_answer'] = user_answer_of(folder, HARNESS, held.session, fields['caller'],
                                            payload.get('transcript_path'), fields['act_kind'],
                                            brief if source else prompt)
@@ -392,8 +492,182 @@ def pre_agent(payload, folder, held):
             'call_id': held.call_id, 'dispatched_at': at,
             'run_in_background': bool(given.get('run_in_background')),
         })
-    ledger.dispatch(ledger=folder, brief=brief or None, prompt=prompt if source and prompt else None,
-                    **fields)
+    written = ledger.dispatch(ledger=folder, brief=brief or None, prompt=prompt if source and prompt else None,
+                              **fields)
+    if taken is not None and getattr(written, 'ok', False):
+        with pending_lock(folder, held.session):
+            pending.remove(pending_dir(folder, held.session), taken)
+
+
+def refused_dispatch(payload, folder, text):
+    """The return of a dispatch the wrapper's PreToolUse check refused: `failed`, class refused_by_check, the
+    refusal's text, written at that PreToolUse after its dispatch record; no pending file is left. Never raises."""
+    held = Held('PreToolUse', payload)
+    try:
+        folder = ledger.ledger_folder(folder)
+        given = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+        with pending_lock(folder, held.session):
+            sent = read_pending(folder, held.session, held.call_id)
+            fields = common(payload, folder, route='subagent')
+            fields.update({
+                'call_id': held.call_id, 'agent_id': REFUSED_AGENT, 'outcome': 'failed',
+                'outcome_reason': {'class': REFUSED_CLASS, 'text': str(text)[:ledger.REASON_LIMIT]},
+                'cost': SUBAGENT_COST, 'spend_line': NOT_A_SCRIPT, 'model': REFUSED_RUN, 'tokens': REFUSED_RUN,
+                'effort': REFUSED_RUN, 'isolation': REFUSED_RUN, 'answer_source': REFUSED_RUN,
+                'harness_payload': without_texts(payload, given.get('prompt'), ON_DISPATCH_BRIEF),
+            })
+            if sent and sent.get('dispatched_at'):
+                fields['dispatched_at'] = sent['dispatched_at']
+            ledger.ret(ledger=folder, **fields)
+            clear_pending(folder, held.session, [held.call_id])
+    except Exception as exc:  # the capture's own fault: recorded, never raised to the hook
+        held.error(folder, 'payload', 'the refused dispatch could not be written: %s: %s' % (type(exc).__name__, exc),
+                   record='return')
+
+
+def handback_witness(payload, folder, result=None):
+    """The witness line at a hand-back where the wrapper's check ran, carrying the check's `result` where there is one:
+    no call record is written there. Never raises."""
+    held = Held('PreToolUse', payload)
+    extra = {'check_results': [result]} if isinstance(result, dict) else {}
+    try:
+        ledger.witness(ledger=ledger.ledger_folder(folder), event='PreToolUse', session=held.session,
+                       agent_id=held.agent_id, call_id=held.call_id, at=ledger.now(), **extra)
+    except Exception as exc:
+        held.error(folder, 'payload', 'the hand-back witness could not be written: %s' % exc, record='witness')
+
+
+def before_handback(payload):
+    """Whether this stop is a hand-back member's with no delivered hand-back before it: its payload carries
+    `permission_mode` `auto` and its transcript shows no hand-back delivered. An unreadable transcript is not read as
+    one, so the return is written as before."""
+    if payload.get('permission_mode') != 'auto':
+        return False
+    path = payload.get('agent_transcript_path')
+    if not isinstance(path, str) or not path or not Path(path).is_file():
+        return False
+    try:
+        return not transcripts.delivered_handbacks(path, handback_tools(HARNESS))
+    except (OSError, ValueError):
+        return False
+
+
+def write_dispositions(payload, folder, held):
+    """At the parent's shell PostToolUse: each pending disposition file becomes a disposition line, then is removed."""
+    if payload.get('agent_id'):
+        return
+    directory = pending_dir(folder, held.session)
+    with pending_lock(folder, held.session):
+        found = pending.take_dispositions(directory, ledger.validate)
+        for path, data, problem in found:
+            if problem:
+                held.error(folder, 'pending', 'the pending disposition file %s is malformed: %s' % (path.name, problem),
+                           record='disposition')
+            else:
+                fields = dict({'agent_id': None, 'member': None, 'attempt': None}, **data)
+                written = ledger.disposition(ledger=folder, session=held.session, recorded_at_call=held.call_id,
+                                             **fields)
+                if not getattr(written, 'ok', False):
+                    continue  # the writer has written its error line; the file stays for the next shell call
+            pending.remove_paths(directory, [path])
+
+
+def session_start(payload, folder, held):
+    """A witness line at the session's start, before its first call: the evidence the capture is on."""
+    if held.session.startswith('unrecorded ('):
+        held.error(folder, 'payload', 'session_id absent from SessionStart', record='witness')
+    ledger.witness(ledger=folder, event=SESSION_START, session=held.session, agent_id=SESSION_START_AGENT,
+                   call_id='unrecorded (not carried by SessionStart)', at=ledger.now())
+
+
+def session_effort_of(payload, event):
+    """The level the dispatching session runs at, from the dispatch's own payload; never the member's."""
+    effort = payload.get('effort') if isinstance(payload, dict) else None
+    level = effort.get('level') if isinstance(effort, dict) else None
+    if isinstance(level, str) and level:
+        return level
+    return 'unrecorded (effort.level absent from %s)' % event
+
+
+def brief_read(folder, brief, source):
+    """({member, attempt}, the reason the first file named is not a brief, or None).
+
+    The brief is the first readable file the prompt names (brief_of). A member's brief carries a member id at
+    the frontmatter key config.json's `frontmatter` map names for `member`, and its dispatch number at the key
+    for `attempt`.
+    """
+    if not source:
+        return {'member': NO_FILE_NAMED, 'attempt': NO_FILE_NAMED}, None
+    config, _path = read_config(folder)
+    keys = frontmatter_keys(config)
+    front = frontmatter(brief) if isinstance(brief, str) else {}
+    for name in ('member', 'attempt'):
+        if not keys.get(name):
+            reason = 'unrecorded (%s names no frontmatter key for %s)' % (ledger.CONFIG_FILE, name)
+            return {'member': reason, 'attempt': reason}, None
+    member = lookup(front, keys['member'])
+    if not isinstance(member, str) or not member:
+        reason = NOT_A_BRIEF % source
+        return {'member': 'unrecorded (%s)' % reason, 'attempt': 'unrecorded (%s)' % reason}, reason
+    attempt = lookup(front, keys['attempt'])
+    if not isinstance(attempt, str) or not attempt:
+        attempt = NO_ATTEMPT
+    elif attempt.isdigit() and int(attempt) >= 1:
+        attempt = int(attempt)
+    else:
+        attempt = ATTEMPT_NOT_A_NUMBER % attempt
+    return {'member': member, 'attempt': attempt}, None
+
+
+def write_set_of(brief):
+    """The lines of the brief's write set section, or None where it has none.
+
+    The section runs from a line reading exactly `## Write set` to the next line beginning `#`. Each non-blank line
+    is one path or folder prefix, with or without backticks and a leading `- ` or `* `, or the word `none`.
+    """
+    if not isinstance(brief, str):
+        return None
+    lines = brief.splitlines()
+    starts = [at for at, line in enumerate(lines) if line.strip() == WRITE_SET_HEADING]
+    if not starts:
+        return None
+    out = []
+    for line in lines[starts[0] + 1:]:
+        if line.startswith('#'):
+            break
+        item = line.strip()
+        if item.startswith(('- ', '* ')):
+            item = item[2:].strip()
+        item = item.strip('`').strip()
+        if item:
+            out.append(item)
+    return out
+
+
+def is_writer(brief):
+    """Whether the brief's write set names a path: a writer. `none`, or no section, is a read-only member."""
+    found = write_set_of(brief)
+    return bool(found) and any(item.lower() != 'none' for item in found)
+
+
+def baseline_of(cwd):
+    """A writer's baseline: the commit its worktree branches from, which is the working folder's HEAD at dispatch.
+
+    Read with git. Like the triage, it is given no time limit, and it never stops or changes the call.
+    """
+    if not isinstance(cwd, str) or not cwd:
+        return 'unrecorded (git could not read HEAD in the working folder: cwd absent from the payload)'
+    try:
+        head = subprocess.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True, text=True)
+        if head.returncode != 0:
+            return 'unrecorded (git could not read HEAD in the working folder: %s)' % _one_line(
+                head.stderr or 'exit %d' % head.returncode)
+        branch = subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True,
+                                text=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 'unrecorded (git could not read HEAD in the working folder: %s)' % _one_line(exc)
+    name = branch.stdout.strip() if branch.returncode == 0 and branch.stdout.strip() else 'unrecorded (no branch)'
+    return {'commit': head.stdout.strip(), 'branch': name, 'read_at': ledger.now()}
 
 
 def subagent_start(payload, folder, held):
@@ -438,7 +712,7 @@ def post_agent(payload, folder, held):
         else:
             agent_field = agent
             path = (stop or {}).get('agent_transcript_path') or transcripts.lane_path(held.session, agent)
-        answer = answer_text(response.get('content'))
+        answer, answer_from = foreground_answer(response, path)
         outcome, reason = agent_outcome(response.get('status'), answer)
         fields = common(payload, folder, route='subagent')
         fields.update({
@@ -458,8 +732,13 @@ def post_agent(payload, folder, held):
         if 'content' in response:
             payload_kept['tool_response']['content'] = answer
         prompt = (payload.get('tool_input') or {}).get('prompt') if isinstance(payload.get('tool_input'), dict) else None
-        fields['harness_payload'] = without_texts(payload_kept, prompt, ON_DISPATCH_BRIEF)
-        ledger.ret(ledger=folder, answer=answer, **fields)
+        fields['harness_payload'] = dict(without_texts(payload_kept, prompt, ON_DISPATCH_BRIEF),
+                                         answer_from=answer_from)
+        results, kept_paths = kept_for_return(folder, held.session, agent)
+        fields.update(results)
+        written = ledger.ret(ledger=folder, answer=answer, **fields)
+        if getattr(written, 'ok', False):
+            pending.remove_paths(pending_dir(folder, held.session), kept_paths)
         if agent:
             clear_pending(folder, held.session, [held.call_id, 'agent-' + agent, 'stop-' + agent,
                                                  'join-' + agent])
@@ -572,7 +851,13 @@ def pre_resume(payload, folder, held):
         'auth_route': auth_route(),
         'brief_source': inline_source(payload) if message else None,
         'effort_assigned': effort_assigned_of(HARNESS, payload.get('tool_name'), payload),
+        'session_effort': session_effort_of(payload, 'PreToolUse'),
     })
+    if known:
+        continued, member, attempt = pending.continued_call(
+            lambda agent: read_join(folder, held.session, agent), Path(folder) / ('%s.jsonl' % held.session), to)
+        fields.update({'continues_call_id': continued if continued else member, 'member': member,
+                       'attempt': attempt})
     found, seconds = dispatch_kind(folder, message, held)
     fields.update(found)
     fields['harness_payload'] = with_triage_time(payload, seconds)
@@ -742,7 +1027,11 @@ def write_stopped(folder, held, agent, stop, stop_tool_payload=None):
         kept['post_tool_use_response'] = data.get('tool_response')
         kept.pop('last_assistant_message', None)
         fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
-        ledger.ret(ledger=folder, **fields)
+        results, kept_paths = kept_for_return(folder, held.session, agent)
+        fields.update(results)
+        written = ledger.ret(ledger=folder, **fields)
+        if getattr(written, 'ok', False):
+            pending.remove_paths(pending_dir(folder, held.session), kept_paths)
         clear_pending(folder, held.session, cleared)
     clear_pending(folder, held.session, ['stopped-' + agent, 'agent-' + agent, 'stop-' + agent])
 
@@ -763,11 +1052,25 @@ def read_resumes(folder, session, agent):
 def subagent_stop(payload, folder, held):
     if held.agent_id.startswith('unrecorded ('):
         held.error(folder, 'payload', 'agent_id absent from SubagentStop', record='witness')
-    ledger.witness(ledger=folder, event='SubagentStop', session=held.session, agent_id=held.agent_id,
-                   call_id='unrecorded (not carried by SubagentStop)', at=ledger.now())
-    if held.agent_id.startswith('unrecorded ('):
+        ledger.witness(ledger=folder, event='SubagentStop', session=held.session, agent_id=held.agent_id,
+                       call_id='unrecorded (not carried by SubagentStop)', at=ledger.now())
         return
     agent = held.agent_id
+    with pending_lock(folder, held.session):
+        seen = pending.unseen_stop_results(pending_dir(folder, held.session), agent, _safe, ledger.validate)
+    extra = {'check_results': seen} if seen else {}
+    ledger.witness(ledger=folder, event='SubagentStop', session=held.session, agent_id=held.agent_id,
+                   call_id='unrecorded (not carried by SubagentStop)', at=ledger.now(), **extra)
+    with pending_lock(folder, held.session):
+        refused = pending.take_stop_result(pending_dir(folder, held.session), agent, _safe, ledger.validate,
+                                           stop_check_on(folder))
+    if refused:
+        # The check refused this stop: the member runs on with the reason, and a later stop writes the return.
+        return
+    if before_handback(payload):
+        # A hand-back member's stop with no delivered hand-back before it: Claude Code refuses it, and no report
+        # reached the parent. The witness line above holds the stop's result; a later stop writes the return.
+        return
     stop = {'agent_transcript_path': payload.get('agent_transcript_path'),
             'effort': (payload.get('effort') or {}).get('level') if isinstance(payload.get('effort'), dict) else None,
             'last_assistant_message': payload.get('last_assistant_message'),
@@ -943,12 +1246,61 @@ def background_ending(folder, held, agent, stop, turn=None):
         if payload:
             held.error(folder, 'payload', 'agent_transcript_path absent from SubagentStop', record='return')
         path = transcripts.lane_path(held.session, agent)
+    bound = wait_bound(folder, held)
     answer, how, span = wait_for_end(path, answer, handback_tools(HARNESS), turn,
-                                     ended=lambda: stop_ended(folder, held.session, agent))
+                                     ended=lambda: stop_ended(folder, held.session, agent), bound=bound)
     if how != 'handback' and 'last_assistant_message' not in payload and payload:
         held.error(folder, 'payload', 'last_assistant_message absent from SubagentStop', record='return')
-    return {'answer': answer, 'how': how, 'path': path, 'span': span,
+    return {'answer': answer, 'how': how, 'path': path, 'span': span, 'bound': bound,
             'seconds': round(time.monotonic() - _ARRIVAL.get('at', time.monotonic()), 3)}
+
+
+def stop_check_on(folder):
+    """Whether config.json switches on a check at each stop (`checks.stop`)."""
+    try:
+        config, _path = read_config(folder)
+    except (OSError, ValueError):
+        return False
+    checks = config.get(CHECKS_SETTING)
+    return isinstance(checks, dict) and isinstance(checks.get('stop'), str) and bool(checks.get('stop'))
+
+
+def wait_bound(folder, held):
+    """The bound on a background return's wait, from config.json, or None. A setting that is no positive number
+    writes an error line, and the wait is unbounded."""
+    try:
+        config, _path = read_config(folder)
+    except (OSError, ValueError):
+        return None
+    value = config.get(WAIT_SETTING)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        held.error(folder, 'setting', '%s %s is not a positive number of seconds; the wait is unbounded'
+                   % (WAIT_SETTING, json.dumps(value)), record='return')
+        return None
+    return value
+
+
+def kept_for_return(folder, session, agent):
+    """({'check_results': [...]} where any result is kept for the agent, else {}; the kept files to remove)."""
+    if not isinstance(agent, str) or not agent:
+        return {}, []
+    entries, paths = pending.results_for_return(pending_dir(folder, session), agent, _safe, ledger.validate)
+    return ({'check_results': entries} if entries else {}), paths
+
+
+def foreground_answer(response, path):
+    """(the answer the parent received, where it came from) for a foreground call: the delivered hand-back's text
+    (`handbackReport.text`), else the last delivered hand-back the transcript shows, else the tool's content."""
+    report = response.get('handbackReport') if isinstance(response.get('handbackReport'), dict) else {}
+    if isinstance(report.get('text'), str) and report.get('text'):
+        return report['text'], HANDBACK_ANSWER
+    if path and os.path.exists(str(path)):
+        delivered = transcripts.delivered_handbacks(path, handback_tools(HARNESS))
+        if delivered:
+            return delivered[-1], HANDBACK_ANSWER
+    return answer_text(response.get('content')), FINAL_ANSWER
 
 
 def write_background_return(folder, held, agent, stop, join, ending, cleared):
@@ -959,7 +1311,11 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
     response = join.get('tool_response')
     response = response if isinstance(response, dict) else {}
     sent = read_pending(folder, held.session, call_id)
-    answer = ending['answer']
+    answer, answer_from = ending['answer'], HANDBACK_ANSWER if ending['how'] == 'handback' else FINAL_ANSWER
+    if ending['how'] not in ('no transcript', 'no path'):
+        delivered = transcripts.delivered_handbacks(ending['path'], handback_tools(HARNESS))
+        if delivered:
+            answer, answer_from = delivered[-1], HANDBACK_ANSWER
     outcome, reason = agent_outcome('completed', answer)
     fields = common(payload or {'cwd': None, 'agent_id': None}, folder, route='subagent')
     fields['caller'] = join.get('caller') or fields['caller']
@@ -985,10 +1341,18 @@ def write_background_return(folder, held, agent, stop, join, ending, cleared):
         fields['tokens']['read_after_seconds'] = ending['seconds']
     kept = dict(payload)
     kept['post_tool_use_response'] = join.get('tool_response')
-    if isinstance(kept.get('last_assistant_message'), str) and ending['how'] != 'handback':
+    if isinstance(kept.get('last_assistant_message'), str) and answer_from == FINAL_ANSWER:
         kept['last_assistant_message'] = answer
+    kept['answer_from'] = answer_from
+    if ending['how'] == 'unfinished':
+        kept['wait'] = ('unfinished after %s seconds: the transcript had not ended, so its counters are read as it '
+                        'stood' % ending['bound'])
     fields['harness_payload'] = without_texts(kept, response.get('prompt'), ON_DISPATCH_BRIEF)
-    ledger.ret(ledger=folder, answer=answer, **fields)
+    results, kept_paths = kept_for_return(folder, held.session, agent)
+    fields.update(results)
+    written = ledger.ret(ledger=folder, answer=answer, **fields)
+    if getattr(written, 'ok', False):
+        pending.remove_paths(pending_dir(folder, held.session), kept_paths)
     clear_pending(folder, held.session, cleared)
 
 
@@ -1003,7 +1367,7 @@ def stop_ended(folder, session, agent):
     return not pending_call_for(folder, session, agent)
 
 
-def wait_for_end(path, answer, handbacks, turn=None, ended=None):
+def wait_for_end(path, answer, handbacks, turn=None, ended=None, bound=None):
     """(the answer, how the run's end was read, the rows of the turn or None), once the transcript shows the
     subagent has ended.
 
@@ -1016,12 +1380,14 @@ def wait_for_end(path, answer, handbacks, turn=None, ended=None):
     request that holds the answer, so the counters are that turn's and not the later run's. `turn` says
     what started the turn (see turn_starter); with none, that last check is not made. With no path to
     read it returns at once (`no path`). Where `ended` is given and returns true between reads, the wait ends
-    (`stopped`): the caller stopped the subagent, or another hook wrote its return.
+    (`stopped`): the caller stopped the subagent, or another hook wrote its return. Where `bound` is a number of
+    seconds and the wait passes it, the wait ends (`unfinished`).
     """
     if not path:
         return answer, 'no path', None
     if not os.path.exists(str(path)):
         return answer, 'no transcript', None
+    began = time.monotonic()
     while True:
         found = transcript_end(path, answer, handbacks)
         if found is not None:
@@ -1031,6 +1397,8 @@ def wait_for_end(path, answer, handbacks, turn=None, ended=None):
             return answer, 'turn', span
         if ended is not None and ended():
             return answer, 'stopped', None
+        if bound is not None and time.monotonic() - began >= bound:
+            return answer, 'unfinished', None
         time.sleep(REREAD_SECONDS)
 
 
@@ -2209,13 +2577,18 @@ def act_kind_of(brief_kind, triage_kind):
     return brief_kind
 
 
-def dispatch_kind(folder, text, held):
+def dispatch_kind(folder, text, held, pending_kind=None):
     """The brief's fields for a subagent or call-script dispatch, with the triage's reading. An encrypted brief
-    is never given to the triage: its triage_kind and act_kind say the harness passed it encrypted.
+    is never given to the triage: its triage_kind and act_kind say the harness passed it encrypted. Where the
+    pending triage file carries the kind (`pending_kind`), that is the triage's reading and no triage runs.
 
     Returns (persona-name, act_kind, triage_kind, task and grouping; the seconds the triage ran or None).
     """
     fields = optional_fields(folder, text, held)
+    if pending_kind is not None:
+        fields['triage_kind'] = pending_kind
+        fields['act_kind'] = act_kind_of(fields['act_kind'], pending_kind)
+        return fields, None
     if is_ciphertext(text):
         # The harness passed the brief encrypted (Codex 0.162.x encrypts every one): the triage would read
         # noise, so it is not run.

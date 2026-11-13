@@ -18,18 +18,22 @@ generated: { by: process:okf-projectdocs }
 * [capture_opencode.py](capture_opencode.py) - OpenCode's capture: the plugin `opencode-plugin/subagent-ledger.js` runs it on each `task` and `bash` call.
 * [commands.py](commands.py) - Split a shell command into the parts the shell runs, and name each part's program.
 * [ledger.py](ledger.py) - The subagent ledger's one writer: every line in a ledger folder is written here.
+* [pending.py](pending.py) - The pending triage file: its reader and remover, and the join a resumption reads.
 * [transcripts.py](transcripts.py) - Read a Claude Code transcript: the model that ran, its four counters, its folder and its tool calls.
+* [wrapper.py](wrapper.py) - One hook entry per event: run the check the ledger folder's config.json names for it, then the capture, in one
 
 ## Documents
 
 * [call.component.md](call.component.md) - Makes one call to Gemini CLI or Cursor in a fresh folder, prints the answer and writes both records.
-* [calls.component.md](calls.component.md) - Reads the ledger. It lists every call joined from its two records, and every absence with its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the session's copies; otherwise it writes nothing. It calls no model.
+* [calls.component.md](calls.component.md) - Reads the ledger. It lists every call joined from its two records, and every absence with its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the session's copies. Otherwise it writes nothing. It calls no model.
 * [capture-claude-code.component.md](capture-claude-code.component.md) - Claude Code's hook command. It writes both records for each subagent call, each message to a running subagent and each model call made through the command line. It reads the model and counters from the call's own transcript.
 * [capture-codex.component.md](capture-codex.component.md) - Codex's hook command. It writes both records for each subagent call, each message to a subagent and each model call made through the shell tool. It reads the model and counters from the subagent's rollout file, Codex's transcript.
 * [capture-opencode.component.md](capture-opencode.component.md) - OpenCode's capture, run by the plugin. It writes both records for each `task` call and each model call made through `bash`. When a task errors, it writes a failed return from the event stream.
 * [commands.component.md](commands.component.md) - Splits a shell command into the parts the shell runs, so a model call inside a longer command is found.
 * [ledger.component.md](ledger.component.md) - The one writer: every line in the ledger goes through it. It checks each line against the schema and removes anything that looks like a secret. Then it keeps the brief and the answer as files, with a fingerprint of each, and appends the line under a lock. The lock works on macOS, Linux and Windows.
+* [pending.component.md](pending.component.md) - Reads the pending file a planning skill leaves for one dispatch, copies its stamped values onto the dispatch record and removes it, never outside the session's pending folder. In the same folder it keeps each check result until the call's return carries it, and reads the parent's decisions on failing checks, which become disposition lines. It also joins a resumption to the dispatch it continues.
 * [transcripts.component.md](transcripts.component.md) - Reads a transcript for the model that ran, its four token counters and what the run touched outside its folder.
+* [wrapper.component.md](wrapper.component.md) - One hook entry per event: runs the check the ledger folder names for it, then the capture, in one process. A check that errors or overruns refuses nothing. Only a check's own decision refuses a call.
 
 ## Subdirectories
 

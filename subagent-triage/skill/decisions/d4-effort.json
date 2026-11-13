@@ -1,0 +1,65 @@
+{
+  "description": "Which effort level a part warrants. A Choice over the levels the assigned harness offers the assigned model, with exact facts given as state. An effort is always assigned, or recorded as unrecorded with its reason.",
+  "id": "d4-effort",
+  "question": "Which effort level does this part warrant?",
+  "definition_version": 1,
+  "provisional": true,
+  "basis": "Version 0 was written from the level descriptions below, with no calibration; version 1 asks over the levels the assigned harness offers the assigned model and adds both to the facts. Each later version is written from calibration misses only and tested on a fresh held-out half.",
+  "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["choice"]},
+  "decision_point_classification": "mixed",
+  "subject": "the part, with its brief and inputs",
+  "exact_facts": {
+    "state": [
+      "the part's kind",
+      "the persona chosen for it",
+      "the task's stage",
+      "the brief's length in words",
+      "the number of input files the brief names, and their total size in bytes",
+      "the number of paths in the write set, or none",
+      "the harness and the model assigned to the part"
+    ],
+    "levels_offered": "the levels the reachable list gives the assigned model on the assigned harness, in this file's order; where the list gives none, or names neither, every level below"
+  },
+  "composition": {
+    "choice": {
+      "type": "choice",
+      "over": "the levels the assigned harness offers the assigned model; a level it does not offer is left out before asking",
+      "instructions": "This is one part of a piece of delegated work, given as `part`, with facts about it given as state. Which effort level does doing this part well warrant? Choose the lowest level at which the part is likely to be done right. A higher level is warranted only by what the part asks, not by its importance alone.",
+      "criteria": {
+        "low": "The part is routine and fully specified: a short, mechanical act whose result the brief nearly states, such as a lookup, a move or a format change, with little to weigh.",
+        "medium": "The part needs ordinary care: a bounded task with a clear standard and a few inputs, where some judgement is needed and a mistake is easy to catch.",
+        "high": "The part needs sustained reasoning: several inputs to reconcile, a design or a review against a standard, or a change whose mistakes are costly or hard to see.",
+        "xhigh": "The part is hard and long: many constraints that bear on each other, a large body of input, or a judgement that must hold up under challenge.",
+        "max": "The part is at the limit of what one call can do: open-ended, novel or adversarial work where the most thorough reasoning available is warranted."
+      }
+    }
+  },
+  "outcomes": [
+    {
+      "when": "the Choice returns a level",
+      "answer": "that level",
+      "route": "the parent passes it as the dispatch's effort, from the first dispatch, unless it overrides",
+      "lane": "reasoned"
+    },
+    {
+      "when": "the request fails or times out, or the assigned model is offered no level this decision defines",
+      "answer": "unrecorded (<reason>)",
+      "route": "the parent's unaided level is passed, and the record says why",
+      "lane": "reasoned"
+    }
+  ],
+  "lane_policy": {
+    "until_calibrated": "reasoned",
+    "once_calibrated": "delivered",
+    "calibrated": false
+  },
+  "override": {
+    "records": ["this decision's level", "the level passed instead, one the assigned harness offers the assigned model", "the reason", "the time"]
+  },
+  "calibration": {
+    "needed_level": "the lowest level at which at least two of three runs on one model pass, judged by a fresh reader given the item's answer key and blind to the level",
+    "minimum_held_out": "10 settled items",
+    "controls": ["the best constant level, fixed on the calibration half", "this decision on the brief alone"],
+    "revision": "each version tested on a fresh held-out half; the next written from calibration misses only"
+  }
+}

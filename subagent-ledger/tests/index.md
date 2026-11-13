@@ -19,16 +19,20 @@ generated: { by: process:okf-projectdocs }
 * [test_capture_claude_code.py](test_capture_claude_code.py) - Tests for Claude Code's capture, `skill/scripts/capture_claude_code.py`, and its transcript reader.
 * [test_capture_codex.py](test_capture_codex.py) - Tests for Codex's capture, `skill/scripts/capture_codex.py`, and the Codex half of `transcripts.py`.
 * [test_capture_opencode.py](test_capture_opencode.py) - Tests for OpenCode's capture: `skill/scripts/capture_opencode.py` and the plugin that feeds it,
+* [test_check_records.py](test_check_records.py) - Controls for what the ledger records of a check's results and of the parent's decisions on them.
 * [test_commands.py](test_commands.py) - Tests for the command splitter, `skill/scripts/commands.py`, through the capture that uses it.
+* [test_dispatch_record.py](test_dispatch_record.py) - Controls for the dispatch record's new values: the session-start witness, the brief read, the pending triage file,
 * [test_fingerprints_prune.py](test_fingerprints_prune.py) - Tests for the fingerprints on each record and for `calls.py --prune`, which removes a session's copies.
 * [test_handback_turns.py](test_handback_turns.py) - Fix note FN-16: a subagent resumed by `SendMessage` whose turns end with a hand-back call.
 * [test_isolation_cut.py](test_isolation_cut.py) - Fix note FN-16, second part: each command `isolation` lists is cut to its first 200 characters.
 * [test_label_line.py](test_label_line.py) - Controls for the label line: the writer's `label`, its schema, and the reader's join.
 * [test_ledger.py](test_ledger.py) - Tests for the subagent ledger's writer, `skill/scripts/ledger.py`, and its record schema.
 * [test_outside_calls.py](test_outside_calls.py) - Tests for searches, fetches and MCP reads, recorded on the routes `search`, `fetch` and `mcp`.
+* [test_return_record.py](test_return_record.py) - Controls for the return record: kept check results on the call's one return, the hand-back's message as the
 * [test_stop_and_message.py](test_stop_and_message.py) - Two fixes to Claude Code's capture: a subagent its caller stops with `TaskStop`, and a `SendMessage` addressed to
 * [test_triage_command.py](test_triage_command.py) - Tests for the ledger folder's `triage_command` and for `effort_assigned`.
 * [test_wider_matching.py](test_wider_matching.py) - Controls C-11-1 to C-11-4: the shell route reads through wrappers, compound commands, here-documents and runner
 * [test_window.py](test_window.py) - Tests for the reader's window: --since and --until bound the count check and the received messages.
 * [test_windows_lock.py](test_windows_lock.py) - Controls for the ledger's file lock where Python has no fcntl, as on Windows, for setup.sh's check of it, and for
 * [test_windows_paths.py](test_windows_paths.py) - Controls for Windows-style paths, run on macOS or Linux: what a run touched outside its folder, judged with
+* [test_wrapper.py](test_wrapper.py) - Controls for the wrapper: one hook entry per event that runs a configured check, then the capture, in one process.

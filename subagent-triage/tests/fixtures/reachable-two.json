@@ -1,0 +1,15 @@
+{
+  "description": "A stand-in reachable list for decide.py's tests: two harnesses, each with two models and the effort levels it offers each. It names no real harness or model.",
+  "harnesses": [
+    {"name": "harness-a", "description": "A harness for short tasks.",
+     "models": [
+       {"name": "model-a1", "description": "A small, quick model.", "levels": ["low", "medium", "high"]},
+       {"name": "model-a2", "description": "A larger model.", "levels": ["low", "high"]}
+     ]},
+    {"name": "harness-b", "description": "A harness for long tasks. MARK-PICK",
+     "models": [
+       {"name": "model-b1", "description": "A small model.", "levels": ["low", "high"]},
+       {"name": "model-b2", "description": "A model for hard work. MARK-PICK", "levels": ["medium", "max"]}
+     ]}
+  ]
+}

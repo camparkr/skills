@@ -1,0 +1,15 @@
+# A likeness: one ratified persona, and it is wrong for a build part. The other rows are not eligible:
+# one has no ratified declaration, one is the user, one names a file that does not exist.
+rows:
+- name: cataloguer
+  group: library
+  file: personas/cataloguer.md
+- name: drafter
+  group: workshop
+  file: personas/drafter.md
+- name: the-user
+  group: none
+  file: personas/the-user.md
+- name: ghost
+  group: workshop
+  file: personas/ghost.md

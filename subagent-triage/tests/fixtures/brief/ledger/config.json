@@ -1,0 +1,5 @@
+{"fields": "all",
+ "frontmatter": {"persona-name": "meta.persona", "act_kind": "meta.kind", "task": "meta.task",
+                 "member": "meta.member", "attempt": "meta.attempt"},
+ "kind_names": "kind-names.json",
+ "return_check": {"validator": "python3 /opt/checker/validate.py", "markdown": ["docs/*.md", "notes/*.md"]}}

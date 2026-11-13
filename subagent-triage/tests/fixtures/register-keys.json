@@ -1,0 +1,8 @@
+{
+ "description": "The same stand-in register as register.yaml, with its rows and fields under other names.",
+ "custody": {
+  "entries": [
+   {"item": "shelves/catalogue/entry.md", "keeper": "cataloguer"}
+  ]
+ }
+}

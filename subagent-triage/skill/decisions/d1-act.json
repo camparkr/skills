@@ -4,7 +4,7 @@
   "question": "Which kinds of act does this part ask for?",
   "definition_version": 1,
   "provisional": true,
-  "basis": "No line is measured. Version 1 reads one kind, none, or two or more with the provisional Choice; version 0 had eight kinds and read two or more as none. The Nouls are defined so calibration can set their lines; they are not asked at dispatch until it does.",
+  "basis": "No line is measured. Version 1 reads one kind, none, or two or more with the provisional Choice; version 0 had eight kinds and read two or more as none. The Nouls are asked at dispatch so their answers gather evidence for calibration; no line is applied until calibration sets it.",
   "engine": {"name": "Jev", "model": "jev-1.13.0", "question_types": ["noul", "choice"]},
   "decision_point_classification": "bounded_semantic",
   "exact_facts": [],
@@ -30,7 +30,7 @@
         "user-decision": null,
         "setting-right": null
       },
-      "ask_before_lines_set": false
+      "ask_before_lines_set": true
     },
     "provisional_reading": {
       "type": "choice",

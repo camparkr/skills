@@ -1,7 +1,7 @@
 ---
 type: concept
 title: 'Calls'
-description: 'Reads the ledger. It lists every call joined from its two records, and every absence with its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the session''s copies. Otherwise it writes nothing. It calls no model.'
+description: 'Reads the ledger. It lists every call joined from its two records, and every absence with its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the session''s copies; otherwise it writes nothing. It calls no model.'
 tags: [component]
 generated: { by: process:okf-projectdocs }
 x-component:
@@ -13,7 +13,7 @@ x-component:
   gcs: {reads: [], writes: []}
   external-apis:
     json-schema.org:
-      - https://json-schema.org/draft/2020-12/schema  # URL literal in ledger.py:759
+      - https://json-schema.org/draft/2020-12/schema  # URL literal in ledger.py:717
   pubsub: {}
   depends-on: []
   overlaps-with: []
@@ -21,4 +21,4 @@ x-component:
 
 # Calls
 
-Reads the ledger. It lists every call joined from its two records, and every absence with its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the session's copies. Otherwise it writes nothing. It calls no model.
+Reads the ledger. It lists every call joined from its two records, and every absence with its reason. Given the transcripts, it also checks that no call was missed. At the close, `--prune` removes the session's copies; otherwise it writes nothing. It calls no model.

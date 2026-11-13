@@ -63,17 +63,7 @@ records, its returns with no dispatch, and the error lines naming a call that ha
 harness's searches, fetches and MCP reads (subagent-tools.json `outside_tools`, less the tools of a
 server config.json's `mcp_not_calls` lists) the same way, as `outside_by_caller`, against the ledger's
 search, fetch and mcp records; where the harness's transcript form for them is not known, that count reads
-`unrecorded (<why>)`. `difference` sums the two. `faults` counts, by kind, each return that does not match its source: one
-carrying an unrecorded check result; one whose last check result names a text whose SHA-256 differs from its answer's;
-one naming an event its route never sends, or SubagentStop with no SubagentStop witness for its agent; on a call whose
-subagent transcript (beside a transcript given) shows a delivered hand-back, an answer other than the last one
-delivered; and a member's return whose counters differ from its whole transcript's, where the member was never
-resumed and its wait finished. It counts too, from the check results and dispositions (decision_faults()): each `fail`
-no disposition settles when the count runs, a run's end included; each disposition naming a result its call does not
-carry; each `repaired` disposition with no commit after it changing its paths; each witness line whose check run
-differs from, or is missing on, its call's return; each witness line carrying a result of a call written after that
-call's return; and each call ended with no hand-back: a dispatch with no return whose member's last stop reached the
-parent with no report. `{}` states none; any fault exits 4. It prints
+`unrecorded (<why>)`. `difference` sums the two. It prints
 counts only, never an id or a tool input. A transcript it cannot read gives its caller's count as
 `unrecorded (<why>)`, and the difference as `unrecorded (<n> transcripts could not be read)`, never a
 number made over a count it did not make; where a readable caller still shows a difference, that
@@ -81,9 +71,6 @@ difference is printed and the exit is 4. With --since or --until the count check
 take only what lies inside the window: a transcript row by its own timestamp, a ledger record by its dispatch time
 (its return time where it has none), an error line by its time. A session whose capture was installed part way
 through is checked from the install on.
-
-Each row also carries `dispositions`: the disposition lines naming its call, each as written (kind, result ids,
-reason, who decided and when), or `[]`.
 
 Each row also carries `copies`: for each copy its records name (`brief`, `prompt`, `answer`), the path as recorded,
 its `state` (`kept`; `removed`, with the `prune` line's `removed_at`; or `missing`, gone with no prune line dated at or
@@ -107,7 +94,6 @@ folder of the working folder. The reader makes no model call, and writes nothing
 
 import argparse
 import datetime
-import hashlib
 import io
 import json
 import os
@@ -414,11 +400,9 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
     out of the span, the witness pairing and the counts, and read only for each row's `copies`."""
     prunes = [record for record in records if is_prune_line(record)]
     records = [record for record in records if not is_prune_line(record)]
-    sent, back, witness_lines, labels, settled = {}, {}, [], {}, {}
+    sent, back, witness_lines, labels = {}, {}, [], {}
     for record in records:
         kind = record.get('record')
-        if kind == 'disposition' and isinstance(record.get('call_id'), str):
-            settled.setdefault(record['call_id'], []).append(record)
         if kind == 'dispatch' and isinstance(record.get('call_id'), str):
             sent.setdefault(record['call_id'], record)
         elif kind == 'return' and isinstance(record.get('call_id'), str):
@@ -433,7 +417,6 @@ def listing(session, folder, records, bad_lines, errors, unattributed, joins, si
     rows.sort(key=order_key)
     for row in rows:
         row['labels'] = labels_of(labels.get(row['call_id'], []))
-        row['dispositions'] = settled.get(row['call_id'], [])
         row['copies'] = copies_of(sent.get(row['call_id']), back.get(row['call_id']), folder, session, prunes)
 
     def agent_of(call_id):
@@ -1086,210 +1069,6 @@ def count_check(harness, paths, rows, errors, session, folder, since=None, until
 
 
 # ---------------------------------------------------------------------------
-# The count check's faults: a return that does not match its source
-# ---------------------------------------------------------------------------
-
-FAULT_UNRECORDED = 'a return carries an unrecorded check result'
-FAULT_LAST_TEXT = "a return's last check result names a text whose SHA-256 differs from its answer's"
-FAULT_EVENT = 'a return names an event the harness never sent'
-FAULT_HANDBACK = 'a return on a call with a delivered hand-back has another answer'
-FAULT_TOKENS = "a member's return counts tokens other than its transcript's"
-FAULT_UNDECIDED = 'a fail no disposition settles'
-FAULT_UNKNOWN_RESULT = 'a disposition names a result its call does not carry'
-FAULT_UNREPAIRED = 'a repaired disposition with no later commit changing its paths'
-FAULT_WITNESS_DIFFERS = "a witness line's check run differs from its call's return"
-FAULT_LATE_WITNESS = "a witness line carries a result written after its call's return"
-FAULT_NO_HANDBACK = 'a call ended with no hand-back'
-GIT_SECONDS = 20
-RETURN_EVENTS = ('SubagentStop', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse')
-
-
-def _answer_sha(record):
-    found = record.get('answer_fingerprint')
-    return found.get('sha256') if isinstance(found, dict) else None
-
-
-def _event_of(record):
-    payload = record.get('harness_payload')
-    return payload.get('hook_event_name') if isinstance(payload, dict) else None
-
-
-def _lane(paths, session, agent):
-    """The subagent's own transcript beside a parent transcript given: <folder>/<session>/subagents/agent-<id>.jsonl."""
-    for path in paths:
-        candidate = Path(path).parent / session / 'subagents' / ('agent-%s.jsonl' % agent)
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def handback_tools(harness):
-    """{tool: the input key of its message} for the harness's hand-back tools, from subagent-tools.json."""
-    try:
-        entry = json.loads(TOOLS_FILE.read_text(encoding='utf-8'))['harnesses'].get(harness) or {}
-    except (OSError, ValueError, KeyError):
-        return {}
-    return dict((item['tool'], item['answer_key']) for item in entry.get('handback') or []
-                if isinstance(item, dict) and isinstance(item.get('tool'), str)
-                and isinstance(item.get('answer_key'), str))
-
-
-def return_faults(records, session, paths, handbacks):
-    """{fault: count} over the session's call records, for each fault found; {} when none.
-
-    A return carrying `unrecorded` for a check result; a return whose last check result names a text other than its
-    answer; a return naming an event its route never sends, or SubagentStop with no SubagentStop witness for its agent;
-    on a call whose subagent transcript shows a delivered hand-back, an answer other than the last one delivered; and a
-    member's return whose counters differ from its whole transcript's, where no message resumed the member and its
-    wait finished. It reads the subagent transcripts beside the transcripts given, and no other file.
-    """
-    import transcripts
-    faults = {}
-
-    def fault(name):
-        faults[name] = faults.get(name, 0) + 1
-    dispatches = dict((r.get('call_id'), r) for r in records if r.get('record') == 'dispatch')
-    stopped = set(r.get('agent_id') for r in records if r.get('record') == 'witness'
-                  and r.get('event') == 'SubagentStop')
-    continued = set(r.get('continues_call_id') for r in records if r.get('record') == 'dispatch')
-    messaged = set(r.get('agent_id') for r in records if r.get('record') in ('dispatch', 'return')
-                   and isinstance(r.get('harness_payload'), dict) and r['harness_payload'].get('tool_name')
-                   == 'SendMessage')
-    for back in (r for r in records if r.get('record') == 'return' and r.get('route', 'subagent') == 'subagent'):
-        results = back.get('check_results') if isinstance(back.get('check_results'), list) else []
-        if any(isinstance(item, str) and is_unrecorded(item) for item in results):
-            fault(FAULT_UNRECORDED)
-        answer = _answer_sha(back)
-        last = results[-1] if results else None
-        if isinstance(last, dict) and isinstance(last.get('sha256'), str) and answer and last['sha256'] != answer:
-            fault(FAULT_LAST_TEXT)
-        event, agent = _event_of(back), back.get('agent_id')
-        sent = dispatches.get(back.get('call_id')) or {}
-        given = (sent.get('harness_payload') or {}).get('tool_input') if isinstance(
-            sent.get('harness_payload'), dict) else None
-        background = isinstance(given, dict) and given.get('run_in_background') is True
-        if event is not None and (event not in RETURN_EVENTS or (event == 'SubagentStop' and agent not in stopped)
-                                  or (event == 'PostToolUse' and background
-                                      and (sent.get('harness_payload') or {}).get('tool_name') in ('Agent', 'Task'))):
-            fault(FAULT_EVENT)
-        lane = _lane(paths, session, agent) if isinstance(agent, str) and not is_unrecorded(agent) else None
-        if lane is None or (sent.get('harness_payload') or {}).get('tool_name') not in ('Agent', 'Task'):
-            continue
-        delivered = transcripts.delivered_handbacks(lane, handbacks)
-        if delivered and answer and hashlib.sha256(delivered[-1].encode('utf-8')).hexdigest() != answer:
-            fault(FAULT_HANDBACK)
-        resumed = back.get('call_id') in continued or agent in messaged
-        unfinished = isinstance(back.get('harness_payload'), dict) and 'wait' in back['harness_payload']
-        if not resumed and not unfinished and isinstance(back.get('tokens'), dict):
-            whole = transcripts.read(lane).get('tokens')
-            if isinstance(whole, dict) and any(whole.get(k) != back['tokens'].get(k)
-                                               for k in ('input', 'cache_write', 'cache_read', 'output')):
-                fault(FAULT_TOKENS)
-    return faults
-
-
-def _runs(record):
-    """The check runs a witness line or a return carries: (its call id, its result ids, the run)."""
-    out = []
-    found = record.get('check_results')
-    for run in found if isinstance(found, list) else []:
-        if not isinstance(run, dict) or not isinstance(run.get('checks'), list):
-            continue
-        key = run.get('key') if isinstance(run.get('key'), dict) else {}
-        call = key.get('call_id')
-        if not isinstance(call, str) or is_unrecorded(call):
-            # A run whose key names no call is known by its agent, as the return check's own reader knows it.
-            agent = key.get('agent_id')
-            agent = agent if isinstance(agent, str) and agent and not is_unrecorded(agent) else record.get('agent_id')
-            call = record.get('call_id') if record.get('record') == 'return' else 'agent:%s' % agent
-        ids = tuple(c.get('id') for c in run['checks'] if isinstance(c, dict))
-        out.append((call, ids, run))
-    return out
-
-
-def _committed_after(repository, path, since):
-    """Whether git shows a commit after `since` that changes `path`; None where git cannot say."""
-    import subprocess
-    try:
-        done = subprocess.run(['git', '-C', str(repository), 'log', '--format=%cI', '--', str(path)],
-                              capture_output=True, text=True, timeout=GIT_SECONDS)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if done.returncode != 0:
-        return None
-    for line in done.stdout.split():
-        when = parse_time(line)
-        if when is not None and since is not None and when > since:
-            return True
-    return False
-
-
-def decision_faults(records):
-    """{fault: count} from the check results the witness lines and returns carry and the disposition lines; {} when
-    none. A `fail` stands until a disposition on its own call names its id; a check run that could not finish carries
-    no result to settle."""
-    faults = {}
-
-    def fault(name, count=1):
-        if count:
-            faults[name] = faults.get(name, 0) + count
-    returns = dict((r.get('call_id'), r) for r in records if r.get('record') == 'return')
-    resumed = set(r.get('continues_call_id') for r in records if r.get('record') == 'dispatch')
-    carried, fails = {}, {}
-    for record in records:
-        if record.get('record') not in ('witness', 'return'):
-            continue
-        for call, ids, run in _runs(record):
-            for found in run['checks']:
-                if isinstance(found, dict) and isinstance(found.get('id'), str):
-                    carried.setdefault(call, set()).add(found['id'])
-                    if found.get('result') == 'fail':
-                        fails.setdefault((call, found['id']), True)
-    settled = set()
-    for record in records:
-        if record.get('record') != 'disposition':
-            continue
-        call = record.get('call_id')
-        named = [i for i in record.get('result_ids') or [] if isinstance(i, str)]
-        fault(FAULT_UNKNOWN_RESULT, sum(1 for i in named if i not in carried.get(call, set())))
-        settled.update((call, i) for i in named)
-        if record.get('kind') == 'repaired':
-            repository = record.get('repository')
-            since = parse_time(record.get('decided_at'))
-            for path in record.get('paths') or []:
-                if not isinstance(repository, str) or is_unrecorded(repository) \
-                        or not _committed_after(repository, path, since):
-                    fault(FAULT_UNREPAIRED)
-    fault(FAULT_UNDECIDED, sum(1 for key in fails if key not in settled))
-    for record in records:
-        if record.get('record') != 'witness':
-            continue
-        for call, ids, run in _runs(record):
-            back = returns.get(call)
-            if back is None:
-                continue
-            on_return = [r for c, i, r in _runs(back) if i == ids]
-            if not on_return or [c.get('result') for c in on_return[0]['checks']] != \
-                    [c.get('result') for c in run['checks']] or on_return[0].get('sha256') != run.get('sha256'):
-                fault(FAULT_WITNESS_DIFFERS)
-            written, returned = parse_time(record.get('at')), parse_time(back.get('returned_at'))
-            if written and returned and written > returned and call not in resumed:
-                fault(FAULT_LATE_WITNESS)
-    stops = {}
-    for record in records:
-        if record.get('record') == 'witness' and record.get('event') == 'SubagentStop':
-            for call, ids, run in _runs(record):
-                stops[call] = run
-    for record in records:
-        if record.get('record') != 'dispatch' or record.get('call_id') in returns:
-            continue
-        last = stops.get(record.get('call_id'))
-        if isinstance(last, dict) and last.get('report_reached_parent') is False:
-            fault(FAULT_NO_HANDBACK)
-    return faults
-
-
-# ---------------------------------------------------------------------------
 # The command
 # ---------------------------------------------------------------------------
 
@@ -1373,10 +1152,6 @@ def main(argv=None):
         except CannotRun as exc:
             print('calls: cannot run: %s' % exc, file=sys.stderr)
             return 2
-        if isinstance(check, dict):
-            check['faults'] = return_faults(records, session, args.transcript, handback_tools(args.harness))
-            for name, count in decision_faults(records).items():
-                check['faults'][name] = check['faults'].get(name, 0) + count
         out['count_check'] = check
         out['absences'].extend(more)
         out['received_messages'] = received_messages(args.transcript, folder, parse_time(args.since),
@@ -1384,8 +1159,6 @@ def main(argv=None):
     out = grouped(out)
     if args.count_check:
         if code == 0 and isinstance(check, dict) and isinstance(check['difference'], int) and check['difference']:
-            code = 4
-        elif code == 0 and isinstance(check, dict) and check.get('faults'):
             code = 4
         elif code == 0 and isinstance(check, dict) and isinstance(check['difference'], str):
             code = 3

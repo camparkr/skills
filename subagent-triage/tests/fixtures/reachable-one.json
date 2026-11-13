@@ -1,7 +1,0 @@
-{
-  "description": "A stand-in reachable list with one harness and one model.",
-  "harnesses": [
-    {"name": "harness-only", "description": "The one harness.",
-     "models": [{"name": "model-only", "description": "The one model.", "levels": ["low", "high"]}]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "description": "A stand-in forms map for decide.py's tests: the builder each form's answer goes to. It names no real persona.",
-  "builders": {
-    "code": "builder",
-    "model": "reasoner"
-  }
-}

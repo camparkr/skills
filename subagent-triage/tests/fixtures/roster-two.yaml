@@ -1,8 +1,0 @@
-# Two ratified personas; the builder's goal covers a build part.
-rows:
-- name: cataloguer
-  group: library
-  file: personas/cataloguer.md
-- name: builder
-  group: workshop
-  file: personas/builder.md

@@ -33,9 +33,6 @@ non-zero while every counter it breaks into is zero is passed over. The models a
 each `exec_command`'s text is kept for `isolation()`. A rollout that Codex continued in a second file
 after compaction is not read short: its counters are unrecorded, saying so.
 
-`delivered_handbacks(path, tools)` lists the messages of the hand-back calls the transcript shows delivered:
-each hand-back `tool_use` whose `tool_result` stands later and is not an error.
-
 `question_calls(path, tool)` lists the answered calls of the harness's tool for putting a question to
 the user (Claude Code's `AskUserQuestion`): each `tool_use` of that name whose `tool_result` stands
 later in the transcript and is not an error, with the time of each row.
@@ -474,28 +471,6 @@ def question_calls(path, tool):
                 answered.setdefault(block['tool_use_id'], row.get('timestamp'))
     return [{'id': call_id, 'asked_at': at, 'answered_at': answered[call_id]}
             for call_id, at in asked.items() if call_id in answered]
-
-
-def delivered_handbacks(path, tools, rows=None):
-    """The messages of the hand-back calls the transcript shows delivered, in order: each `tool_use` of a tool in
-    `tools` ({name: the input key holding the message}) whose `tool_result` stands later and is not an error. A
-    refused hand-back's result is an error, and a hand-back with no result yet was not delivered. Each call id counts
-    once."""
-    rows = rows_of(path) if rows is None else rows
-    calls, order, delivered = {}, [], set()
-    for row in rows:
-        content = (row.get('message') or {}).get('content') if isinstance(row.get('message'), dict) else None
-        for part in content if isinstance(content, list) else []:
-            if not isinstance(part, dict):
-                continue
-            if part.get('type') == 'tool_use' and part.get('name') in tools and part.get('id') not in calls:
-                given = part.get('input') if isinstance(part.get('input'), dict) else {}
-                value = given.get(tools[part['name']])
-                calls[part.get('id')] = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                order.append(part.get('id'))
-            elif part.get('type') == 'tool_result' and part.get('is_error') is not True:
-                delivered.add(part.get('tool_use_id'))
-    return [calls[call] for call in order if call in delivered]
 
 
 def main(argv=None):

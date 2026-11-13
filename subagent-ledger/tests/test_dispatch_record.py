@@ -59,7 +59,6 @@ def full_triage_file(persona='reviewer'):
                                      {'question': 'effort', 'answer': 'high'}], LATER),
         'triage_persona': stamped(persona, LATER),
         'persona_facts': stamped({'grouping': 'makers', 'goal': 'builds what it is asked'}, LATER),
-        'kind_paired_grouping': stamped('makers', LATER),
         'chosen_by': stamped('planner', LATER),
         'overrides': stamped([], LATER),
         'below_line': stamped({'below': False}, LATER),
@@ -69,8 +68,8 @@ def full_triage_file(persona='reviewer'):
     }
 
 
-PENDING_VALUES = ('effort_unaided', 'decision_records', 'triage_persona', 'persona_facts', 'kind_paired_grouping',
-                  'chosen_by', 'overrides', 'below_line', 'triage_failure', 'harness_assigned', 'sender')
+PENDING_VALUES = ('effort_unaided', 'decision_records', 'triage_persona', 'persona_facts', 'chosen_by', 'overrides',
+                  'below_line', 'triage_failure', 'harness_assigned', 'sender')
 
 
 class Capture(unittest.TestCase):
@@ -614,6 +613,80 @@ class NewFieldsSelectable(Capture):
         self.assertEqual(sent['baseline'], "unrecorded (no writer's brief for this call)")
         self.assertEqual(sent['continues_call_id'], 'unrecorded (not a resumption)')
         self.assertEqual(sent['effort_unaided'], 'unrecorded (no pending triage file for this call)')
+
+
+# ---------------------------------------------------------------------------
+# Themis's F5: R-10 of amendment 2 retires kind_paired_grouping, on the pattern of the fields retired before it
+# ---------------------------------------------------------------------------
+
+RETIRED_FIELD = 'kind_paired_grouping'
+
+
+def module(name):
+    import importlib.util
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
+    spec = importlib.util.spec_from_file_location('%s_for_retired_test' % name, SCRIPTS / ('%s.py' % name))
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+class KindPairedGroupingRetired(Capture):
+
+    def setting(self, fields):
+        (self.ledger / 'config.json').write_text(json.dumps({'fields': fields}), encoding='utf-8')
+
+    def test_f5_r10_a_new_dispatch_record_never_carries_it(self):
+        path = self.brief('brief.md', {'member': 'm-one', 'attempt': '1'})
+        self.write_triage('m-one', 1, full_triage_file())
+        sent = self.dispatch('toolu_r10_0001', 'Read %s.' % path)
+        self.assertNotIn(RETIRED_FIELD, sent)
+        self.assertNotIn(RETIRED_FIELD, sent['fields_on'])
+        self.assertNotIn(RETIRED_FIELD, sent['fields_not_chosen'])
+        self.assertEqual(self.errors(), [])
+
+    def test_f5_r10_empty_a_fields_list_naming_it_turns_nothing_on_and_is_no_error(self):
+        self.setting([RETIRED_FIELD, 'member'])
+        path = self.brief('brief.md', {'member': 'm-one', 'attempt': '1'})
+        sent = self.dispatch('toolu_r10_0002', 'Read %s.' % path)
+        self.assertEqual(sent['member'], 'm-one')
+        self.assertNotIn(RETIRED_FIELD, sent)
+        self.assertNotIn(RETIRED_FIELD, sent['fields_on'])
+        self.assertEqual(self.errors(), [])
+
+    def test_f5_r10_likeness_a_name_the_record_never_had_is_still_refused(self):
+        self.setting(['kind_paired_synodos'])
+        self.run_event('PreToolUse', self.agent_payload('toolu_r10_0003', 'Say hello.'))
+        self.assertEqual([r for r in self.records() if r.get('record') == 'dispatch'], [])
+        self.assertEqual([e.get('stage') for e in self.errors()], ['setting'], self.errors())
+
+    def test_f5_r10_the_writer_the_pending_reader_and_both_schemas_drop_it(self):
+        ledger = module('ledger')
+        self.assertNotIn(RETIRED_FIELD, ledger.SELECTABLE)
+        self.assertIn(RETIRED_FIELD, ledger.RETIRED)
+        self.assertNotIn(RETIRED_FIELD, ledger.DISPATCH_ONLY)
+        self.assertNotIn(RETIRED_FIELD, ledger.NOT_GIVEN)
+        self.assertNotIn(RETIRED_FIELD, module('pending').COPIED)
+        for name in ('record.schema.json', 'pending.schema.json'):
+            self.assertNotIn(RETIRED_FIELD, (SCRIPTS / name).read_text(encoding='utf-8'), name)
+
+    def test_f5_r10_a_record_written_before_still_reads_as_written(self):
+        sent = self.dispatch('toolu_r10_0004', 'Say hello.')
+        older = dict(sent, call_id='toolu_r10_0005')
+        older[RETIRED_FIELD] = stamped('makers', LATER)
+        older['fields_on'] = list(older['fields_on']) + [RETIRED_FIELD]
+        older['fields_not_chosen'] = [n for n in older['fields_not_chosen'] if n != RETIRED_FIELD]
+        with (self.ledger / ('%s.jsonl' % SESSION)).open('a', encoding='utf-8') as out:
+            out.write(json.dumps(older) + '\n')
+        done = subprocess.run([sys.executable, str(SCRIPTS / 'calls.py'), '--session', SESSION, '--ledger',
+                               str(self.ledger), '--json'], capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        rows = dict((row['call_id'], row) for row in json.loads(done.stdout)['calls'])
+        self.assertEqual(rows['toolu_r10_0005'][RETIRED_FIELD], stamped('makers', LATER))
+        self.assertIn(RETIRED_FIELD, rows['toolu_r10_0005']['fields_on'])
+        self.assertNotIn(RETIRED_FIELD, rows['toolu_r10_0004'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1073,6 +1073,54 @@ class DecideTests(unittest.TestCase):
         for word in ('canon', 'thiasos', 'diorth', 'Mouseion', 'synodos'):
             self.assertNotIn(word, test)
 
+    # -- Themis's F7: the act decision's definition says what decide.py does with the Nouls -------------------------
+
+    def test_f7_d1_the_definition_says_the_nouls_are_asked_while_no_line_is_set_and_none_is_applied(self):
+        code, out = self.run_decide('roster-two.yaml', member='m80')
+        self.assertEqual(code, 0, out)
+        nouls_asked = [b for b in self.jev.seen
+                       if [q['type'] for q in b['questions'].values()] == ['noul'] and
+                       list(b['questions'])[0].startswith('kind_')]
+        self.assertEqual(len(nouls_asked), len(KINDS), 'decide.py asks one Noul per kind')
+        d1 = json.loads((SCRIPT.parent.parent / 'decisions' / 'd1-act.json').read_text(encoding='utf-8'))
+        nouls = d1['composition']['nouls']
+        self.assertTrue(all(line is None for line in nouls['lines'].values()), 'no line is set yet')
+        self.assertIs(nouls['ask_before_lines_set'], True, 'the definition says the Nouls are not asked')
+        self.assertIs(out['act']['line_applied'], False)
+        self.assertNotIn('not asked', d1['basis'])
+        self.assertIn('calibration', d1['basis'])
+
+    # -- Themis's F4: after a model override, an effort override is checked against the passed model's levels ------
+
+    def test_f4_r39_the_model_record_gives_the_levels_each_listed_model_is_offered(self):
+        code, out = self.run_decide('roster-two.yaml', member='m81', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.d(out, 'd7-model')['exact_evidence']['levels_offered'],
+                         {'model-b1': ['low', 'high'], 'model-b2': ['medium', 'max']})
+
+    def test_f4_r39_after_a_model_override_the_effort_override_is_checked_against_the_model_passed(self):
+        code, out = self.run_decide('roster-two.yaml', member='m82', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['model']['pass'], 'model-b2')  # offered medium and max on harness-b
+        code, out = self.override_value('m82', 'd7-model', '--model', 'model-b1')  # offered low and high there
+        self.assertEqual(code, 0, out)
+        before = self.pending_path(member='m82').read_text(encoding='utf-8')
+        code, out = self.override_value('m82', 'd4-effort', '--level', 'max')
+        self.assertEqual(code, 1, ('max is offered model-b2, not model-b1, the model passed', out))
+        self.assertEqual(self.pending_path(member='m82').read_text(encoding='utf-8'), before)
+        code, out = self.override_value('m82', 'd4-effort', '--level', 'low')
+        self.assertEqual(code, 0, ('low is offered model-b1, the model passed', out))
+        self.assertEqual((out['override']['decision_level'], out['override']['level_passed']), ('medium', 'low'))
+        self.check_schema(self.pending(member='m82'))
+
+    def test_f4_r39_empty_with_no_model_override_the_decision_s_own_model_s_levels_still_decide(self):
+        code, out = self.run_decide('roster-two.yaml', member='m83', extra=self.reachable('reachable-two.json'))
+        self.assertEqual(code, 0, out)
+        code, out = self.override_value('m83', 'd4-effort', '--level', 'low')
+        self.assertEqual(code, 1, ('low is not offered model-b2, the model assigned', out))
+        code, out = self.override_value('m83', 'd4-effort', '--level', 'max')
+        self.assertEqual(code, 0, out)
+
 
 if __name__ == '__main__':
     unittest.main()

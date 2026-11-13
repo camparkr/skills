@@ -64,9 +64,9 @@ SELECTABLE = (
     'answer_path', 'answer_source', 'isolation', 'harness_payload', 'spend_line', 'persona-name', 'act_kind',
     'user_answer', 'grouping', 'task', 'failure_modes', 'roster_revision', 'labeller_model', 'triage_kind',
     'member', 'attempt', 'session_effort', 'continues_call_id', 'baseline', 'effort_unaided', 'decision_records',
-    'triage_persona', 'persona_facts', 'kind_paired_grouping', 'chosen_by', 'overrides', 'below_line',
-    'triage_failure', 'harness_assigned', 'sender',
-)  # 0.2.7 adds answer_source; U2a adds fourteen; amendment 2's R-40 and R-37 add the last two
+    'triage_persona', 'persona_facts', 'chosen_by', 'overrides', 'below_line', 'triage_failure', 'harness_assigned',
+    'sender',
+)  # 0.2.7 adds answer_source; U2a adds fourteen; amendment 2's R-40 and R-37 add the last two; its R-10 retires one
 
 
 def load(path, name):

@@ -24,6 +24,10 @@ never null. Nothing is filled in. A field no longer selectable is printed only w
 carries it, as written. A return with no dispatch record still has its row, its dispatch side reading
 `unrecorded (no dispatch record)`.
 
+Each row also carries `elapsed_s`, derived beside the two times it merges: `returned_at` less `dispatched_at`,
+in seconds to three places, each read as the reader reads a time. Where either does not parse it reads
+`unrecorded (<field> reads <its text>)`, never a zero. No model writes it.
+
 Each row also carries `labels`, joined from the session's label lines by `call_id`: `labelled_because`,
 `failure_modes`, `likelihoods`, `cutoff`, `roster_revision`, `question_revision`, `labeller_model`,
 `labeller_call_ids` and `labelled_at` from the newest label line for the call, and `earlier`, the number of
@@ -151,7 +155,7 @@ REJECTED_STAGES = ('payload', 'setting', 'validate', 'scrub', 'copy')
 SESSION_SHAPE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.:-]*$')
 FRAME = ('call_id', 'agent_id', 'session', 'dispatched_at', 'returned_at', 'outcome')
 # The row's keys in the documented order; every other selectable field follows in the schema's order.
-ROW_FIRST = ('call_id', 'route', 'harness', 'caller', 'agent_id', 'dispatched_at', 'returned_at',
+ROW_FIRST = ('call_id', 'route', 'harness', 'caller', 'agent_id', 'dispatched_at', 'returned_at', 'elapsed_s',
              'model_requested', 'model', 'outcome', 'outcome_reason', 'brief_path', 'answer_path',
              'spend_line', 'auth_route')
 
@@ -327,6 +331,17 @@ def labels_for_no_call(labels, row_ids):
             for call_id, lines in labels.items() if call_id not in row_ids for _line in lines]
 
 
+def elapsed_of(dispatched_at, returned_at):
+    """`returned_at` less `dispatched_at` in seconds, to three places, each read by parse_time; where either does
+    not parse, `unrecorded (<field> reads <its text>)`, never a zero."""
+    start, end = parse_time(dispatched_at), parse_time(returned_at)
+    if start is None:
+        return 'unrecorded (dispatched_at reads %s)' % dispatched_at
+    if end is None:
+        return 'unrecorded (returned_at reads %s)' % returned_at
+    return round((end - start).total_seconds(), 3)
+
+
 def row_of(sent, back):
     """One call's row from its dispatch record and its return record, either of which may be absent."""
     frame = back if back is not None else sent
@@ -334,6 +349,7 @@ def row_of(sent, back):
     for name in FRAME:
         if name != 'session':
             row[name] = frame.get(name)
+    row['elapsed_s'] = elapsed_of(row['dispatched_at'], row['returned_at'])
     for name in ledger.SELECTABLE:
         if name in ledger.DISPATCH_ONLY:
             if sent is not None:

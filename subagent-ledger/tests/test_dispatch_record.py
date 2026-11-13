@@ -656,7 +656,7 @@ class KindPairedGroupingRetired(Capture):
         self.assertEqual(self.errors(), [])
 
     def test_f5_r10_likeness_a_name_the_record_never_had_is_still_refused(self):
-        self.setting(['kind_paired_synodos'])
+        self.setting(['kind_paired_company'])
         self.run_event('PreToolUse', self.agent_payload('toolu_r10_0003', 'Say hello.'))
         self.assertEqual([r for r in self.records() if r.get('record') == 'dispatch'], [])
         self.assertEqual([e.get('stage') for e in self.errors()], ['setting'], self.errors())

@@ -1,16 +1,18 @@
 ---
 name: subagent-triage
-description: "Plans a team of subagents before any is sent, and records why each was sent where it was. For each part of a delegation it reads the kind of act, chooses an eligible persona and assigns an effort level, then writes the brief, the plan and a pending triage file the ledger copies onto the dispatch record. Use it before every dispatch that names a persona, whether the delegation is one part or many, and at the close to mark which hand-overs the parent used. Triggers: /subagent-triage, plan this team, split this delegation, which persona should take this, what effort should this get, close the plan. Not for searches, page fetches or MCP reads, for a message to a running subagent or for checking what a subagent returned (use subagent-return)."
+description: "Plans a team of subagents before any is sent, and records why each was sent where it was. For each part of a delegation it reads the kind of act and, for a build, its form, chooses an eligible persona and assigns a harness, a model and an effort level, then writes the brief, the plan and a pending triage file the ledger copies onto the dispatch record. Use it before every dispatch that names a persona, whether the delegation is one part or many, and at the close to mark which hand-overs the parent used. Triggers: /subagent-triage, plan this team, split this delegation, which persona should take this, what effort should this get, close the plan. Not for searches, page fetches or MCP reads, for a message to a running subagent or for checking what a subagent returned (use subagent-return)."
 ---
 
 # subagent-triage
 
 This skill sits between you and every dispatch that names a persona. It reads what each part of your delegation asks
-for, chooses who takes it and at what effort and writes the brief. It records every value in a pending triage file,
-and the ledger's capture copies that file onto the member's dispatch record. You never write the ledger.
+for, chooses who takes it, on which harness and model and at what effort, and writes the brief. It records every
+value in a pending triage file, and the ledger's capture copies that file onto the member's dispatch record. You never
+write the ledger.
 
-The three decisions it asks, of each part's kind, persona and effort, are written for Jev, TypeSafe's decision
-engine, at model `jev-1.13.0`. Each is a definition in `decisions/`, and
+The six decisions it asks of each part are, in order, its act, its form where it builds, its persona, its harness, its
+model and its effort. They are written for Jev, TypeSafe's decision engine, at model `jev-1.13.0`. Each is a
+definition in `decisions/`, and
 [`references/decisions.md`](references/decisions.md) describes them. The key is read from `JEV_API_KEY`.
 
 In the commands below, `<skill>` is this skill's folder, the one holding this file, and `<ledger>` is the ledger
@@ -24,7 +26,7 @@ Run the steps in this order for each delegation:
 0. Check the ledger is writing.
 1. Read the task's stage.
 2. Divide the delegation, with the planner where it divides.
-3. Ask each part's three decisions, your own effort first.
+3. Ask each part's six decisions, your own effort first.
 4. Override a decision, where you choose otherwise.
 5. Write each brief.
 6. Write the plan file.
@@ -105,7 +107,7 @@ go on to step 3 for each.
 
 The proposal names no effort. You choose an effort unaided first, at step 3.
 
-## 3. Ask each part's three decisions
+## 3. Ask each part's six decisions
 
 For each part, decide first the effort you would give it unaided, before you see the skill's. Then write the part's
 text to a file and run:
@@ -118,35 +120,64 @@ python3 <skill>/scripts/decide.py --delegation <part file> --roster <roster file
 asks anything. Then it reads the stage as step 1 does, and asks, in order:
 
 1. **The act decision** (`decisions/d1-act.json`): which kind of act the part asks for. While its lines are
-   provisional it reads one kind, or none.
-2. **The persona decision** (`decisions/d3-figure.json`), only where the act decision read a kind: which eligible
-   persona takes the part, and whether it is adequate.
-3. **The effort decision** (`decisions/d4-effort.json`), whatever the other two read: which level the part warrants.
+   provisional it reads one kind, none, or two or more.
+2. **The form decision** (`decisions/d5-form.json`), only where the act decision read `build`: whether code or a
+   model's inference decides the output of what the part builds, both, or neither. `code` or `model` names that
+   form's builder from the forms map `--forms` names.
+3. **The persona decision** (`decisions/d3-figure.json`), only where the act decision read one kind and nothing
+   split the part: which eligible persona takes the part, and whether it is adequate.
+4. **The harness decision** (`decisions/d6-harness.json`), whatever the others read: which harness on the reachable
+   list `--reachable` names runs the part.
+5. **The model decision** (`decisions/d7-model.json`), whatever the others read: which model that list gives the
+   assigned harness runs the part.
+6. **The effort decision** (`decisions/d4-effort.json`), last, whatever the others read: which level, of those the
+   assigned harness offers the assigned model, the part warrants.
+
+Where the reachable list names one harness or model, it is assigned without asking. Where it names none, or a
+request fails or answers off the list, your own is passed: `--parent-harness` and `--parent-model`.
 
 **Eligibility is exact** and comes before the persona decision. A persona is eligible where it is a row of the
 roster, its file exists, that file's front matter carries a ratified declaration with a goal and it is not the user.
 Name the user's own entries with `--user <name>`. The roster is a YAML or JSON file. Where its rows and fields sit
 under other names, say where with `--rows-key` (`rows` by default), `--name-key` (`name`), `--group-key` (`group`),
-`--file-key` (`file`), `--goal-key` (`declaration.goal`) and `--ratified-key` (`declaration-ratified`). A dotted name
-reads a nested key. `--file-root` is the folder the rows' file paths are read from, by default the roster's own
-folder.
+`--file-key` (`file`), `--goal-key` (`declaration.goal`), `--does-key` (`declaration.does`) and `--ratified-key`
+(`declaration-ratified`). A dotted name reads a nested key. What a persona declares it does, at `--does-key`, is
+not a condition of eligibility: where it is declared, the persona decision reads it beside the goal. `--file-root` is
+the folder the rows' file paths are read from, by default the roster's own folder.
 
 The script writes the member's pending triage file, `<ledger>/.pending/<session id>/triage-<member>-<attempt>.json`,
 and prints its path as `pending_file`. Read the output:
 
-- **`act.kind`** is the kind read. Where it is `null`, the act decision read none, or its request failed. A part read
-  as none goes back to you as a finding: send it to no persona. Where the request failed, choose the kind yourself.
+- **`act.kind`** is the kind read. Where it is `null`, one of three things happened, and the output says which:
+  - `act.split` is `true`: the act decision read two or more kinds. The part is to be split.
+  - `act.failure` is set: the request failed. Choose the kind yourself.
+  - Neither: the act decision read none. The part goes back to you as a finding: send it to no persona.
+- **`form.split`** is `true` where the form decision read `both`, though `act.kind` reads `build`. The part is to be
+  split.
+- **A part to be split** gets no persona and no pending file: `pending_file` is `null`, and `no_pending_file` says
+  why. Split it yourself, into one part for each kind, or one for each form, and run this step for each new part,
+  with a member id of its own. Never dispatch the part as it stands.
 - **A part read as `user-decision`** is the user's to settle. Ask the user, with the harness's question tool, before
   you write its brief or send anything.
 - **`persona.persona`** is the persona chosen. Where `persona.below_line` is `true`, the adequacy answer was below
   its line: the part still goes to the persona ranked first, its brief says no persona was found adequate and its
   record marks the part below the line. Where `persona.answer` reads `none adequate (...)`, no persona was eligible,
   and the part goes back to you. Where it reads `unrecorded (...)`, the request failed: choose the persona yourself.
+- **`harness.pass`** is the harness to pass: the harness decision's, or your own where that decision gave none. The
+  pending file records it as `harness_assigned`.
+- **`model.pass`** is the model to pass: the model decision's, or your own where that decision gave none.
 - **`effort.pass`** is the level to pass. It is the effort decision's level, or your own unaided level where that
   decision returned none.
 
-**Pass the effort decision's level.** Pass `effort.pass` as the Agent tool's `effort` input on every dispatch, from
-the first. The tool asks for `effort` only when you are told to give it, and this is that instruction.
+**Pass the harness, the model and the effort.** On every dispatch, from the first:
+
+- run the member on the harness `harness.pass` names: where it is the harness you run in, dispatch with its own
+  subagent tool; where it is another, dispatch through that harness;
+- pass `model.pass` as the Agent tool's `model` input; and
+- pass `effort.pass` as the Agent tool's `effort` input.
+
+The tool asks for `effort` only when you are told to give it, and this is that instruction. The close reports as a
+fault a model or effort passed other than the one to pass, and a member run on another harness.
 
 Exit 3 means a decision's request to Jev failed. The output and the pending file record the failure and its reason,
 and the dispatch still goes out. You choose what to do with it. Every request to Jev is a call of its own, with its
@@ -154,8 +185,8 @@ dispatch and return records in the ledger.
 
 ## 4. Override a decision
 
-The dispatch goes to the persona decision's persona, at the effort decision's level, unless you override. To
-override, record it in the member's pending triage file before the dispatch:
+The dispatch goes to the persona decision's persona, on the harness and model assigned and at the effort decision's
+level, unless you override. To override, record it in the member's pending triage file before the dispatch:
 
 ```bash
 python3 <skill>/scripts/decide.py override --pending <pending file> --decision d3-figure --persona <name> --parent-persona <your own persona> --reason "<why>"
@@ -171,7 +202,12 @@ can be read by parent. It refuses a persona the roster does not list, the decisi
 that chose no persona. It refuses too an empty reason or parent persona.
 
 **The effort.** Override it any time before the dispatch. The script records the decision's level, the level you
-pass instead, your reason and the time. Pass the level you recorded.
+pass instead, your reason and the time. It refuses a level the assigned harness does not offer the assigned model.
+Pass the level you recorded.
+
+**The harness and the model.** Override either any time before the dispatch. The script records the decision's
+value, the one you pass instead, your reason and the time, and a harness override restamps `harness_assigned`. It
+refuses a harness or model the reachable list does not name, and the decision's own. Pass the value you recorded.
 
 **No persona.** A dispatch you send with no persona goes out as an override, with your reason. Record it before you
 send it; the dispatch check then lets it through.
@@ -240,8 +276,9 @@ spans two repositories. A read-only member is not checked.
 Dispatch each member as the plan's parallel order says:
 
 - the brief's absolute path is the first path in the prompt;
-- the `effort` input carries `effort.pass` from step 3, or the level of your effort override;
-- the `model` input names the model, as the `subagent-ledger` skill asks; and
+- the member runs on the harness `harness.pass` names, or your harness override's;
+- the `model` input carries `model.pass` from step 3, or your model override's;
+- the `effort` input carries `effort.pass` from step 3, or the level of your effort override; and
 - a writer runs in its own worktree (in Claude Code, the Agent tool's `isolation: "worktree"`).
 
 The capture copies the pending triage file onto the member's dispatch record and removes it. If a decision failed,
@@ -297,7 +334,8 @@ file's reference, writes the marks and the time into the plan file and reports:
 - the parts dispatched below the persona decision's line, with their count;
 - the override rates, each a count of a count: the persona decision's overall, by its probability band and by
   parent, and the effort decision's overall; and
-- each fault, such as an override missing a value or an effort passed other than the one to pass.
+- each fault, such as an override missing a value, an effort or model passed other than the one to pass, or a
+  member run on a harness other than the one assigned.
 
 Report all of these to the user. `close` exits 0 when it closed with no fault, 3 when it closed with faults and 1
 where the plan is unreadable or already closed, or no transcript is named.
@@ -308,6 +346,6 @@ The next plan with the same pattern of act kinds leaves out each hop marked not 
 
 - Never write or edit the ledger, a pending triage file, a planner's file or a decision record by hand. The scripts
   and the capture write them.
-- Never pass an effort, persona or decision value that the pending triage file does not record.
+- Never pass a harness, model, effort, persona or decision value that the pending triage file does not record.
 - Never send a `user-decision` part before the user answers.
 - Leave a harness's settings to the user, who places any hook.
